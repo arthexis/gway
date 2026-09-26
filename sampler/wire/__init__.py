@@ -14,6 +14,8 @@ import subprocess
 from contextlib import contextmanager
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from urllib.error import HTTPError, URLError
+from urllib.request import Request, urlopen
 
 from gway.rendering import atomic_write_text
 
@@ -73,7 +75,9 @@ class Registry:
         return connection
 
     def list_devices(self, *, enabled=None):
-        """Return enrolled devices in deterministic device order."""
+        """Return enrolled devices in deterministic device order without creating state."""
+        if not self.path.is_file():
+            return []
         query = "SELECT * FROM devices"
         params = ()
         if enabled is not None:
@@ -84,7 +88,9 @@ class Registry:
             return [dict(row) for row in conn.execute(query, params)]
 
     def get_device(self, device):
-        """Return one enrolled device or None."""
+        """Return one enrolled device or None without creating state."""
+        if not self.path.is_file():
+            return None
         with self.connect() as conn:
             row = conn.execute(
                 "SELECT * FROM devices WHERE device = ?", (_device(device),)
@@ -143,7 +149,7 @@ class Registry:
                 return f"{candidate}/32"
         raise RuntimeError(f"no Wire addresses remain in {self.network}")
 
-    def enroll(self, *, device, public_key, token, now=None, externally_reserved=()):
+    def enroll(self, *, device, public_key, token, now=None, externally_reserved=(), consume=True):
         device = _device(device)
         public_key = _public_key(public_key)
         now = now or _utcnow()
@@ -190,12 +196,29 @@ class Registry:
                 }
                 created = True
 
+            if consume:
+                conn.execute(
+                    "UPDATE tokens SET consumed_at = ? WHERE digest = ?",
+                    (_stamp(now), digest),
+                )
+            conn.commit()
+        return record, created
+
+    def consume_token(self, token, *, now=None):
+        """Consume one previously validated enrollment token."""
+        now = now or _utcnow()
+        digest = _token_hash(token)
+        with self.connect() as conn:
+            row = conn.execute(
+                "SELECT consumed_at FROM tokens WHERE digest = ?", (digest,)
+            ).fetchone()
+            if row is None or row["consumed_at"] is not None:
+                raise PermissionError("invalid or already-used wire enrollment token")
             conn.execute(
                 "UPDATE tokens SET consumed_at = ? WHERE digest = ?",
                 (_stamp(now), digest),
             )
-            conn.commit()
-        return record, created
+        return True
 
 
 def _device(value):
@@ -211,6 +234,36 @@ def _public_key(value):
         raise ValueError("invalid WireGuard public key")
     return value
 
+
+
+def _normalize_enrollment_url(value):
+    text = str(value or _DEFAULT_REGISTER_HOST).strip()
+    if "://" not in text:
+        text = "https://" + text
+    if text.rstrip("/").endswith(_DEFAULT_ENROLLMENT_PATH):
+        return text.rstrip("/")
+    return text.rstrip("/") + _DEFAULT_ENROLLMENT_PATH
+
+
+def _post_enrollment(url, payload):
+    request = Request(
+        _normalize_enrollment_url(url),
+        data=json.dumps(payload, separators=(",", ":")).encode("utf-8"),
+        headers={"content-type": "application/json", "accept": "application/json"},
+        method="POST",
+    )
+    try:
+        with urlopen(request, timeout=30) as response:
+            return json.loads(response.read().decode("utf-8"))
+    except HTTPError as error:
+        body = error.read().decode("utf-8", "replace")
+        try:
+            detail = json.loads(body).get("message", body)
+        except (json.JSONDecodeError, AttributeError):
+            detail = body
+        raise PermissionError(f"wire enrollment failed: {detail}") from error
+    except URLError as error:
+        raise ConnectionError(f"wire enrollment service unavailable: {error.reason}") from error
 
 
 _MANAGED_BEGIN = "# BEGIN gway wire peer: "
@@ -426,48 +479,49 @@ class Controller:
         self.runner = runner or _run
         self.which = which or shutil.which
 
-    def status(self, interface="gway", debug=False, mutate=False):
-        """Return local WireGuard interface status without changing host state."""
+    def status(self, interface="gway", debug=False, config=None, mutate=False):
+        """Return persisted WireGuard status; probe the live interface only in debug mode."""
         del mutate
         interface = str(interface).strip()
         if not interface:
             raise ValueError("wire interface must be non-empty")
+        path = Path(config) if config is not None else Path("/etc/wireguard") / f"{interface}.conf"
+        response = {
+            "interface": interface,
+            "configured": path.is_file(),
+            "config": str(path),
+        }
+        if not debug:
+            return response
 
         wg = self.which("wg")
         if wg is None:
-            return {
-                "interface": interface,
-                "configured": False,
-                "running": False,
-                "reason": "wg executable not found",
-            }
-
+            response["running"] = False
+            response["debug"] = {"available": False, "detail": "wg executable not found"}
+            return response
         result = self.runner([wg, "show", interface])
+        response["running"] = result.returncode == 0
         if result.returncode != 0:
-            return {
-                "interface": interface,
-                "configured": False,
-                "running": False,
-                "reason": result.stderr.strip() or result.stdout.strip() or "interface not found",
+            response["debug"] = {
+                "available": False,
+                "detail": result.stderr.strip() or result.stdout.strip() or "interface not found",
             }
-
+            return response
         parsed = _wg_values(result.stdout)
-        response = {
-            "interface": interface,
-            "configured": True,
-            "running": True,
-            "public_key": parsed["public_key"],
-            "listen_port": parsed["listen_port"],
-            "peer_count": parsed["peer_count"],
-        }
-        if debug:
-            response["detail"] = result.stdout.strip()
+        response.update(
+            {
+                "public_key": parsed["public_key"],
+                "listen_port": parsed["listen_port"],
+                "peer_count": parsed["peer_count"],
+                "debug": {"available": True, "detail": result.stdout.strip()},
+            }
+        )
         return response
 
     def check(self, interface="gway", mutate=False):
         """Return a read-only local readiness result for one WireGuard interface."""
         del mutate
-        status = self.status(interface=interface)
+        status = self.status(interface=interface, debug=True)
         return {
             "interface": status["interface"],
             "ok": bool(status.get("configured") and status.get("running")),
@@ -503,55 +557,52 @@ class Controller:
         device,
         *,
         public_key,
-        token,
         private_key,
-        server_public_key,
-        server_endpoint,
-        server_tunnel_ip="10.90.0.1",
-        registry=None,
-        server_config=None,
-        network="10.90.0.0/24",
-        gateway_address="10.90.0.1",
+        token=None,
+        token_file=None,
+        url=None,
+        enroll_url="https://register.arthexis.com/v1/enroll",
         to=None,
         sudo=False,
         rollback=None,
         mutate=True,
     ):
-        """Enroll one client and render its WireGuard configuration."""
+        """Enroll this client through the Watchtower enrollment API."""
         del mutate
-        store = Registry(
-            registry or self.gateway.data_root() / "wire" / "registry.sqlite3",
-            network=network,
-            gateway_address=gateway_address,
-        )
-        reserved = ()
-        if server_config is not None and Path(server_config).is_file():
-            reserved = _peer_allowed_ips(Path(server_config).read_text(encoding="utf-8"))
-        record, created = store.enroll(
-            device=device,
-            public_key=public_key,
-            token=token,
-            externally_reserved=reserved,
-        )
+        device = _device(device)
+        public_key = _public_key(public_key)
+        if token is not None and token_file is not None:
+            raise ValueError("use either token or token_file, not both")
+        if token_file is not None:
+            token = Path(token_file).read_text(encoding="utf-8").strip()
+        token = str(token or "").strip()
+        if not token:
+            raise ValueError("wire enrollment token is required")
         private_key = str(private_key).strip()
         if not private_key:
             raise ValueError("wire private key must be non-empty")
-        server_public_key = _public_key(server_public_key)
-        endpoint = str(server_endpoint).strip()
-        if not endpoint:
-            raise ValueError("wire server_endpoint must be non-empty")
+
+        response = _post_enrollment(
+            url if url is not None else enroll_url,
+            {"device": device, "public_key": public_key, "token": token},
+        )
+        server_public_key = _public_key(response["server_public_key"])
+        endpoint = str(response["server_endpoint"]).strip()
+        server_tunnel_ip = str(response["server_tunnel_ip"]).strip()
+        address = str(response["address"]).strip()
 
         destination = (
             Path(to)
             if to is not None
-            else self.gateway.data_root() / "wire" / "clients" / _device(device) / "wireguard.conf"
+            else self.gateway.data_root() / "wire" / "clients" / device / "wireguard.conf"
         )
+        destination.parent.mkdir(parents=True, exist_ok=True)
         values = {
-            "wire_client_address": record["address"],
+            "wire_client_address": address,
             "wire_client_private_key": private_key,
             "wire_server_public_key": server_public_key,
             "wire_server_endpoint": endpoint,
-            "wire_server_tunnel_ip": str(server_tunnel_ip).strip(),
+            "wire_server_tunnel_ip": server_tunnel_ip,
         }
         with _context(self.gateway, values):
             rendered = self.gateway.render(
@@ -559,14 +610,49 @@ class Controller:
                 to=str(destination),
                 sudo=sudo,
                 rollback=rollback,
+                mode=0o600,
             )
         return {
-            "device": record["device"],
-            "address": record["address"],
-            "public_key": record["public_key"],
+            "device": device,
+            "address": address,
+            "public_key": public_key,
             "config": str(rendered),
-            "created": created,
+            "created": bool(response.get("created")),
         }
+
+    def _apply_live_peer(self, interface, public_key, address):
+        """Apply one peer immediately when the WireGuard interface is already running."""
+        wg = self.which("wg")
+        if wg is None:
+            return False
+        probe = self.runner([wg, "show", str(interface)])
+        if probe.returncode != 0:
+            return False
+        applied = self.runner(
+            [wg, "set", str(interface), "peer", _public_key(public_key), "allowed-ips", str(address)]
+        )
+        if applied.returncode != 0:
+            raise RuntimeError(
+                applied.stderr.strip() or applied.stdout.strip() or "failed to apply live Wire peer"
+            )
+        return True
+
+    def activate(self, interface="gway", *, config=None, mutate=True):
+        """Bring up the central WireGuard interface idempotently."""
+        del mutate
+        wg = self.which("wg")
+        if wg is not None and self.runner([wg, "show", str(interface)]).returncode == 0:
+            return {"interface": str(interface), "running": True, "changed": False}
+        wg_quick = self.which("wg-quick")
+        if wg_quick is None:
+            raise RuntimeError("wg-quick executable not found")
+        target = str(config) if config is not None else str(interface)
+        result = self.runner([wg_quick, "up", target])
+        if result.returncode != 0:
+            raise RuntimeError(
+                result.stderr.strip() or result.stdout.strip() or "wg-quick up failed"
+            )
+        return {"interface": str(interface), "running": True, "changed": True}
 
     def accept_enrollment(
         self,
@@ -598,6 +684,7 @@ class Controller:
             public_key=public_key,
             token=token,
             externally_reserved=reserved,
+            consume=False,
         )
         reconciled = self.sync(
             registry=store.path,
@@ -605,6 +692,12 @@ class Controller:
             network=network,
             gateway_address=gateway_address,
         )
+        peer_applied = self._apply_live_peer(
+            "gway",
+            record["public_key"],
+            record["address"],
+        )
+        store.consume_token(token)
         return {
             "device": record["device"],
             "address": record["address"],
@@ -614,6 +707,7 @@ class Controller:
             "server_tunnel_ip": str(gateway_address),
             "created": created,
             "peer_changed": reconciled["changed"],
+            "peer_applied": peer_applied,
         }
 
     def serve_enrollment(
@@ -715,7 +809,7 @@ class Controller:
         dns_backend="godaddy",
         dns_zone="arthexis.com",
         sudo=False,
-        rollback="wire-watchtower",
+        rollback=None,
         mutate=True,
     ):
         """Converge this host into the central Watchtower Wire server role."""
@@ -879,6 +973,7 @@ class Controller:
                 to=str(destination),
                 sudo=sudo,
                 rollback=rollback,
+                mode=0o600,
             )
 
         return {
@@ -918,6 +1013,12 @@ def register(gateway, *, runner=None, which=None):
         "wire.server.serve",
         controller.serve_enrollment,
         op="serve",
+        sub="server",
+    )
+    server_activate = gateway.wrap(
+        "wire.server.activate",
+        controller.activate,
+        op="activate",
         sub="server",
     )
     server_check = gateway.wrap(
@@ -977,6 +1078,8 @@ def register(gateway, *, runner=None, which=None):
         "wg.client.enroll": enroll,
         "wireguard.server.serve": enrollment_serve,
         "wg.server.serve": enrollment_serve,
+        "wireguard.server.activate": server_activate,
+        "wg.server.activate": server_activate,
         "wireguard.server.check": server_check,
         "wg.server.check": server_check,
         "wireguard.server.deploy": server_deploy,

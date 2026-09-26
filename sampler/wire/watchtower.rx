@@ -5,7 +5,6 @@ default
 --port 8787
 --site register-arthexis-com
 --config /etc/wireguard/gway.conf
---registry [data_dir]/wire/registry.sqlite3
 --server-endpoint vpn.arthexis.com:51820
 
 wire server deploy
@@ -14,12 +13,17 @@ wire server deploy
 --address [address|10.90.0.1/24]
 --private-key [private_key]
 --listen-port [listen_port|51820]
---registry [registry]
 --config [config]
 --public-address [public_address]
 --dns-zone [dns_zone|arthexis.com]
 --dns-backend [dns_backend|godaddy]
+
+commit wire-watchtower
 --sudo
+--rollback wire-watchtower
+
+wire server activate [interface|gway]
+--config [config]
 
 service install
 --name wire-enroll
@@ -28,7 +32,6 @@ service install
 --host [host]
 --port [port]
 --domain [domain]
---registry [registry]
 --config [config]
 --server-public-key [server_public_key]
 --server-endpoint [server_endpoint]
@@ -40,7 +43,6 @@ service start
 --host [host]
 --port [port]
 --domain [domain]
---registry [registry]
 --config [config]
 --server-public-key [server_public_key]
 --server-endpoint [server_endpoint]
@@ -55,7 +57,6 @@ service start
 wire server check
 --domain [domain]
 --interface [interface|gway]
---registry [registry]
 --public-address [public_address]
 --dns-zone [dns_zone|arthexis.com]
 --dns-backend [dns_backend|godaddy]

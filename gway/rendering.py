@@ -46,17 +46,21 @@ def _destination(runtime, to, resolved_template):
     return destination
 
 
-def _mode_for(destination):
+def _mode_for(destination, requested=None):
+    if requested is not None:
+        if isinstance(requested, str):
+            return int(requested, 8)
+        return int(requested)
     try:
         return stat.S_IMODE(destination.stat().st_mode)
     except FileNotFoundError:
         return 0o644
 
 
-def _write_local_atomic(destination, content):
+def _write_local_atomic(destination, content, *, mode=None):
     destination = Path(destination)
     parent = destination.parent
-    mode = _mode_for(destination)
+    mode = _mode_for(destination, mode)
     descriptor, temporary = tempfile.mkstemp(
         prefix=f".{destination.name}.gway-",
         dir=parent,
@@ -74,9 +78,9 @@ def _write_local_atomic(destination, content):
         temporary.unlink(missing_ok=True)
 
 
-def _write_as_identity(destination, content, identity):
+def _write_as_identity(destination, content, identity, *, mode=None):
     destination = Path(destination)
-    mode = _mode_for(destination)
+    mode = _mode_for(destination, mode)
     target_temporary = destination.with_name(
         f".{destination.name}.gway-{uuid.uuid4().hex}"
     )
@@ -118,20 +122,20 @@ def _write_as_identity(destination, content, identity):
             )
 
 
-def atomic_write_text(destination, content, *, identity=None):
+def atomic_write_text(destination, content, *, identity=None, mode=None):
     """Atomically replace one text file under an optional execution identity."""
     destination = Path(destination)
     if not destination.parent.is_dir():
         raise FileNotFoundError(destination.parent)
 
     if identity is None or not identity.privileged:
-        _write_local_atomic(destination, content)
+        _write_local_atomic(destination, content, mode=mode)
         if not destination.is_file():
             raise FileNotFoundError(
                 f"Rendered destination was not created: {destination}"
             )
     else:
-        _write_as_identity(destination, content, identity)
+        _write_as_identity(destination, content, identity, mode=mode)
     return destination
 
 
@@ -141,7 +145,7 @@ class Renderer:
     def __init__(self, runtime):
         self.runtime = runtime
 
-    def render(self, template: Literal, to, sudo=False, rollback=None, **options):
+    def render(self, template: Literal, to, sudo=False, rollback=None, mode=None, **options):
         """Render a sigil-aware text template to an atomic destination.
 
         Args:
@@ -149,6 +153,7 @@ class Renderer:
             to: Destination file or directory.
             sudo: Execute the final write as root.
             rollback: Optional rollback journal name to capture destination state.
+            mode: Optional destination permission mode, for example 0o600.
             options: Supports ``--as USER`` for execution identity.
         """
         identity = execution_identity(
@@ -186,6 +191,7 @@ class Renderer:
             destination,
             rendered,
             identity=identity,
+            mode=mode,
         )
 
         if entry is not None:
