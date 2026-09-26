@@ -27,6 +27,28 @@ def root():
     return _installed_root()
 
 
+def recipes():
+    """Return maintained sampler recipe names in deterministic command form."""
+    sampler_root = root()
+    if not sampler_root.is_dir():
+        return ()
+
+    names = set()
+    for path in sampler_root.rglob("*.rx"):
+        if not path.is_file():
+            continue
+        relative = path.relative_to(sampler_root)
+        if relative.name == "__main__.rx":
+            parts = relative.parent.parts
+        elif relative.stem == relative.parent.name:
+            parts = relative.parent.parts
+        else:
+            parts = (*relative.parent.parts, relative.stem)
+        if parts:
+            names.add("/".join(parts))
+    return tuple(sorted(names))
+
+
 def resolve(name):
     """Resolve one sampler recipe package or explicit recipe name."""
     relative = Path(str(name))
