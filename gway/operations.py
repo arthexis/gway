@@ -177,6 +177,27 @@ class Operations(Mapping):
                 return name
         return default
 
+    def children(self, prefix):
+        """Return canonical immediate child operations below one namespace."""
+        parts = tuple(
+            part for part in str(prefix).replace(" ", ".").split(".") if part
+        )
+        if not parts:
+            return ()
+        dotted = ".".join(parts)
+        found = {}
+        for name, record in self._registry.records.items():
+            if not name.startswith(f"{dotted}."):
+                continue
+            remainder = name[len(dotted) + 1 :]
+            child, separator, _ = remainder.partition(".")
+            found.setdefault(child, None if separator else record.callable)
+        return tuple((name, found[name]) for name in sorted(found))
+
+    def is_namespace(self, prefix):
+        """Return whether a canonical operation prefix has registered children."""
+        return bool(self.children(prefix))
+
     def __getitem__(self, op):
         items = {
             record.sub: record.callable
