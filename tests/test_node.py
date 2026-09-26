@@ -179,3 +179,80 @@ def test_node_multiword_dispatch_authorizes_canonical_operation(
             match="node.watchtower.security.audit",
         ):
             gateway("node security audit")
+
+
+def test_active_role_node_operation_gets_role_oriented_alias(tmp_path, monkeypatch):
+    gateway = _runtime(tmp_path, monkeypatch, "watchtower")
+    gateway.wrap(
+        "node.watchtower.status",
+        lambda: {"role": "watchtower"},
+    )
+
+    assert gateway("watchtower status") == {"role": "watchtower"}
+
+
+def test_role_oriented_alias_supports_multiword_operation(tmp_path, monkeypatch):
+    gateway = _runtime(tmp_path, monkeypatch, "watchtower")
+    gateway.wrap(
+        "node.watchtower.security.audit",
+        lambda target="local": {"audit": target},
+    )
+
+    assert gateway("watchtower security audit charger") == {
+        "audit": "charger"
+    }
+
+
+def test_other_role_node_operation_does_not_get_local_role_alias(
+    tmp_path,
+    monkeypatch,
+):
+    gateway = _runtime(tmp_path, monkeypatch, "control")
+    gateway.wrap(
+        "node.watchtower.status",
+        lambda: {"role": "watchtower"},
+    )
+
+    with pytest.raises(LookupError):
+        gateway("watchtower status")
+
+
+def test_role_oriented_alias_does_not_override_existing_operation(
+    tmp_path,
+    monkeypatch,
+):
+    gateway = _runtime(tmp_path, monkeypatch, "watchtower")
+    gateway.wrap(
+        "watchtower.status",
+        lambda: {"source": "existing"},
+    )
+    gateway.wrap(
+        "node.watchtower.status",
+        lambda: {"source": "node"},
+    )
+
+    assert gateway("watchtower status") == {"source": "existing"}
+    assert gateway("node status") == {"source": "node"}
+
+
+def test_role_oriented_alias_authorizes_canonical_node_identity(
+    tmp_path,
+    monkeypatch,
+):
+    gateway = _runtime(tmp_path, monkeypatch, "watchtower")
+    gateway.wrap(
+        "node.watchtower.status",
+        lambda: {"ok": True},
+    )
+
+    with gateway.authorized(
+        operations={"node.watchtower.status"},
+    ):
+        assert gateway("watchtower status") == {"ok": True}
+
+    with gateway.authorized(operations={"watchtower.status"}):
+        with pytest.raises(
+            AuthorizationError,
+            match="node.watchtower.status",
+        ):
+            gateway("watchtower status")
