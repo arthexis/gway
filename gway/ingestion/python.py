@@ -340,6 +340,23 @@ def ingest_python(gateway, source, *, path=None, **kwargs):
             wrapped.append(registered)
 
     for name, child in _public_members(source):
+        if name == "__main__" and callable(child):
+            child_path = root
+            child_record = _remember_child(gateway, child, child_path)
+            operation = IngestedOperation(
+                root,
+                child,
+                source=source,
+                kind="python",
+                op=root[-1],
+                sub=None,
+                metadata={"object": child, "entrypoint": "callable"},
+            )
+            registered = _register_callable(gateway, child_record, operation)
+            if registered is not None:
+                wrapped.append(registered)
+            continue
+
         child_path = (*root, name)
         child_record = _remember_child(gateway, child, child_path)
         if callable(child):
