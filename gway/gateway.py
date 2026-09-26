@@ -102,6 +102,8 @@ class Gateway(Resolver):
 
         self.install = self.wrap("install", self._install)
         self.uninstall = self.wrap("uninstall", self._uninstall)
+        self.products = self.wrap("products", self._products)
+        self.extensions = self.wrap("extensions", self._extensions)
 
         from .filesystem import Filesystem
         from .rendering import Renderer
@@ -364,7 +366,7 @@ class Gateway(Resolver):
         )
 
     def _install(self, source, *, ref=None, upgrade=True, force=False, stash=False, system=False):
-        """Converge one local or Git project installation toward requested state.
+        """Converge one local or Git artifact installation toward requested state.
 
         Args:
             source: Local project path, Git source, GitHub shorthand, or known project identity.
@@ -394,8 +396,48 @@ class Gateway(Resolver):
             paths=self.install_paths(system=system),
         )
 
+    def _installed_by_kind(self, kind):
+        """Return installed artifacts of one lifecycle kind across both scopes."""
+        from .install import InstallState
+
+        records = []
+        for system in (False, True):
+            paths = self.install_paths(system=system)
+            try:
+                state = InstallState(paths.state)
+                records.extend(
+                    record
+                    for record in state.all(scope=paths.scope)
+                    if record.kind == kind
+                )
+            except (OSError, PermissionError):
+                continue
+        return [
+            {
+                "name": record.name,
+                "kind": record.kind,
+                "scope": record.scope,
+                "source": record.source,
+                "install_path": str(record.install_path),
+                "requested_ref": record.requested_ref,
+                "resolved_revision": record.resolved_revision,
+                "installed_at": record.installed_at,
+            }
+            for record in sorted(records, key=lambda item: (item.name, item.scope))
+        ]
+
+    def _products(self, mutate=False):
+        """List installed products without inspecting GWAY extensions."""
+        del mutate
+        return self._installed_by_kind("product")
+
+    def _extensions(self, mutate=False):
+        """List installed GWAY extensions without mixing in products."""
+        del mutate
+        return self._installed_by_kind("extension")
+
     def _uninstall(self, project, *, system=False):
-        """Converge one managed project toward absence."""
+        """Converge one managed installation toward absence."""
         from .install.ops import uninstall as uninstall_operation
 
         return uninstall_operation(
