@@ -152,3 +152,15 @@ def test_product_root_accepts_explicit_override(tmp_path):
     target = tmp_path / "products"
 
     assert product_root(product_dir=target, platform="linux") == target
+
+
+def test_product_root_honors_environment_override(tmp_path):
+    user = tmp_path / "user-products"
+    system = tmp_path / "system-products"
+    environ = {
+        "GWAY_PRODUCT_DIR": str(user),
+        "GWAY_SYSTEM_PRODUCT_DIR": str(system),
+    }
+
+    assert product_root(environ=environ, platform="linux") == user
+    assert product_root(system=True, environ=environ, platform="linux") == system
