@@ -91,6 +91,12 @@ def product_root(
     if product_dir is not None:
         return Path(product_dir).expanduser()
 
+    environment_override = environ.get(
+        "GWAY_SYSTEM_PRODUCT_DIR" if system else "GWAY_PRODUCT_DIR"
+    )
+    if environment_override:
+        return Path(environment_override).expanduser()
+
     if platform.startswith("win"):
         if system:
             base = environ.get("PROGRAMFILES")
