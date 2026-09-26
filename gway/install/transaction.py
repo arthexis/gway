@@ -250,6 +250,11 @@ def install_materialized(
                 f"Managed destination exists without installation state: {destination}"
             )
     else:
+        if existing.kind != request.kind:
+            raise RuntimeError(
+                f"Installed {name!r} is classified as {existing.kind}; "
+                f"remove it before reinstalling as {request.kind}"
+            )
         desired_changed = _desired_changed(
             existing,
             source_identity=source_identity,
@@ -290,6 +295,7 @@ def install_materialized(
                 desired_fingerprint,
                 destination,
                 selected.scope,
+                kind=request.kind,
                 requested_ref=requested_ref,
                 resolved_revision=resolved_revision,
                 installed_at=existing.installed_at,
@@ -340,6 +346,7 @@ def install_materialized(
             desired_fingerprint,
             destination,
             selected.scope,
+            kind=request.kind,
             requested_ref=requested_ref,
             resolved_revision=resolved_revision,
         )
