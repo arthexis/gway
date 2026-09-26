@@ -150,6 +150,35 @@ def recipe_matches(task, recipes, *, authorization=None, limit=5, cutoff=0.34):
     return tuple(item[2] for item in matches[:limit])
 
 
+def document_matches(task, documents, *, limit=3, cutoff=0.2):
+    """Rank explicitly selected documentation as the final bounded fallback."""
+    matches = []
+    for index, document in enumerate(documents or ()):
+        heading = document.get("heading") or ""
+        text = document.get("text") or ""
+        candidate = f"{heading} {text}".strip()
+        score = _score(task, candidate)
+        if score < cutoff:
+            continue
+        excerpt = " ".join(text.split())
+        if len(excerpt) > 240:
+            excerpt = excerpt[:237].rstrip() + "..."
+        matches.append(
+            (
+                -score,
+                index,
+                {
+                    "kind": "documentation",
+                    "source": document.get("source"),
+                    "section": heading or None,
+                    "reason": excerpt or heading or "Selected project documentation.",
+                },
+            )
+        )
+    matches.sort(key=lambda item: (item[0], item[1]))
+    return tuple(item[2] for item in matches[:limit])
+
+
 def guide(
     task,
     rules,
@@ -157,6 +186,7 @@ def guide(
     role=None,
     operations=(),
     recipes=(),
+    documents=(),
     authorization=None,
 ):
     """Return structured task guidance for the active Gateway."""
@@ -208,6 +238,9 @@ def guide(
     ):
         if recommendation["command"] in known_commands:
             continue
+        recommendations.append(recommendation)
+
+    for recommendation in document_matches(task, documents):
         recommendations.append(recommendation)
 
     from .publication import ResultOnlyMapping
