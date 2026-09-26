@@ -58,9 +58,10 @@ def install(
         stash: Preserve a dirty managed installation before reconciliation.
         system: Use system-wide data and launcher locations instead of user locations.
     """
+    explicit_kind = kind
     request = InstallRequest(
         source=str(source),
-        kind=_installation_kind(source) if kind is None else kind,
+        kind=_installation_kind(source) if explicit_kind is None else explicit_kind,
         ref=ref,
         upgrade=upgrade,
         force=force,
@@ -85,6 +86,14 @@ def install(
             ref=request.ref,
             cache=cache,
         )
+        if explicit_kind is None:
+            from dataclasses import replace
+            from .source import project_name
+
+            materialized_kind = (
+                "extension" if project_name(artifact.path) == "gway" else "product"
+            )
+            request = replace(request, kind=materialized_kind)
         return install_materialized(
             request,
             artifact.path,
