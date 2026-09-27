@@ -40,6 +40,7 @@ class Gateway(Resolver):
         **values,
     ):
         self.name = name
+        self._sigil_dispatch_enabled = False
         self._cache_explicit = cache is not None
         self.environment = process_environment
         self.bindings = Bindings()
@@ -201,6 +202,7 @@ class Gateway(Resolver):
 
         self._souschef_controller = SousChefController(self)
         ingest_python(self, self._souschef_controller, path=("sous", "chef"))
+        self._sigil_dispatch_enabled = True
 
     @property
     def request_state(self):
@@ -306,6 +308,9 @@ class Gateway(Resolver):
 
     def _evaluate_expression(self, expression):
         """Delegate unresolved sigil expressions to the normal Gway dispatcher."""
+        if not self._sigil_dispatch_enabled:
+            raise KeyError(expression)
+
         from .dispatch import OperationLookupError, dispatch
 
         try:
