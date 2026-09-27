@@ -80,6 +80,39 @@ jobs:
             gh pr merge "$PR_NUMBER" --repo "$REPOSITORY" --disable-auto || true
           fi
 
+      - name: Wait for PR changes to settle
+        if: steps.pr.outputs.skip != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          PR_NUMBER: ${{ steps.pr.outputs.number }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          pr_json="$(gh api "repos/$REPOSITORY/pulls/$PR_NUMBER")"
+          head_sha="$(jq -r '.head.sha' <<< "$pr_json")"
+          commit_json="$(gh api "repos/$REPOSITORY/commits/$head_sha")"
+          changed_at="$(jq -r '.commit.committer.date' <<< "$commit_json")"
+          changed_epoch="$(date -u -d "$changed_at" +%s)"
+          now_epoch="$(date -u +%s)"
+          age=$((now_epoch - changed_epoch))
+          settle_seconds=300
+
+          if (( age < settle_seconds )); then
+            remaining=$((settle_seconds - age))
+            echo "PR #$PR_NUMBER head $head_sha is ${age}s old; waiting ${remaining}s before merge evaluation."
+            sleep "$remaining"
+          else
+            echo "PR #$PR_NUMBER head $head_sha has been unchanged for at least five minutes."
+          fi
+
+          current_sha="$(gh api "repos/$REPOSITORY/pulls/$PR_NUMBER" --jq '.head.sha')"
+          if [[ "$current_sha" != "$head_sha" ]]; then
+            echo "PR head changed while settling ($head_sha -> $current_sha); this run will not arm auto-merge."
+            exit 0
+          fi
+
       - name: Validate approval gate
         if: steps.pr.outputs.skip != 'true'
         id: gate
