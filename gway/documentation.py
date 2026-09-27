@@ -3,7 +3,7 @@
 import inspect
 import re
 
-from .callable_reference import callable_signature, resolve_callable
+from .callableref import callable_signature, resolve_callable
 from dataclasses import dataclass
 
 
