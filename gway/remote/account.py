@@ -305,6 +305,8 @@ class RemoteAccountApplication:
             f'<p>Client: <code>{context["client_id"]}</code></p>'
             + context["resource_html"]
             + f'<p>{context["authority_notice"]}</p>'
+            + '<p>This consent screen is informational: authorization grants the '
+            'full effective scope set associated with the linked bearer.</p>'
             + f'<h2>Bearer scopes</h2><ul>{context["scope_items_html"]}</ul>'
             + f'<h2>Environment</h2><ul>{context["environment_items_html"]}</ul>'
             + '<form method="post" action="/consent">'
