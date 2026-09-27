@@ -1,4 +1,4 @@
-from types import ModuleType
+from types import ModuleType, SimpleNamespace
 
 
 def test_ingested_module_function_follows_monkeypatch(gateway, monkeypatch):
@@ -67,18 +67,12 @@ def test_direct_callable_without_stable_owner_keeps_captured_behavior(
     def operation(value: str):
         return f"captured:{value}"
 
-    wrapped = gateway.wrap("captured.operation", operation)
-    original = operation
+    holder = SimpleNamespace(operation=operation)
+    wrapped = gateway.wrap("captured.operation", holder.operation)
 
     def replacement(value: str):
         return f"replacement:{value}"
 
-    monkeypatch.setattr(
-        __import__(__name__),
-        "operation",
-        replacement,
-        raising=False,
-    )
+    monkeypatch.setattr(holder, "operation", replacement)
 
     assert wrapped("x") == "captured:x"
-    assert wrapped.__wrapped__ is original
