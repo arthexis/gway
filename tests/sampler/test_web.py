@@ -160,11 +160,11 @@ def test_web_expose_dns_http_is_explicit_provider_neutral_preparation():
     assert "--value [public_ipv4]" in rendered[1]
     assert "--backend [dns_backend|godaddy]" in rendered[1]
     assert "--zone [zone]" in rendered[1]
-
-    assert rendered[2].startswith("repeat")
-    assert "--until true" in rendered[2]
-    assert "--interval 10" in rendered[2]
-    assert "--max 60" in rendered[2]
+    assert " - repeat " in rendered[1]
+    assert "--until true" in rendered[1]
+    assert "--interval 10" in rendered[1]
+    assert "--max 60" in rendered[1]
+    assert len(rendered) == 2
 
 
 def test_web_expose_default_does_not_mutate_dns():
