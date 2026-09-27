@@ -81,6 +81,7 @@ jobs:
           fi
 
       - name: Wait for PR changes to settle
+        id: settle
         if: steps.pr.outputs.skip != 'true'
         env:
           GH_TOKEN: ${{ github.token }}
@@ -110,11 +111,13 @@ jobs:
           current_sha="$(gh api "repos/$REPOSITORY/pulls/$PR_NUMBER" --jq '.head.sha')"
           if [[ "$current_sha" != "$head_sha" ]]; then
             echo "PR head changed while settling ($head_sha -> $current_sha); this run will not arm auto-merge."
+            echo "stable=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
+          echo "stable=true" >> "$GITHUB_OUTPUT"
 
       - name: Validate approval gate
-        if: steps.pr.outputs.skip != 'true'
+        if: steps.pr.outputs.skip != 'true' && steps.settle.outputs.stable == 'true'
         id: gate
         env:
           GH_TOKEN: ${{ github.token }}
