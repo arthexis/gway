@@ -159,7 +159,9 @@ Double brackets escape sigil interpretation and produce one literal pair of brac
 
 This is useful when the surrounding language has its own square-bracket syntax, such as IPv6 addresses in Nginx configuration.
 
-The fallback is part of sigil resolution rather than recipe-parameter parsing, so the same form can be used inside ordinary operation arguments. Its right-hand side is a literal constant: it is not looked up or recursively resolved.
+The fallback is part of sigil resolution rather than recipe-parameter parsing, so the same form can be used inside ordinary operation arguments.
+
+In interactive CLI mode, a sigil used as a callable parameter default behaves differently when its primary expression is unresolved: Gway prompts for that parameter instead of silently taking the fallback. The literal fallback is shown as the prompt default, and pressing Enter accepts it. If the primary expression already resolves, no prompt is needed. Its right-hand side is a literal constant: it is not looked up or recursively resolved.
 
 Nested sigils are interpolated before the containing expression is resolved:
 
