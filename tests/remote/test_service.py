@@ -81,6 +81,25 @@ def test_remote_auth_systemd_rendering_uses_generic_backend():
     assert "daemon-reload" not in rendered
 
 
+def test_remote_auth_custom_environment_preserves_cache_identity(tmp_path, monkeypatch):
+    cache_root = tmp_path / "cache"
+    monkeypatch.setenv("GWAY_CACHE_DIR", str(cache_root))
+    gateway = Gateway()
+
+    definition = gateway._service_controller._definition(
+        ("remote", "serve"),
+        environment=(
+            "REMOTE_TEST=value",
+            "GWAY_CACHE_DIR=/tmp/ignored",
+        ),
+    )
+
+    assert definition.environment == (
+        f"GWAY_CACHE_DIR={cache_root.resolve()}",
+        "REMOTE_TEST=value",
+    )
+
+
 def test_remote_auth_process_service_start_status_restart_stop(tmp_path, monkeypatch):
     data_root = tmp_path / "data"
     cache_root = tmp_path / "cache"
