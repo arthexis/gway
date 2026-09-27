@@ -103,14 +103,18 @@ def test_gateway_bootstrap_exposes_project_script_as_operation(tmp_path, monkeyp
     assert runtime("demo hello Ada") == "hello Ada"
 
 
-def test_gateway_bootstrap_does_not_import_project_script_dependencies(
+def test_gateway_bootstrap_executes_project_script_out_of_process(
     tmp_path,
     monkeypatch,
 ):
+    (tmp_path / "project_only_dependency.py").write_text(
+        'VALUE = "isolated"\n',
+        encoding="utf-8",
+    )
     (tmp_path / "demo.py").write_text(
-        "import dependency_not_installed_in_gway\n"
-        "def main():\n"
-        "    return 0\n",
+        "from project_only_dependency import VALUE\n"
+        "def main(name='world'):\n"
+        "    return f'{VALUE}:{name}'\n",
         encoding="utf-8",
     )
     (tmp_path / "pyproject.toml").write_text(
@@ -119,13 +123,20 @@ def test_gateway_bootstrap_does_not_import_project_script_dependencies(
     )
     monkeypatch.chdir(tmp_path)
 
+    import gway.project
     from gway.gateway import Gateway
 
     runtime = Gateway()
+    monkeypatch.setattr(
+        gway.project,
+        "resolve_target",
+        lambda *args, **kwargs: (_ for _ in ()).throw(
+            AssertionError("project code must not be imported by GWAY")
+        ),
+    )
 
     assert runtime.ops.resolve("hello") is not None
-    with pytest.raises(ModuleNotFoundError, match="dependency_not_installed_in_gway"):
-        runtime("hello")
+    assert runtime("hello Ada") == "isolated:Ada"
 
 
 def test_pyproject_semantic_variables_are_available_to_sigils(tmp_path, monkeypatch):
