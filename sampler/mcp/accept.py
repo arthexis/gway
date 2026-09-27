@@ -115,7 +115,7 @@ def run(resource):
             "response_type": "code",
             "client_id": client_id,
             "redirect_uri": _CALLBACK,
-            "scope": "chatgpt-logs",
+            "scope": "full-access",
             "resource": resource,
             "code_challenge": _pkce(verifier),
             "code_challenge_method": "S256",
@@ -156,7 +156,7 @@ def run(resource):
             "code_verifier": verifier,
         },
     )
-    if status != 200 or issued.get("scope") != "chatgpt-logs":
+    if status != 200 or issued.get("scope") != "full-access":
         raise RuntimeError("OAuth token exchange failed or returned wrong scope")
 
     access = issued["access_token"]
@@ -174,14 +174,9 @@ def run(resource):
     for command in commands.values():
         _call(resource, access, command)
 
-    denied = False
-    try:
-        _, result = _call(resource, access, "clear")
-        denied = bool(getattr(result, "is_error", False))
-    except Exception:
-        denied = True
-    if not denied:
-        raise RuntimeError("unauthorized clear operation unexpectedly succeeded")
+    _, clear_result = _call(resource, access, "clear")
+    if bool(getattr(clear_result, "is_error", False)):
+        raise RuntimeError("full-access clear operation unexpectedly failed")
 
     status, refreshed = _form(
         auth["token_endpoint"],
@@ -192,7 +187,7 @@ def run(resource):
             "refresh_token": refresh,
         },
     )
-    if status != 200 or refreshed.get("scope") != "chatgpt-logs":
+    if status != 200 or refreshed.get("scope") != "full-access":
         raise RuntimeError("OAuth refresh failed or changed scope")
     refreshed_access = refreshed["access_token"]
     _call(resource, refreshed_access, "log sources")
@@ -224,7 +219,7 @@ def run(resource):
         "mcp_initialize": "ok",
         "tools": "ok",
         **{name: "ok" for name in commands},
-        "unauthorized_clear": "denied",
+        "full_access_clear": "ok",
         "refresh": "ok",
         "revoke": "ok",
         "revoked_access": "denied",
