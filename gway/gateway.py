@@ -135,6 +135,12 @@ class Gateway(Resolver):
         self.node = self.wrap("node", self._node)
         self.wrap("ingest", self.ingest)
         self.recipe = self.wrap("recipe", self._run_sampler_recipe)
+        self.recipe_check = self.wrap(
+            "recipe.check",
+            self._check_recipes,
+            op="recipe",
+            sub="check",
+        )
         self.reload = self.wrap("reload", self._reload)
 
         from .providers.core import register as register_core_provider
@@ -443,6 +449,13 @@ class Gateway(Resolver):
             }
             for record in sorted(records, key=lambda item: (item.name, item.scope))
         ]
+
+    def _check_recipes(self, target=None, *, mutate=False):
+        """Statically validate one recipe file/tree or the maintained sampler."""
+        del mutate
+        from .recipe.validation import validate_recipes
+
+        return validate_recipes(self, target)
 
     def _products(self, mutate=False):
         """List installed products without inspecting GWAY extensions."""

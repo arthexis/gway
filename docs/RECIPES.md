@@ -744,6 +744,26 @@ A useful rule is:
 > If the recipe has to explain how an operation works, the operation probably needs a better semantic boundary.
 
 
+## Static recipe validation
+
+Use `recipe check` to validate recipe source without executing recipe side effects:
+
+~~~text
+gway recipe check
+gway recipe check sampler/
+gway recipe check path/to/deploy.rx
+~~~
+
+With no target, GWAY validates the maintained sampler root. The checker parses every
+`.rx` file, validates explicit child-recipe references and control structure,
+compiles companion Python source, and attempts static operation resolution.
+Operations that depend on runtime ingestion or other dynamic registration are
+reported as warnings rather than treated as definite failures.
+
+Validation errors raise a non-zero CLI failure, making the operation suitable for
+pull-request CI. GWAY's own compatibility workflow validates the full maintained
+sampler before a change can advance to Watchtower acceptance.
+
 ## Installed sampler recipes
 
 Gway ships maintained sampler recipes from the repository's top-level `sampler/`
