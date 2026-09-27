@@ -151,11 +151,26 @@ def test_remote_privacy_page_is_public_and_describes_remote_data():
     assert payload == {"error": "method_not_allowed"}
 
 
-def test_remote_application_keeps_mcp_default_scope_without_metadata_scope():
+def test_remote_application_uses_full_access_default_scope():
     metadata = RemoteOAuthMetadata.from_origin("https://remote.example.test")
     app = RemoteApplication(metadata)
 
-    assert app.oauth.default_scope == "chatgpt-logs"
+    assert app.oauth.default_scope == "full-access"
+
+
+def test_remote_runtime_converges_full_access_scope(tmp_path):
+    from gway.gateway import Gateway
+    from gway.security.scopes import ScopeRegistry
+
+    runtime = Gateway()
+    runtime.security_path = tmp_path / "security.sqlite"
+    metadata = RemoteOAuthMetadata.from_origin("https://remote.example.test")
+
+    RemoteApplication(metadata, runtime=runtime)
+
+    scope = ScopeRegistry(runtime.security_path).require("full-access")
+    assert scope.operations == frozenset({"__all__"})
+    assert scope.environment == frozenset({"__all__"})
 
 
 def test_remote_runtime_permission_summary_expands_lazy_read_only_operation(tmp_path):
