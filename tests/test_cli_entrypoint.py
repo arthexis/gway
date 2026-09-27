@@ -63,6 +63,17 @@ def test_cli_resolve_reports_wire_sampler_without_executing_it():
     assert payload["kind"] == "recipe"
     assert payload["target"].endswith("sampler/wire/watchtower.rx")
 
+def test_cli_resolve_single_plain_token_is_command_introspection():
+    completed = subprocess.run(
+        [sys.executable, "-m", "gway", "--json", "resolve", "help"],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert completed.returncode == 0, completed.stderr
+    assert json.loads(completed.stdout)["kind"] == "operation"
+
+
 def test_cli_resolve_keeps_target_options_opaque():
     completed = subprocess.run(
         [sys.executable, "-m", "gway", "--json", "resolve", "log", "message", "--level", "INFO"],
