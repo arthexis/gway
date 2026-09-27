@@ -19,10 +19,10 @@ wire server deploy
 --sudo
 --rollback wire-watchtower
 
-commit wire-watchtower
-
 wire server activate [interface|gway]
 --config [config]
+
+commit wire-watchtower
 
 service install
 --name wire-enroll
