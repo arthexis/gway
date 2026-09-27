@@ -13,6 +13,10 @@ _LITERAL_PATTERN = re.compile(r"\[\[([^\[\]]*)\]\]")
 _MISSING = object()
 
 
+class UnresolvedSigilError(KeyError):
+    """Raised when sigil syntax cannot resolve semantic data or a Gway expression."""
+
+
 def is_single_sigil(text):
     if not isinstance(text, str) or not text or text[0] != "[" or text[-1] != "]":
         return False
@@ -70,6 +74,7 @@ def resolve_single(raw, lookup, evaluate=None, *, depth=0):
                 fallback_spec.startswith('"') and fallback_spec.endswith('"')
             ) or (fallback_spec.startswith("'") and fallback_spec.endswith("'"))
 
+    evaluation_expression = raw
     key = _unquote(raw) if quoted else raw
 
     if not quoted and "[" in key and "]" in key:
@@ -113,14 +118,12 @@ def resolve_single(raw, lookup, evaluate=None, *, depth=0):
                     value = _MISSING
 
     if value is not _MISSING:
-        if isinstance(value, str) and "[" in value and "]" in value:
-            return resolve_text(value, lookup, evaluate=evaluate, depth=depth + 1)
         return value
 
-    if evaluate is not None:
+    if evaluate is not None and not quoted:
         try:
-            value = evaluate(key)
-        except KeyError:
+            value = evaluate(evaluation_expression)
+        except UnresolvedSigilError:
             value = _MISSING
         if value is not _MISSING:
             if isinstance(value, str) and "[" in value and "]" in value:
@@ -131,7 +134,7 @@ def resolve_single(raw, lookup, evaluate=None, *, depth=0):
         fallback_source = _unquote(fallback_spec) if fallback_quoted else fallback_spec
         return fallback_source
 
-    raise KeyError(f"Unresolved sigil: [{original_raw}]")
+    raise UnresolvedSigilError(f"Unresolved sigil: [{original_raw}]")
 
 
 def resolve_text(text, lookup, evaluate=None, *, depth=0):
