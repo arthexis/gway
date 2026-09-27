@@ -13,6 +13,13 @@ def test_authorized_execution_allows_canonical_operation(gateway):
         assert gateway("read") == "ok"
 
 
+def test_authorized_execution_allows_explicit_all_operations_wildcard(gateway):
+    gateway.future = gateway.wrap("future.operation", lambda: "ok")
+
+    with gateway.authorized(operations={"__all__"}):
+        assert gateway("future") == "ok"
+
+
 def test_authorized_execution_denies_operation_before_invocation(gateway):
     calls = []
 
