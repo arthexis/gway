@@ -22,16 +22,14 @@ def test_cli_help_runs():
     assert "command-dispatch and composition core" in completed.stdout
 
 
-def test_cli_resolve_value_uses_supplied_context():
+def test_cli_resolve_value_uses_inline_fallback():
     completed = subprocess.run(
         [
             sys.executable,
             "-m",
             "gway",
             "resolve",
-            "[site]",
-            "--site",
-            "MTY",
+            "[site|MTY]",
         ],
         check=False,
         capture_output=True,
