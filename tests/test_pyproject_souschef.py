@@ -46,10 +46,13 @@ def test_sous_chef_ignores_legacy_gway_toml(tmp_path):
     assert jobs == {}
 
 
-def test_package_main_launchable_keeps_project_ownership(tmp_path):
+def test_package_main_launchable_keeps_project_ownership_without_import(tmp_path):
     package = tmp_path / "worker"
     package.mkdir()
-    (package / "__init__.py").write_text("", encoding="utf-8")
+    (package / "__init__.py").write_text(
+        "raise RuntimeError('package import crossed project boundary')\n",
+        encoding="utf-8",
+    )
     (package / "__main__.py").write_text(
         "VALUE = 1\n",
         encoding="utf-8",
