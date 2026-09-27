@@ -45,6 +45,8 @@ jobs:
         run: python -m compileall -q gway sampler
       - name: Validate maintained sampler recipes
         run: python -m gway recipe check sampler
+      - name: Smoke critical sampler recipes
+        run: python -m pytest -q tests/sampler/test_recipe_smoke.py
       - name: Verify newer-runtime contracts
         run: |
           python -m pytest -q tests/gateway/test_builtins.py -k toml
