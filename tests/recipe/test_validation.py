@@ -53,3 +53,28 @@ def test_recipe_check_reports_unresolved_dynamic_operation_as_warning(tmp_path):
     assert result["errors"] == 0
     assert result["warnings"] == 1
     assert "not statically resolvable" in result["findings"][0]
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        "help\ncheck --unless true\n",
+        "help\ncheck --rollback deploy\n",
+        "help\ncheck nonsense\n",
+        "help\ncheck --true --unless false --unless true\n",
+    ],
+)
+def test_recipe_check_rejects_malformed_check_controls(tmp_path, body):
+    recipe = tmp_path / "broken.rx"
+    recipe.write_text(body, encoding="utf-8")
+
+    with pytest.raises(RecipeValidationError):
+        Gateway()(f"recipe check {recipe}")
+
+
+def test_recipe_check_rejects_supported_missing_explicit_path_forms(tmp_path):
+    recipe = tmp_path / "broken.rx"
+    recipe.write_text("subdir/missing.rx\n", encoding="utf-8")
+
+    with pytest.raises(RecipeValidationError, match="child recipe does not exist"):
+        Gateway()(f"recipe check {recipe}")
