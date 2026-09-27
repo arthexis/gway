@@ -22,13 +22,13 @@ def test_cli_help_runs():
     assert "command-dispatch and composition core" in completed.stdout
 
 
-def test_cli_expression_resolves_supplied_context():
+def test_cli_resolve_value_uses_supplied_context():
     completed = subprocess.run(
         [
             sys.executable,
             "-m",
             "gway",
-            "--expression",
+            "resolve",
             "[site]",
             "--site",
             "MTY",
@@ -40,6 +40,30 @@ def test_cli_expression_resolves_supplied_context():
     assert completed.returncode == 0
     assert completed.stdout.strip() == "MTY"
 
+
+
+def test_cli_no_longer_exposes_expression_flag():
+    completed = subprocess.run(
+        [sys.executable, "-m", "gway", "--help"],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert "--expression" not in completed.stdout
+    assert "-e " not in completed.stdout
+
+
+def test_cli_resolve_reports_wire_sampler_without_executing_it():
+    completed = subprocess.run(
+        [sys.executable, "-m", "gway", "--json", "resolve", "wire", "watchtower"],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert completed.returncode == 0, completed.stderr
+    payload = json.loads(completed.stdout)
+    assert payload["kind"] == "recipe"
+    assert payload["target"].endswith("sampler/wire/watchtower.rx")
 
 def test_cli_lookup_error_is_concise_without_traceback(tmp_path):
     env = os.environ.copy()
