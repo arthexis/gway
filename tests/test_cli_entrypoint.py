@@ -41,6 +41,60 @@ def test_cli_expression_resolves_supplied_context():
     assert completed.stdout.strip() == "MTY"
 
 
+def test_cli_lookup_error_is_concise_without_traceback(tmp_path):
+    env = os.environ.copy()
+    env["GWAY_DATA_DIR"] = str(tmp_path)
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "gway",
+            "security",
+            "token",
+            "create",
+            "test-client",
+            "missing-scope",
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+
+    assert completed.returncode != 0
+    assert completed.stdout == ""
+    assert completed.stderr.strip() == "gway: Unknown security scope: missing-scope"
+    assert "Traceback" not in completed.stderr
+
+
+def test_cli_debug_preserves_lookup_traceback(tmp_path):
+    env = os.environ.copy()
+    env["GWAY_DATA_DIR"] = str(tmp_path)
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "gway",
+            "--debug",
+            "security",
+            "token",
+            "create",
+            "test-client",
+            "missing-scope",
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+
+    assert completed.returncode != 0
+    assert "Traceback" in completed.stderr
+    assert "Unknown security scope: missing-scope" in completed.stderr
+
+
 def test_cli_default_logging_uses_host_canonical_backend(tmp_path):
     env = os.environ.copy()
     env["GWAY_DATA_DIR"] = str(tmp_path)
