@@ -5,9 +5,10 @@ from pathlib import Path
 from ..service.model import Service
 
 
-def definition(launchable, *, state_root):
+def definition(launchable, *, state_root, cache_root):
     """Return service policy for the normal remote-access server launchable."""
     project_root = Path(__file__).resolve().parents[2]
+    cache_root = Path(cache_root).expanduser().resolve()
     return Service(
         project="gway",
         name="remote-auth",
@@ -15,6 +16,7 @@ def definition(launchable, *, state_root):
         launchable=launchable,
         description="Gway remote OAuth and account service",
         working_directory="{project}",
+        environment=(f"GWAY_CACHE_DIR={cache_root}",),
         state_root=Path(state_root),
     )
 
@@ -59,6 +61,7 @@ def register(runtime):
     service = definition(
         launchable,
         state_root=runtime.data_root() / "services",
+        cache_root=runtime.cache.root,
     )
     runtime._service_presets[service.identity] = service
     return service
