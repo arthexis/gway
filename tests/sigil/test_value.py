@@ -1,3 +1,4 @@
+from gway import Sigil as PublicSigil
 from gway.sigil import Sigil
 
 
@@ -25,3 +26,14 @@ def test_modulo_resolves_sigil_against_mapping():
 
 def test_reverse_modulo_resolves_context_against_sigil():
     assert {"site": "MTY"} % Sigil("site") == "MTY"
+
+
+def test_sigil_is_exported_from_top_level_package():
+    assert PublicSigil is Sigil
+
+
+def test_sigil_modulo_uses_gateway_engine(gateway):
+    gateway.context["site"] = "MTY"
+    gateway.wrap("decorate", lambda value: f"<{value}>")
+
+    assert Sigil("decorate [site]") % gateway == "<MTY>"

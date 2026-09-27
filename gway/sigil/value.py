@@ -3,7 +3,7 @@
 from collections.abc import Mapping
 import re
 
-from .resolution import is_single_sigil, resolve_text
+from .resolution import is_single_sigil, resolve_text, split_outside_brackets_once
 
 _PATTERN = re.compile(r"\[([^\[\]]+)\]")
 _MISSING = object()
@@ -51,7 +51,33 @@ class Sigil:
     def text(self):
         return self.original[1:-1]
 
+    @property
+    def primary(self):
+        """Return the expression before an inline fallback, if present."""
+        split = split_outside_brackets_once(self.text, "|")
+        return (split[0] if split else self.text).strip()
+
+    @property
+    def fallback(self):
+        """Return the literal inline fallback, or None when none is declared."""
+        split = split_outside_brackets_once(self.text, "|")
+        if split is None:
+            return None
+        value = split[1].strip()
+        if (value.startswith('"') and value.endswith('"')) or (
+            value.startswith("'") and value.endswith("'")
+        ):
+            return value[1:-1]
+        return value
+
+    def resolve_primary(self, context):
+        """Resolve only the primary expression, ignoring an inline fallback."""
+        return Sigil(self.primary).resolve(context)
+
     def resolve(self, context):
+        resolver = getattr(context, "resolve", None)
+        if callable(resolver):
+            return resolver(self.original)
         return resolve_text(self.original, _lookup_for(context))
 
     def list_sigils(self):

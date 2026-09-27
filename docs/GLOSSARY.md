@@ -3082,9 +3082,17 @@ A sigil may provide a fallback value:
 
 This means:
 
-> resolve `role`; if no value can be resolved, use `Watchtower`
+> resolve `role`; if no value can be resolved, use the literal constant `Watchtower`
 
 The fallback is part of sigil resolution rather than a separate recipe parameter mechanism.
+The right-hand side is never looked up or recursively interpolated. For example,
+`[role|[default_role]]` yields the literal text `[default_role]` when `role`
+cannot be resolved.
+
+After nested sigils are interpolated, Gway first attempts ordinary semantic/path
+resolution. If the whole expression is still unresolved, the owning Gateway may
+interpret it as a normal Gway operation. Brackets therefore mark interpolation;
+they do not define a second callable language.
 
 ### Sigils express unresolved semantic roles
 
