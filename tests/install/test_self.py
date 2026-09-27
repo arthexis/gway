@@ -138,7 +138,7 @@ def test_gway_self_install_crosses_git_install_activation_and_runtime_boundaries
     command_result = _managed_cli(
         launcher,
         outside,
-        "--expression",
+        "resolve",
         "[site]",
         "--site",
         "MTY",
