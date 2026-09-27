@@ -158,6 +158,27 @@ def test_remote_application_uses_full_access_default_scope():
     assert app.oauth.default_scope == "full-access"
 
 
+def test_remote_custom_account_converges_full_access_in_account_registry(tmp_path):
+    from gway.remote.account import RemoteAccountApplication
+    from gway.remote.session import RemoteSessionStore
+    from gway.security.oauth import OAuthRegistry
+    from gway.security.tokens import TokenRegistry
+
+    path = tmp_path / "custom-security.sqlite"
+    account = RemoteAccountApplication(
+        oauth=OAuthRegistry(path),
+        tokens=TokenRegistry(path),
+        sessions=RemoteSessionStore(),
+    )
+    metadata = RemoteOAuthMetadata.from_origin("https://remote.example.test")
+
+    RemoteApplication(metadata, account=account)
+
+    scope = account.oauth.scopes.require("full-access")
+    assert scope.operations == frozenset({"__all__"})
+    assert scope.environment == frozenset({"__all__"})
+
+
 def test_remote_runtime_converges_full_access_scope(tmp_path):
     from gway.gateway import Gateway
     from gway.security.scopes import ScopeRegistry
