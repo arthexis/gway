@@ -147,10 +147,11 @@ import inspect
 import pickle
 import sys
 
-roots, target, request_path, response_path = sys.argv[1:5]
-for root in reversed(roots.split("\0")):
-    if root:
-        sys.path.insert(0, root)
+roots_path, target, request_path, response_path = sys.argv[1:5]
+with open(roots_path, "rb") as stream:
+    roots = pickle.load(stream)
+for root in reversed(roots):
+    sys.path.insert(0, root)
 module_name, attribute = target.split(":", 1)
 value = importlib.import_module(module_name)
 for part in attribute.split("."):
