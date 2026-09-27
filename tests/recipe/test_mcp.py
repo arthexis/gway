@@ -1479,3 +1479,102 @@ def test_mcp_query_does_not_change_generic_gway_mutation_behavior(
 
     assert result == "done"
     assert seen == ["mutated"]
+
+
+
+
+def test_mcp_semantic_surface_is_not_eagerly_registered(gateway):
+    assert gateway.ops.resolve("mcp.local") is None
+    assert gateway.ops.resolve("mcp.serve") is None
+
+
+def test_mcp_sampler_fallback_registers_semantic_surface(gateway, monkeypatch):
+    import gway.sampler as sampler
+
+    calls = []
+
+    def fake_run(runtime, recipe_name, **context):
+        calls.append((runtime, recipe_name, context))
+        return {"recipe": recipe_name, "context": context}
+
+    monkeypatch.setattr(sampler, "run", fake_run)
+
+    monkeypatch.setattr("sampler.mcp._run_local", lambda runtime: "local")
+
+    result = gateway("mcp local")
+
+    assert result == "local"
+    assert calls == []
+    assert gateway.ops.resolve("mcp.local") is not None
+    assert gateway.ops.resolve("mcp.serve") is not None
+
+
+def test_mcp_semantic_serve_hides_transport_detail(gateway, monkeypatch):
+    import gway.sampler as sampler
+
+    calls = []
+
+    def fake_run(runtime, recipe_name, **context):
+        calls.append((runtime, recipe_name, context))
+        return context
+
+    monkeypatch.setattr(sampler, "run", fake_run)
+
+    result = gateway(
+        "mcp serve --host 127.0.0.2 --port 8123 "
+        "--route /agent-mcp --endpoint http://127.0.0.2:8123/agent-mcp"
+    )
+
+    assert result == {
+        "host": "127.0.0.2",
+        "port": 8123,
+        "route": "/agent-mcp",
+        "endpoint": "http://127.0.0.2:8123/agent-mcp",
+    }
+    assert calls == [(gateway, "mcp/serve", result)]
+
+
+def test_mcp_server_is_compatibility_alias_for_serve(gateway, monkeypatch):
+    import gway.sampler as sampler
+
+    monkeypatch.setattr(
+        sampler,
+        "run",
+        lambda runtime, recipe_name, **context: recipe_name,
+    )
+
+    assert gateway("mcp server") == "mcp/serve"
+
+
+def test_mcp_help_discovers_sampler_namespace(gateway):
+    local = gateway._help("mcp", "local", verbose=True)
+
+    assert "command: gway" in local
+    assert 'args: ["mcp", "local"]' in local
+    assert gateway.ops.resolve("mcp.local") is not None
+
+
+def test_mcp_semantic_recipes_are_maintained_sampler_entries():
+    from gway.sampler import recipes
+
+    available = set(recipes())
+
+    assert "mcp/local" in available
+    assert "mcp/serve" in available
+
+
+def test_mcp_local_recipe_is_semantic_alias():
+    recipe = (sampler_root() / "mcp" / "local.rx").read_text(encoding="utf-8")
+
+    assert recipe == "mcp local\n"
+
+
+def test_mcp_serve_recipe_reuses_shared_server_with_loopback_defaults():
+    recipe = (sampler_root() / "mcp" / "serve.rx").read_text(encoding="utf-8")
+    companion = (sampler_root() / "mcp" / "serve.py").read_text(encoding="utf-8")
+
+    assert "[host|127.0.0.1]" in recipe
+    assert "[port|8000]" in recipe
+    assert "[route|/mcp]" in recipe
+    assert 'with_name("server.py")' in companion
+    assert "_server().serve(" in companion

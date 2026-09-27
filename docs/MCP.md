@@ -149,6 +149,43 @@ the same external authentication error. Scope bindings are resolved when the tok
 is authenticated, so changing a named scope changes the token's effective authority
 without reissuing it.
 
+## Local agent discovery
+
+MCP is a GWAY interface; `remote` is only one deployment/exposure composition.
+Local agents should not need to select or understand the underlying FastMCP transport.
+
+The canonical local launcher is:
+
+```text
+gway mcp local
+```
+
+For MCP client configuration, the stable process shape is:
+
+```text
+command: gway
+args: ["mcp", "local"]
+```
+
+`mcp local` currently uses stdio because the MCP client owns the subprocess lifecycle.
+That transport is an implementation detail and may change without changing the public
+launcher contract. The local session reaches the authoritative parent Gateway and
+exposes the same generic `query(command)` and `gway(command)` tools.
+
+For a long-running loopback service use:
+
+```text
+gway mcp serve
+```
+
+`mcp serve` currently uses Streamable HTTP and defaults to `127.0.0.1:8000/mcp`.
+The older `mcp server` recipe remains compatible, but `mcp local` and `mcp serve`
+are the preferred semantic entry points.
+
+`help mcp`, `help mcp local`, and `guide mcp` provide the discovery path for humans
+and agents. They should describe semantic launchers rather than requiring callers to
+know FastMCP transport flags or sampler filesystem paths.
+
 ## stdio and Streamable HTTP
 
 The maintained companion supports stdio for local/client-managed sessions and
@@ -188,11 +225,14 @@ management to the MCP sampler.
 
 ## Service deployment
 
-The maintained server is the ordinary recipe:
+The maintained persistent public spelling is the semantic recipe:
 
 ```text
-sampler/mcp/server.rx
+sampler/mcp/serve.rx
 ```
+
+It delegates to the shared implementation in `sampler/mcp/server.py`. The older
+`sampler/mcp/server.rx` remains as a compatibility entry point.
 
 It installs the supported FastMCP major through recipe-managed
 `require fastmcp>=4,<5` and runs the HTTP server. GWAY's generic service layer owns
@@ -206,11 +246,11 @@ no systemd commands, pidfile handling, daemonization, or restart loop.
 Conceptually:
 
 ```text
-service install --backend process --name mcp-server -- <server.rx>
-service start --name mcp-server -- <server.rx>
-service status --name mcp-server -- <server.rx>
-service restart --name mcp-server -- <server.rx>
-service stop --name mcp-server -- <server.rx>
+service install --backend process --name mcp-server -- <serve.rx>
+service start --name mcp-server -- <serve.rx>
+service status --name mcp-server -- <serve.rx>
+service restart --name mcp-server -- <serve.rx>
+service stop --name mcp-server -- <serve.rx>
 ```
 
 The exact recipe path depends on the installed sampler location.
