@@ -6,7 +6,8 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from ..dispatch import OperationLookupError, resolve_operation
-from ..tokens import is_unquoted, statements, token_value
+from ..ingestion.router import has_path_syntax
+from ..tokens import is_literal, is_unquoted, statements, token_value
 from .loading import load_recipe
 from .path import companion_path
 
@@ -66,15 +67,19 @@ def _split_pipeline(tokens) -> list[list]:
 
 
 def _explicit_recipe_path(source: str, parent: Path) -> Path | None:
-    if not (source.startswith("./") or source.startswith("../")):
+    if not has_path_syntax(source):
         return None
 
-    target = (parent / source).resolve()
+    target = Path(source).expanduser()
+    if not target.is_absolute():
+        target = parent / target
+
     candidates = [target]
-    if target.suffix != ".rx":
+    if target.suffix == "":
+        candidates.append(target.with_suffix(".rx"))
+    if target.is_dir():
         candidates.extend(
             (
-                target.with_suffix(".rx"),
                 target / f"{target.name}.rx",
                 target / "__main__.rx",
             )
@@ -128,15 +133,132 @@ def _validate_repeat(stage, *, path, statement, findings):
 
 
 def _validate_check(stage, *, path, statement, findings):
-    if len(stage) == 1:
-        findings.append(Finding(path, statement, "error", "check has no assertions"))
-        return
-    values = [token_value(token) for token in stage[1:]]
-    for index, value in enumerate(values):
-        if value in {"--is", "--unless", "--rollback"} and index + 1 >= len(values):
+    checks = 0
+    rollback = False
+    unless = False
+    index = 1
+
+    while index < len(stage):
+        option_token = stage[index]
+        option = token_value(option_token)
+        literal_option = is_literal(option_token)
+
+        if not option.startswith("--"):
             findings.append(
-                Finding(path, statement, "error", f"missing value after {value}")
+                Finding(
+                    path,
+                    statement,
+                    "error",
+                    f"unexpected check argument {option!r}",
+                )
             )
+            return
+
+        if not literal_option and option in {"--true", "--false"}:
+            checks += 1
+            index += 1
+            continue
+
+        if not literal_option and option == "--is":
+            if index + 1 >= len(stage):
+                findings.append(
+                    Finding(path, statement, "error", "missing value after --is")
+                )
+                return
+            checks += 1
+            index += 2
+            continue
+
+        if not literal_option and option == "--unless":
+            if unless:
+                findings.append(
+                    Finding(
+                        path,
+                        statement,
+                        "error",
+                        "check accepts only one --unless condition",
+                    )
+                )
+                return
+            if index + 1 >= len(stage):
+                findings.append(
+                    Finding(
+                        path,
+                        statement,
+                        "error",
+                        "missing boolean condition after --unless",
+                    )
+                )
+                return
+            unless = True
+            index += 2
+            continue
+
+        if not literal_option and option == "--rollback":
+            if rollback:
+                findings.append(
+                    Finding(
+                        path,
+                        statement,
+                        "error",
+                        "check accepts only one --rollback journal",
+                    )
+                )
+                return
+            if index + 1 >= len(stage):
+                findings.append(
+                    Finding(
+                        path,
+                        statement,
+                        "error",
+                        "missing journal name after --rollback",
+                    )
+                )
+                return
+            next_token = stage[index + 1]
+            next_value = token_value(next_token)
+            if not is_literal(next_token) and next_value.startswith("--"):
+                findings.append(
+                    Finding(
+                        path,
+                        statement,
+                        "error",
+                        "missing journal name after --rollback",
+                    )
+                )
+                return
+            rollback = True
+            index += 2
+            continue
+
+        inverted = not literal_option and option.startswith("--no-")
+        name = option[5:] if inverted else option[2:]
+        if not name:
+            findings.append(
+                Finding(path, statement, "error", f"invalid check argument {option!r}")
+            )
+            return
+
+        if index + 1 < len(stage):
+            next_token = stage[index + 1]
+            next_value = token_value(next_token)
+            if is_literal(next_token) or (
+                not next_value.startswith("--") and next_value != "-"
+            ):
+                index += 1
+
+        checks += 1
+        index += 1
+
+    if not checks:
+        findings.append(
+            Finding(
+                path,
+                statement,
+                "error",
+                "check requires at least one assertion",
+            )
+        )
 
 
 def _validate_stage(runtime, stage, *, path, statement, findings):
