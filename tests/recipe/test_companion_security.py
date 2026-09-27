@@ -56,5 +56,35 @@ def test_companion_bearer_authentication_uses_parent_security_path(
         "principal": "client",
         "client_id": "gway:client",
         "scopes": ["reader"],
+        "mutation_capable": True,
     }
     assert captured["path"] == gateway.security_path
+
+
+
+def test_authority_mutation_capability_uses_operation_metadata(gateway):
+    def observe(*, mutate=False):
+        return mutate
+
+    def restart():
+        return True
+
+    gateway.observe = gateway.wrap("observe_status", observe)
+    gateway.restart = gateway.wrap("restart_service", restart)
+
+    assert companion._authority_mutation_capable(
+        gateway,
+        {"observe_status"},
+    ) is False
+    assert companion._authority_mutation_capable(
+        gateway,
+        {"restart_service"},
+    ) is True
+    assert companion._authority_mutation_capable(
+        gateway,
+        {"missing.operation"},
+    ) is True
+    assert companion._authority_mutation_capable(
+        gateway,
+        {"__all__"},
+    ) is True
