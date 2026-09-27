@@ -282,8 +282,30 @@ def install_materialized(
             and (destination.exists() or destination.is_symlink())
             and destination.resolve() != previous_destination.resolve()
         ):
-            raise RuntimeError(
-                f"New {request.kind} destination already exists: {destination}"
+            if not request.force:
+                raise RuntimeError(
+                    f"New {request.kind} destination already exists: {destination}"
+                )
+            if destination.is_symlink() or not destination.is_dir():
+                raise RuntimeError(
+                    f"Cannot force {request.kind} migration over non-directory "
+                    f"destination: {destination}"
+                )
+            try:
+                destination_name = project_name(destination)
+            except (OSError, ValueError) as error:
+                raise RuntimeError(
+                    f"Cannot verify existing {request.kind} destination: {destination}"
+                ) from error
+            if destination_name != name:
+                raise RuntimeError(
+                    f"Cannot force {request.kind} migration over destination for "
+                    f"different project {destination_name!r}: {destination}"
+                )
+            gway_log.warning(
+                "Replacing existing %s destination %s during forced kind migration",
+                request.kind,
+                destination,
             )
 
         same = (
