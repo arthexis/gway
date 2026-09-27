@@ -250,3 +250,76 @@ def test_watchtower_deploy_journals_fresh_registry_state(tmp_path, monkeypatch):
     assert not registry.exists()
     assert not registry.parent.exists()
     assert not config.exists()
+
+
+def test_enrollment_service_takes_over_known_legacy_listener(tmp_path, monkeypatch):
+    import errno
+
+    gateway = Gateway()
+    module = sampler.load("wire")
+    controller = module.register(gateway, which=lambda name: "/usr/bin/wg")
+    config = tmp_path / "gway.conf"
+    config.write_text("[Interface]\\nPrivateKey = EXISTING\\n", encoding="utf-8")
+    fake_server = type(
+        "FakeServer",
+        (),
+        {"serve_forever": lambda self: None, "server_close": lambda self: None},
+    )()
+    builds = []
+    commands = []
+
+    monkeypatch.setattr(module, "_public_key_from_private", lambda *args: "S" * 43 + "=")
+    def build(*args, **kwargs):
+        builds.append(kwargs)
+        if len(builds) == 1:
+            raise OSError(errno.EADDRINUSE, "in use")
+        return fake_server
+    monkeypatch.setattr(module, "build_enrollment_server", build)
+    monkeypatch.setattr(module.shutil, "which", lambda name: "/bin/systemctl")
+    def run(argv):
+        commands.append(tuple(argv))
+        return type("Result", (), {"returncode": 0, "stdout": "", "stderr": ""})()
+    monkeypatch.setattr(module, "_run", run)
+
+    controller.serve_enrollment(config=config, registry=tmp_path / "registry.sqlite3")
+
+    assert len(builds) == 2
+    assert commands == [
+        ("/bin/systemctl", "is-active", "--quiet", "gway-wireguard-enroll.service"),
+        ("/bin/systemctl", "stop", "gway-wireguard-enroll.service"),
+        ("/bin/systemctl", "disable", "gway-wireguard-enroll.service"),
+    ]
+
+
+def test_enrollment_service_restores_legacy_listener_when_takeover_fails(tmp_path, monkeypatch):
+    import errno
+
+    gateway = Gateway()
+    module = sampler.load("wire")
+    controller = module.register(gateway, which=lambda name: "/usr/bin/wg")
+    config = tmp_path / "gway.conf"
+    config.write_text("[Interface]\\nPrivateKey = EXISTING\\n", encoding="utf-8")
+    commands = []
+
+    monkeypatch.setattr(module, "_public_key_from_private", lambda *args: "S" * 43 + "=")
+    monkeypatch.setattr(
+        module,
+        "build_enrollment_server",
+        lambda *args, **kwargs: (_ for _ in ()).throw(OSError(errno.EADDRINUSE, "in use")),
+    )
+    monkeypatch.setattr(module.shutil, "which", lambda name: "/bin/systemctl")
+    def run(argv):
+        commands.append(tuple(argv))
+        return type("Result", (), {"returncode": 0, "stdout": "", "stderr": ""})()
+    monkeypatch.setattr(module, "_run", run)
+
+    try:
+        controller.serve_enrollment(config=config, registry=tmp_path / "registry.sqlite3")
+    except OSError as error:
+        assert error.errno == errno.EADDRINUSE
+    else:
+        raise AssertionError("expected takeover bind failure")
+
+    assert commands[-1] == (
+        "/bin/systemctl", "enable", "--now", "gway-wireguard-enroll.service"
+    )
