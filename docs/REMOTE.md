@@ -43,8 +43,12 @@ cache_dir = "/var/lib/gway/cache"
 ```
 
 Physical environment aliases such as `GWAY_CACHE_DIR` remain compatibility
-bindings, but service `--environment` should be reserved for literal
-environment contracts of the launched external program.
+bindings. When Gway installs its own Remote service, it persists the already
+resolved cache root into the service environment so the child Gateway reopens
+the same durable state even when systemd runs it under a different user or
+without the installer's environment. User-supplied service `--environment`
+remains reserved for literal environment contracts of launched external
+programs.
 
 OAuth links, grants, access tokens, refresh tokens, and named Gway security
 policy live under the Gateway-selected cache root at:

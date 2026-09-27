@@ -58,6 +58,9 @@ def test_remote_auth_is_builtin_service_preset():
         "remote",
         "serve",
     )
+    assert definition.environment == (
+        f"GWAY_CACHE_DIR={gateway.cache.root}",
+    )
 
 
 def test_remote_auth_systemd_rendering_uses_generic_backend():
@@ -72,9 +75,29 @@ def test_remote_auth_systemd_rendering_uses_generic_backend():
     assert "Restart=on-failure" in rendered
     assert "RestartSec=5.0" in rendered
     assert "StartLimitBurst=4" in rendered
+    assert f"Environment=GWAY_CACHE_DIR={gateway.cache.root}" in rendered
     assert "gway.service.supervisor" not in rendered
     assert "systemctl" not in rendered
     assert "daemon-reload" not in rendered
+
+
+def test_remote_auth_custom_environment_preserves_cache_identity(tmp_path, monkeypatch):
+    cache_root = tmp_path / "cache"
+    monkeypatch.setenv("GWAY_CACHE_DIR", str(cache_root))
+    gateway = Gateway()
+
+    definition = gateway._service_controller._definition(
+        ("remote", "serve"),
+        environment=(
+            "REMOTE_TEST=value",
+            "GWAY_CACHE_DIR=/tmp/ignored",
+        ),
+    )
+
+    assert definition.environment == (
+        f"GWAY_CACHE_DIR={cache_root.resolve()}",
+        "REMOTE_TEST=value",
+    )
 
 
 def test_remote_auth_process_service_start_status_restart_stop(tmp_path, monkeypatch):
