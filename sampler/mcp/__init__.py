@@ -16,7 +16,6 @@ from gway.recipe.environment import (
     sync_python_environment,
 )
 from gway.recipe.uv import ensure_uv
-from gway.sampler import run as run_recipe
 
 
 _FRAME = struct.Struct("!I")
@@ -164,7 +163,9 @@ def register(gateway):
         endpoint="http://127.0.0.1:8000/mcp",
     ):
         """Run the maintained persistent MCP service on loopback by default."""
-        return run_recipe(
+        from gway.sampler import run
+
+        return run(
             gateway,
             "mcp/serve",
             host=host,
