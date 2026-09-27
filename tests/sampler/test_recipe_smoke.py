@@ -143,8 +143,6 @@ def test_wire_watchtower_recipe_smoke_executes_with_fake_host_adapters(monkeypat
 
 
 def test_mcp_server_recipe_smoke_executes_with_fake_server(monkeypatch):
-    from gway.gateway import Gateway as GatewayClass
-
     observed = {}
 
     monkeypatch.setattr(
