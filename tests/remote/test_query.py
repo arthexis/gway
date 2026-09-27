@@ -31,6 +31,32 @@ def _get(application, bearer, command):
     )
 
 
+def test_full_access_scope_authorizes_operation_added_after_token_creation(gateway):
+    scopes = ScopeRegistry(gateway.security_path)
+    tokens = TokenRegistry(gateway.security_path)
+    scopes.replace(
+        "full-access",
+        operations={"__all__"},
+        environment={"__all__"},
+    )
+    issued = tokens.create("full-client", scopes={"full-access"})
+
+    def future(*, mutate=False):
+        return "future-ok"
+
+    gateway.future = gateway.wrap("future.operation", future)
+    metadata = RemoteOAuthMetadata.from_origin(
+        "https://remote.example.test",
+        resource_path="/mcp",
+    )
+    application = RemoteApplication(metadata, runtime=gateway)
+
+    status, _, payload = _get(application, issued.bearer, "future")
+
+    assert status == 200
+    assert payload == {"result": "future-ok"}
+
+
 def test_query_executes_authorized_non_mutating_operation(gateway):
     seen = []
 
