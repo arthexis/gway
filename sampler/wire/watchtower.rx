@@ -28,7 +28,7 @@ service install
 --backend systemd
 --name wire-enroll
 --system
--- ./enroll.rx
+-- wire server serve
 --host [host]
 --port [port]
 --domain [domain]
@@ -38,7 +38,7 @@ service install
 service start
 --name wire-enroll
 --system
--- ./enroll.rx
+-- wire server serve
 --host [host]
 --port [port]
 --domain [domain]
