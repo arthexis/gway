@@ -131,7 +131,13 @@ class Gateway(Resolver):
         self.ops.register_alias("clear-env", self.clear_env)
         self.require = self.wrap("require", self._require)
         self.help = self.wrap("help", self._help)
-        self.resolve_target = self.wrap("resolve", self._resolve_target, op="resolve", sub="resolve")
+        self.resolve_target = self.wrap(
+            "resolve.target",
+            self._resolve_target,
+            op="resolve",
+            sub="target",
+        )
+        self.ops.register_alias("resolve", self.resolve_target)
         self.guide = self.wrap("guide", self._guide)
         self.node = self.wrap("node", self._node)
         self.wrap("ingest", self.ingest)
@@ -331,7 +337,7 @@ class Gateway(Resolver):
             raise UnresolvedSigilError(expression) from exc
         return dispatch(self, tokens)
 
-    def _resolve_target(self, value, *command, mutate=False, **context):
+    def _resolve_target(self, value, *command, mutate=False):
         """Resolve a semantic value or command target without executing the command.
 
         A single argument uses ordinary sigil/value resolution. Two or more
@@ -340,11 +346,7 @@ class Gateway(Resolver):
         """
         del mutate
         if not command:
-            self.context.update(context)
             return self.resolve(value)
-
-        if context:
-            raise TypeError("Command resolution accepts command tokens only")
 
         from .dispatch import resolve_target
 
