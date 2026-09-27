@@ -97,3 +97,18 @@ def test_nonzero_process_exit_keeps_failure_semantics(tmp_path):
 
     assert error.value.returncode == 7
     assert error.value.stderr.strip() == "boom"
+
+
+def test_explicit_symlink_process_preserves_requested_path(tmp_path):
+    real = tmp_path / "real-tool"
+    real.write_text("#!/bin/sh\nprintf '%s\\n' \"$0\"\n", encoding="utf-8")
+    real.chmod(0o755)
+    shim = tmp_path / "venv-tool"
+    shim.symlink_to(real)
+    runtime = Gateway()
+
+    runtime.ingest(str(shim), kind="proc")
+    result = runtime("venv-tool")
+
+    assert result.argv[0] == str(shim.absolute())
+    assert result.stdout.strip() == str(shim.absolute())
