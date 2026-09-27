@@ -131,6 +131,7 @@ class Gateway(Resolver):
         self.ops.register_alias("clear-env", self.clear_env)
         self.require = self.wrap("require", self._require)
         self.help = self.wrap("help", self._help)
+        self.resolve_target = self.wrap("resolve", self._resolve_target, op="resolve", sub="resolve")
         self.guide = self.wrap("guide", self._guide)
         self.node = self.wrap("node", self._node)
         self.wrap("ingest", self.ingest)
@@ -329,6 +330,21 @@ class Gateway(Resolver):
         except OperationLookupError as exc:
             raise UnresolvedSigilError(expression) from exc
         return dispatch(self, tokens)
+
+    def _resolve_target(self, value, *command, mutate=False):
+        """Resolve a semantic value or command target without executing the command.
+
+        A single argument uses ordinary sigil/value resolution. Two or more
+        positional tokens inspect normal command dispatch and report the selected
+        operation or sampler recipe without invoking it.
+        """
+        del mutate
+        if not command:
+            return self.resolve(value)
+
+        from .dispatch import resolve_target
+
+        return resolve_target(self, (value, *command))
 
     def _default_context(self, **values):
         """Publish explicit semantic values into the containing context."""
