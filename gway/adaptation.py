@@ -6,7 +6,7 @@ from typing import get_origin
 from dataclasses import dataclass
 
 from .binding import BoundCall
-from .callable_reference import callable_signature
+from .callableref import callable_signature
 
 
 @dataclass(frozen=True)
