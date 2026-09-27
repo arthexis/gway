@@ -160,7 +160,13 @@ def cli_main():
     if args.log_level is not None:
         log_kwargs["level"] = args.log_level
     with gway_log.output_scope(**log_kwargs):
-        return _run_cli(parser, args, unknown, runtime=runtime)
+        try:
+            return _run_cli(parser, args, unknown, runtime=runtime)
+        except LookupError as exception:
+            if args.debug:
+                raise
+            print(f"gway: {exception}", file=sys.stderr)
+            return 2
 
 
 def _run_cli(parser, args, unknown, *, runtime=None):

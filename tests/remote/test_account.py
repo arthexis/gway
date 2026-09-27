@@ -177,11 +177,17 @@ def test_permission_summary_renders_full_access_as_future_proof(tmp_path):
 
     assert item["all_operations"] is True
     assert item["operation_count"] is None
+    assert item["all_environment"] is True
+    assert item["environment_count"] is None
     assert item["mutation_capable"] is True
     assert effective["all_operations"] is True
     assert effective["operation_count"] is None
+    assert effective["all_environment"] is True
+    assert effective["environment_count"] is None
     assert effective["mutation_capable"] is True
-    assert "All current and future operations" in account._scope_details(item)
+    rendered = account._scope_details(item)
+    assert "All current and future operations" in rendered
+    assert "all current and future environment variables" in rendered
 
 
 def test_permission_summary_limits_preview_and_counts_remaining_operations(tmp_path):
