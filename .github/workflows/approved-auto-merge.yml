@@ -211,4 +211,20 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          gh pr merge "$PR_NUMBER"             --repo "$REPOSITORY"             --auto             --merge             --match-head-commit "$HEAD_SHA"
+
+          merge_output=""
+          if merge_output="$(
+            gh pr merge "$PR_NUMBER"               --repo "$REPOSITORY"               --auto               --merge               --match-head-commit "$HEAD_SHA" 2>&1
+          )"; then
+            [[ -z "$merge_output" ]] || printf '%s\n' "$merge_output"
+            exit 0
+          fi
+
+          status=$?
+          printf '%s\n' "$merge_output" >&2
+          if grep -Fq "Merge already in progress" <<< "$merge_output"; then
+            echo "Auto-merge is already armed for PR #$PR_NUMBER."
+            exit 0
+          fi
+
+          exit "$status"
