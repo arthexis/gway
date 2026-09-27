@@ -302,11 +302,6 @@ def install_materialized(
                     f"Cannot force {request.kind} migration over destination for "
                     f"different project {destination_name!r}: {destination}"
                 )
-            gway_log.warning(
-                "Replacing existing %s destination %s during forced kind migration",
-                request.kind,
-                destination,
-            )
 
         same = (
             not kind_changed
