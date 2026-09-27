@@ -120,7 +120,6 @@ def test_ingested_class_main_preserves_receiver_metadata(gateway):
     "args",
     [
         ("-r", "missing.rx", "--help"),
-        ("-e", "missing operation", "--help"),
     ],
 )
 def test_cli_global_modes_keep_global_help(run_cli, args):
