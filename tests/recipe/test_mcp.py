@@ -1499,7 +1499,8 @@ def test_mcp_sampler_fallback_registers_semantic_surface(gateway, monkeypatch):
 
     monkeypatch.setattr(sampler, "run", fake_run)
 
-    monkeypatch.setattr("sampler.mcp._run_local", lambda runtime: "local")
+    loaded_mcp = sampler.load("mcp")
+    monkeypatch.setattr(loaded_mcp, "_run_local", lambda runtime: "local")
 
     result = gateway("mcp local")
 

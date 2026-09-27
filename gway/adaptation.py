@@ -6,6 +6,7 @@ from typing import get_origin
 from dataclasses import dataclass
 
 from .binding import BoundCall
+from .callableref import callable_signature
 
 
 @dataclass(frozen=True)
@@ -96,7 +97,7 @@ def plan_pipeline(runtime, func, value, *, args=(), kwargs=None) -> AdaptationPl
 
     args = tuple(args)
     kwargs = {} if kwargs is None else dict(kwargs)
-    signature = inspect.signature(func)
+    signature = callable_signature(func)
     consumer_subject = getattr(func, "__gway_subject__", None)
     producer_subject = _result_subject(runtime, value)
     receiver = getattr(func, "__gway_receiver__", None)
@@ -153,7 +154,7 @@ def plan_pipeline(runtime, func, value, *, args=(), kwargs=None) -> AdaptationPl
 
 def apply_plan(func, plan, value, *, args=(), kwargs=None) -> BoundCall:
     """Apply an AdaptationPlan while preserving explicit arguments."""
-    signature = inspect.signature(func)
+    signature = callable_signature(func)
     args = tuple(args)
     kwargs = {} if kwargs is None else dict(kwargs)
 

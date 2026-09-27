@@ -2,6 +2,8 @@
 
 import inspect
 import re
+
+from .callableref import callable_signature, resolve_callable
 from dataclasses import dataclass
 
 
@@ -131,11 +133,16 @@ def describe(callable_obj):
     if not callable(callable_obj):
         raise TypeError("documentation target must be callable")
 
-    target = getattr(callable_obj, "__wrapped__", callable_obj)
+    target = resolve_callable(callable_obj)
+    if target is callable_obj:
+        target = getattr(callable_obj, "__wrapped__", callable_obj)
     docstring = inspect.getdoc(target) or inspect.getdoc(callable_obj) or ""
     summary = docstring.splitlines()[0].strip() if docstring else ""
     descriptions = _parameter_descriptions(docstring)
-    signature = _signature(callable_obj)
+    try:
+        signature = callable_signature(callable_obj)
+    except (TypeError, ValueError):
+        signature = None
 
     parameters = ()
     if signature is not None:

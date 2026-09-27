@@ -6,6 +6,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import get_args, get_origin
 
+from .callableref import callable_signature
 from .operations import singularize
 from .sigil import Sigil
 from .sigil.resolution import UnresolvedSigilError
@@ -129,7 +130,7 @@ def convert_argument(token, parameter, runtime):
 
 def coerce_native_arguments(func, arguments, *, runtime):
     """Coerce explicit keyword values with the callable's normal annotations."""
-    signature = inspect.signature(func)
+    signature = callable_signature(func)
     converted = {}
     for name, value in dict(arguments).items():
         parameter = signature.parameters.get(name)
@@ -316,7 +317,7 @@ def pipeline_boundary(
     initial_kwargs=None,
 ):
     """Return the first structural pipeline dash outside a greedy string tail."""
-    signature = inspect.signature(func)
+    signature = callable_signature(func)
     filled = _initial_filled(signature, initial_args, initial_kwargs)
     greedy = _greedy_parameter(signature)
     tokens = list(tokens)
@@ -384,7 +385,7 @@ def bind_arguments(
     pipeline=_NO_PIPELINE,
 ) -> BoundCall:
     """Bind explicit tokens and optional raw chain positionals to one callable."""
-    signature = inspect.signature(func)
+    signature = callable_signature(func)
     keywords = {} if initial_kwargs is None else dict(initial_kwargs)
     stream = list(tokens)
     if pipeline is not _NO_PIPELINE:
