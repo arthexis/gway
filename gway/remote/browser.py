@@ -1,5 +1,6 @@
 """Recipe-composed browser/account surface for the remote service."""
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
@@ -179,8 +180,15 @@ class BrowserRecipeAdapter:
         from ..sampler import load as load_sampler
 
         self.gateway = gateway
-        self.app = app
         self.dispatch = load_sampler("web/app").InMemoryAdapter(gateway, app)
+
+    @property
+    def app(self):
+        return self.dispatch.app
+
+    @app.setter
+    def app(self, value):
+        self.dispatch.app = value
 
     def request(self, route, method="GET", arguments=None):
         mapping = self.dispatch.resolve(route, method)
@@ -206,8 +214,12 @@ class BrowserRecipeAdapter:
             and isinstance(result[0], int)
         ):
             status, headers, payload = result
+            if status != 200 or not isinstance(payload, Mapping):
+                return result
         else:
             status, headers, payload = 200, {}, result
+            if not isinstance(payload, Mapping):
+                return result
 
         rendered = render_template(
             self.gateway,
