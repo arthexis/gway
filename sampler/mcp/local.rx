@@ -1,2 +1,1 @@
-require fastmcp>=4,<5
-local run
+mcp local
