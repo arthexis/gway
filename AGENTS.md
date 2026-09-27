@@ -141,7 +141,7 @@ Examples:
 ```bash
 gway get charger
 gway set limit --limit 32
-gway -e "[site]"
+gway resolve "[site]"
 gway -r ./deploy.rx --site MTY
 ```
 
