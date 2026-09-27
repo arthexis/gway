@@ -233,25 +233,27 @@ def resolve_launchable(runtime, target):
         raise ValueError("Service target cannot be empty")
 
     first = token_value(tokens[0])
+    candidate = Path(first).expanduser()
     explicit_recipe = recipe_path(runtime, first, allow_bare=False)
-    if explicit_recipe is not None and explicit_recipe.is_file():
-        return Launchable.recipe(
-            explicit_recipe,
-            arguments=tuple(token_value(item) for item in tokens[1:]),
-            metadata={"recipe": str(explicit_recipe.resolve())},
-        )
 
-    executable = Path(first).expanduser()
     if (
-        executable.is_absolute()
-        and executable.is_file()
-        and executable.stat().st_mode & 0o111
+        candidate.suffix != ".rx"
+        and candidate.is_absolute()
+        and candidate.is_file()
+        and candidate.stat().st_mode & 0o111
     ):
         command = tuple(token_value(item) for item in tokens)
         return Launchable.executable(
             command,
             root=Path.cwd(),
-            metadata={"executable": str(executable.resolve())},
+            metadata={"executable": str(candidate.resolve())},
+        )
+
+    if explicit_recipe is not None and explicit_recipe.is_file():
+        return Launchable.recipe(
+            explicit_recipe,
+            arguments=tuple(token_value(item) for item in tokens[1:]),
+            metadata={"recipe": str(explicit_recipe.resolve())},
         )
 
     try:
