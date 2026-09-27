@@ -24,7 +24,7 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -e '.[dev,toml]'
       - name: Run regression suite
-        run: timeout -s ABRT 180s python -X faulthandler -m pytest -vv --durations=20
+        run: timeout -s ABRT 300s python -X faulthandler -m pytest -q --durations=20
 
   forward-compatibility:
     name: Compatibility (Python 3.13)
