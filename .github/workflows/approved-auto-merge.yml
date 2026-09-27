@@ -93,9 +93,7 @@ jobs:
 
           pr_json="$(gh api "repos/$REPOSITORY/pulls/$PR_NUMBER")"
           head_sha="$(jq -r '.head.sha' <<< "$pr_json")"
-          changed_at="$(jq -r '.updated_at' <<< "$pr_json")"
-
-          # A synchronize event can leave an older auto-merge request armed.
+          changed_at="$(\n            gh api "repos/$REPOSITORY/commits/$head_sha" \\\n              --jq '.commit.committer.date // .commit.author.date'\n          )"\n\n          # A synchronize event can leave an older auto-merge request armed.
           # Disarm it before waiting so the PR cannot merge during this settling window.
           gh pr merge "$PR_NUMBER" --repo "$REPOSITORY" --disable-auto || true
 
@@ -183,7 +181,7 @@ jobs:
             exit 0
           fi
 
-          echo "Approval, freshness, and CI gates are satisfied for PR #$PR_NUMBER."
+          echo "Approval, freshness, and CI gates are satisfied for PR #$PR_NUMBER."\n          echo "The in-progress label does not block an Approved PR."
           echo "Review-thread resolution is enforced by the protected branch ruleset."
           echo "head_sha=$head_sha" >> "$GITHUB_OUTPUT"
           echo "ready=true" >> "$GITHUB_OUTPUT"
