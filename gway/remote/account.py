@@ -285,7 +285,7 @@ class RemoteAccountApplication:
                 if effective["all_environment"]
                 else f"; {effective['environment_count']} environment names</p>"
             )
-            f"<h2>Environment</h2><ul>{environment_items}</ul>"
+            + f"<h2>Environment</h2><ul>{environment_items}</ul>"
             '<form method="post" action="/consent">'
             f'<input type="hidden" name="csrf" value="{escape(session.csrf)}">'
             '<button name="decision" value="approve" type="submit">Authorize</button>'
