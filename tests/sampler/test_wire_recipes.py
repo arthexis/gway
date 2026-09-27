@@ -33,7 +33,11 @@ def test_wire_watchtower_recipe_composes_service_and_https_exposure():
     assert any(command.startswith("service start") for command in flattened)
     assert any("../web/expose/expose" in command for command in flattened)
     assert any(command.startswith("wire server check") for command in flattened)
-    assert any(command.startswith("commit wire-watchtower") for command in flattened)
+    deploy = next(command for command in flattened if command.startswith("wire server deploy"))
+    commit = next(command for command in flattened if command.startswith("commit wire-watchtower"))
+    assert "--sudo" in deploy
+    assert "--rollback wire-watchtower" in deploy
+    assert commit == "commit wire-watchtower"
 
 
 def test_wire_watchtower_recipe_uses_existing_register_hostname():
