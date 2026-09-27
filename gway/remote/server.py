@@ -80,12 +80,6 @@ class RemoteApplication(RemoteDiscoveryApplication):
         super().__init__(metadata)
         self.runtime = runtime
         self._query_lock = threading.RLock()
-        if runtime is not None:
-            ScopeRegistry(runtime.security_path).replace(
-                "full-access",
-                operations={"__all__"},
-                environment={"__all__"},
-            )
         if account is None and runtime is not None:
             oauth = OAuthRegistry(runtime.security_path)
             def resolve_runtime_operation(name):
@@ -101,6 +95,11 @@ class RemoteApplication(RemoteDiscoveryApplication):
                 operation_resolver=resolve_runtime_operation,
             )
         self.account = RemoteAccountApplication() if account is None else account
+        self.account.oauth.scopes.replace(
+            "full-access",
+            operations={"__all__"},
+            environment={"__all__"},
+        )
         self.oauth = RemoteOAuthProtocol(
             metadata,
             self.account,
