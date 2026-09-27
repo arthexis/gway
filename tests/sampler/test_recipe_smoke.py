@@ -148,9 +148,8 @@ def test_mcp_server_recipe_smoke_executes_with_fake_server(monkeypatch):
     observed = {}
 
     monkeypatch.setattr(
-        GatewayClass,
-        "_require",
-        lambda self, *requirements, **kwargs: list(requirements),
+        "gway.recipe.runtime.prepare_required_companion",
+        lambda runtime, frame: None,
     )
     monkeypatch.setattr(
         "gway.recipe.runtime.ingest_companion",
@@ -159,7 +158,12 @@ def test_mcp_server_recipe_smoke_executes_with_fake_server(monkeypatch):
 
     runtime = Gateway()
 
-    def serve(host="127.0.0.1", port=8000, route="/mcp", endpoint=None):
+    def serve(
+        host="127.0.0.1",
+        port: int = 8000,
+        route="/mcp",
+        endpoint=None,
+    ):
         observed.update(
             host=host,
             port=port,
