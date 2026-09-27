@@ -617,6 +617,30 @@ def resolve_operation(runtime, tokens, *, pipeline=_MISSING):
     raise OperationLookupError(query, _operation_suggestions(runtime, values))
 
 
+def resolve_target(runtime, tokens):
+    """Describe the command target selected by normal dispatch without executing it."""
+    tokens = list(tokens)
+    if not tokens:
+        raise ValueError("Resolve target cannot be empty")
+
+    recipe = resolve_recipe_stage(runtime, tokens, pipeline=_MISSING)
+    if recipe is not None:
+        path, arguments, remaining = recipe
+        return {
+            "kind": "recipe",
+            "target": str(path),
+            "arguments": tuple(token_value(token) for token in arguments),
+            "remaining": tuple(token_value(token) for token in remaining),
+        }
+
+    resolution = resolve_operation(runtime, tokens)
+    return {
+        "kind": "operation",
+        "target": resolution.candidate,
+        "arguments": tuple(token_value(token) for token in resolution.arguments),
+    }
+
+
 def _enforce_cardinality(resolution, result):
     """Apply semantic ONE/MANY intent to collection-producing operations."""
     if resolution.cardinality is None:
@@ -823,6 +847,20 @@ def dispatch_pipeline(
     results = []
     current = pipeline
     first = True
+
+    # resolve is observational introspection: its target is opaque command
+    # data, including options and dash tokens that would otherwise become an
+    # outer pipeline and execute a suffix operation.
+    if remaining and is_unquoted(remaining[0]) and token_value(remaining[0]) == "resolve":
+        target = remaining[1:]
+        if len(target) == 1 and token_value(target[0]).startswith("[") and token_value(target[0]).endswith("]"):
+            descriptor = runtime.resolve(token_value(target[0]))
+        else:
+            descriptor = resolve_target(runtime, target)
+        results.append(descriptor)
+        if statement is not None:
+            statement.append(Stage(tokens=tuple(remaining), operation="resolve", arguments=tuple(remaining[1:]), incoming=None if current is _MISSING else current, outgoing=descriptor, statement=statement.index, subject="target", published=False, has_incoming=current is not _MISSING))
+        return results, descriptor
 
     while remaining:
         stage_args = args if first else ()

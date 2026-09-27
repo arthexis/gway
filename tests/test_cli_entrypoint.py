@@ -22,16 +22,14 @@ def test_cli_help_runs():
     assert "command-dispatch and composition core" in completed.stdout
 
 
-def test_cli_expression_resolves_supplied_context():
+def test_cli_resolve_value_uses_inline_fallback():
     completed = subprocess.run(
         [
             sys.executable,
             "-m",
             "gway",
-            "--expression",
-            "[site]",
-            "--site",
-            "MTY",
+            "resolve",
+            "[site|MTY]",
         ],
         check=False,
         capture_output=True,
@@ -39,6 +37,66 @@ def test_cli_expression_resolves_supplied_context():
     )
     assert completed.returncode == 0
     assert completed.stdout.strip() == "MTY"
+
+
+
+def test_cli_no_longer_exposes_expression_flag():
+    completed = subprocess.run(
+        [sys.executable, "-m", "gway", "--help"],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert "--expression" not in completed.stdout
+    assert "-e " not in completed.stdout
+
+
+def test_cli_resolve_reports_wire_sampler_without_executing_it():
+    completed = subprocess.run(
+        [sys.executable, "-m", "gway", "--json", "resolve", "wire", "watchtower"],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert completed.returncode == 0, completed.stderr
+    payload = json.loads(completed.stdout)
+    assert payload["kind"] == "recipe"
+    assert payload["target"].endswith("sampler/wire/watchtower.rx")
+
+def test_cli_resolve_single_plain_token_is_command_introspection():
+    completed = subprocess.run(
+        [sys.executable, "-m", "gway", "--json", "resolve", "help"],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert completed.returncode == 0, completed.stderr
+    assert json.loads(completed.stdout)["kind"] == "operation"
+
+
+def test_cli_resolve_keeps_target_options_opaque():
+    completed = subprocess.run(
+        [sys.executable, "-m", "gway", "--json", "resolve", "log", "message", "--level", "INFO"],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert completed.returncode == 0, completed.stderr
+    payload = json.loads(completed.stdout)
+    assert payload["kind"] == "operation"
+    assert payload["target"].replace(".", " ") == "log"
+    assert "--level" in payload["arguments"]
+
+
+def test_cli_resolve_does_not_execute_dash_suffix(tmp_path):
+    marker = tmp_path / "executed"
+    command = [
+        sys.executable, "-m", "gway", "--json", "resolve",
+        "log", "message", "-", "path", str(marker),
+    ]
+    completed = subprocess.run(command, check=False, capture_output=True, text=True)
+    assert completed.returncode == 0, completed.stderr
+    assert not marker.exists()
 
 
 def test_cli_lookup_error_is_concise_without_traceback(tmp_path):

@@ -21,7 +21,6 @@ def _args():
         silent=False,
         resume=None,
         recipe=None,
-        expression=None,
         json=False,
     )
 

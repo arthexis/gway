@@ -52,9 +52,9 @@ def _extract_mutation_policy(argv):
 
 _COMMAND_HELP_VALUE_OPTIONS = {
     "-L", "--log-level", "--logfile", "-r", "--recipe",
-    "-e", "--expression", "--resume",
+    "--resume",
 }
-_COMMAND_HELP_MODE_OPTIONS = {"-r", "--recipe", "-e", "--expression", "--resume"}
+_COMMAND_HELP_MODE_OPTIONS = {"-r", "--recipe", "--resume"}
 
 
 def _extract_command_help(argv):
@@ -88,7 +88,7 @@ def _extract_command_help(argv):
             continue
         matched_short = next(
             (
-                option for option in {"-L", "-r", "-e"}
+                option for option in {"-L", "-r"}
                 if token.startswith(option) and token != option
             ),
             None,
@@ -120,7 +120,6 @@ def cli_main():
     parser.add_argument("-t", "--timed", action="store_true")
     parser.add_argument("-v", "--verbose", action="store_true")
     parser.add_argument("-z", "--silent", action="store_true")
-    parser.add_argument("-e", "--expression")
     mutation = parser.add_mutually_exclusive_group()
     mutation.add_argument(
         "-M",
@@ -202,9 +201,6 @@ def _run_cli(parser, args, unknown, *, runtime=None):
                         args.recipe,
                         context=parse_recipe_context(unknown),
                     )
-                elif args.expression:
-                    runtime.context.update(parse_recipe_context(unknown))
-                    output = runtime.resolve(args.expression)
                 elif unknown:
                     if getattr(args, "command_help", False):
                         output = runtime._command_help(*unknown, verbose=args.verbose)

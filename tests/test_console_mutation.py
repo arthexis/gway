@@ -8,7 +8,6 @@ def _args(*, mutation_policy=MUTATE_UNSET):
     return SimpleNamespace(
         resume=None,
         recipe=None,
-        expression=None,
         silent=True,
         json=False,
         mutation_policy=mutation_policy,
