@@ -21,6 +21,8 @@ def test_remote_browser_topology_is_recipe_composed(tmp_path):
         (route.route, route.method, route.handler)
         for route in application.browser.app.routes
     ] == [
+        ("/remote.css", "GET", None),
+        ("/remote.css", "HEAD", None),
         ("/", "GET", "remote.browser.index"),
         ("/login", "GET", "remote.browser.login"),
         ("/privacy", "GET", "remote.browser.privacy"),
@@ -109,3 +111,58 @@ def test_runtime_backed_browser_does_not_fall_back_to_legacy_routes(tmp_path):
     assert status == 404
     assert headers == {}
     assert payload == {"error": "not_found"}
+
+
+def test_remote_connect_uses_mobile_dark_recipe_template(tmp_path):
+    runtime = Gateway(cache=tmp_path / "cache")
+    metadata = RemoteOAuthMetadata.from_origin(
+        "http://127.0.0.1:9000",
+        allow_insecure_loopback=True,
+    )
+    application = RemoteApplication(metadata, runtime=runtime)
+
+    status, headers, payload = application.response("GET", "/connect")
+
+    assert status == 200
+    assert headers["content-type"] == "text/html; charset=utf-8"
+    assert 'name="viewport"' in payload
+    assert 'content="width=device-width, initial-scale=1"' in payload
+    assert 'type="password"' in payload
+    assert 'autocapitalize="none"' in payload
+    assert 'class="primary"' in payload
+    assert 'href="/remote.css"' in payload
+
+    css_status, css_headers, css = application.response("GET", "/remote.css")
+    assert css_status == 200
+    assert css_headers["content-type"] == "text/css"
+    assert b"color-scheme: dark" in css
+    assert b"min-height: 56px" in css
+
+
+def test_templated_consent_redirect_is_preserved_without_rendering(tmp_path):
+    runtime = Gateway(cache=tmp_path / "cache")
+    metadata = RemoteOAuthMetadata.from_origin(
+        "http://127.0.0.1:9000",
+        allow_insecure_loopback=True,
+    )
+    application = RemoteApplication(metadata, runtime=runtime)
+
+    status, headers, payload = application.response(
+        "GET",
+        "/consent?client_id=client&scope=full-access",
+    )
+
+    assert status == 303
+    assert headers["location"] == "/connect"
+    assert payload == ""
+
+
+def test_remote_css_is_declared_for_public_https_proxy():
+    from pathlib import Path
+
+    template = Path("sampler/web/remote/nginx-https-[site].conf").read_text(
+        encoding="utf-8"
+    )
+
+    assert "location = /remote.css {" in template
+    assert "proxy_pass http://[auth_host|127.0.0.1]:[auth_port|8001];" in template
