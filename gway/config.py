@@ -393,18 +393,11 @@ def load_project_scripts(runtime, root, project):
 
 
 def _package_main_callable(root, package):
-    """Return an isolated python -m package operation."""
-    import subprocess
-
-    from .project import project_python
+    """Return an isolated project package-main operation."""
+    from .project import invoke_package_main
 
     def invoke(*arguments):
-        completed = subprocess.run(
-            [str(project_python(root)), "-m", package, *map(str, arguments)],
-            cwd=Path(root).expanduser().resolve(),
-            check=True,
-        )
-        return completed.returncode
+        return invoke_package_main(root, package, *arguments)
 
     invoke.__name__ = package.rsplit(".", 1)[-1]
     invoke.__doc__ = f"Run {package!r} inside the project-owned Python runtime."
@@ -425,6 +418,14 @@ def load_project_main_packages(
     root = Path(root).expanduser().resolve()
     wrapped = []
     for name in main_packages(root):
+        if name == __package__.split(".", 1)[0]:
+            import sys
+
+            current = sys.modules.get(name)
+            if current is not None:
+                wrapped.extend(runtime.ingest(current, path=(name,)))
+                continue
+
         package_path = tuple(name.split("."))
         path = (
             (project, *package_path)
