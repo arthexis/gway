@@ -117,8 +117,10 @@ edit
 ```
 
 
-The CLI entry point is `gway`. With no operation or expression it prints
+The CLI entry point is `gway`. With no operation it prints
 help.
+
+`resolve` is the non-mutating introspection surface. `gway resolve '[site]'` resolves a semantic value/sigil, while `gway resolve wire watchtower` reports the operation or sampler recipe normal dispatch would select without executing it. The former `-e`/`--expression` flag no longer exists; do not use `-e` as an explain or dry-run spelling.
 
 Current global options are:
 
@@ -132,7 +134,6 @@ Current global options are:
 -t, --timed
 -v, --verbose
 -z, --silent
--e, --expression EXPR
 ```
 
 Examples:
