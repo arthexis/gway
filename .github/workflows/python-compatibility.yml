@@ -43,6 +43,8 @@ jobs:
           python -m pip install -e '.[toml]' pytest
       - name: Compile supported source tree
         run: python -m compileall -q gway sampler
+      - name: Validate maintained sampler recipes
+        run: python -m gway recipe check sampler
       - name: Verify newer-runtime contracts
         run: |
           python -m pytest -q tests/gateway/test_builtins.py -k toml
