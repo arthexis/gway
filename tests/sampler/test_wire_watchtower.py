@@ -166,3 +166,87 @@ def test_enrollment_service_derives_public_key_from_server_config(tmp_path, monk
     )
 
     assert captured["server_public_key"] == "S" * 43 + "="
+
+
+
+def test_watchtower_deploy_reads_existing_private_key_with_sudo_identity(
+    tmp_path,
+    monkeypatch,
+):
+    gateway = Gateway()
+    module = sampler.load("wire")
+    controller = module.register(gateway, which=lambda name: None)
+    registry = tmp_path / "registry.sqlite3"
+    config = tmp_path / "root-owned.conf"
+    captured = {}
+
+    class Result:
+        def __init__(self, returncode=0, stdout=""):
+            self.returncode = returncode
+            self.stdout = stdout
+            self.stderr = ""
+
+    calls = []
+
+    def run_as_identity(identity, *argv, **kwargs):
+        calls.append((identity.user, argv, kwargs))
+        if argv[0] == "test":
+            return Result(0)
+        if argv[0] == "cat":
+            return Result(
+                0,
+                "[Interface]\n"
+                "Address = 10.90.0.1/24\n"
+                "PrivateKey = EXISTING-SUDO\n",
+            )
+        raise AssertionError(argv)
+
+    monkeypatch.setattr(module, "run_as_identity", run_as_identity)
+    monkeypatch.setattr(
+        controller,
+        "provision",
+        lambda interface, **kwargs: (
+            captured.update(kwargs) or {"config": str(config)}
+        ),
+    )
+    monkeypatch.setattr(controller, "server_check", lambda **kwargs: {"ready": True})
+
+    controller.deploy_server(
+        registry=registry,
+        config=config,
+        sudo=True,
+    )
+
+    assert captured["private_key"] == "EXISTING-SUDO"
+    assert [call[0] for call in calls] == ["root", "root"]
+    assert [call[1][0] for call in calls] == ["test", "cat"]
+
+
+def test_watchtower_deploy_journals_fresh_registry_state(tmp_path, monkeypatch):
+    gateway = Gateway()
+    module = sampler.load("wire")
+    controller = module.register(gateway)
+    registry = tmp_path / "wire-state" / "registry.sqlite3"
+    config = tmp_path / "gway.conf"
+
+    monkeypatch.setattr(controller, "server_check", lambda **kwargs: {"ready": True})
+
+    controller.deploy_server(
+        private_key="PRIVATE",
+        registry=registry,
+        config=config,
+        rollback="wire-watchtower",
+    )
+
+    assert registry.is_file()
+    assert config.is_file()
+    journal = gateway.journal.require_open("wire-watchtower")
+    operations = [entry.data.get("operation") for entry in journal.entries]
+    assert "wire.server.registry" in operations
+    assert "render" in operations
+
+    gateway.journal.rollback("wire-watchtower")
+
+    assert not registry.exists()
+    assert not registry.parent.exists()
+    assert not config.exists()
