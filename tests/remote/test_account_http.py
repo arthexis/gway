@@ -110,7 +110,11 @@ def test_real_http_browser_link_consent_and_revoke_flow(tmp_path):
         )
         response = connection.getresponse()
         assert response.status == 200
-        assert "Access approved" in response.read().decode()
+        result_html = response.read().decode()
+        assert "Access approved" in result_html
+        assert 'name="viewport"' in result_html
+        assert 'href="/remote.css"' in result_html
+        assert "return to the client" in result_html
 
         session_id = second_cookie.split("=", 1)[1]
         session = account.sessions.require(session_id)

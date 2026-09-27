@@ -242,3 +242,52 @@ def test_mcp_execution_envelope_classifies_json_result_shapes():
     assert server._envelope(3.5)["result_type"] == "number"
     assert server._envelope(True)["result_type"] == "boolean"
     assert server._envelope(None)["result_type"] == "null"
+
+
+
+def test_mcp_tool_projection_hides_gway_for_read_only_authority():
+    server = _server_module()
+
+    class Tool:
+        def __init__(self, name):
+            self.name = name
+
+    tools = [Tool("gway"), Tool("query")]
+
+    projected = server._project_tools(
+        tools,
+        {"mutation_capable": False},
+    )
+
+    assert [tool.name for tool in projected] == ["query"]
+
+
+def test_mcp_tool_projection_keeps_gway_for_mutation_capable_authority():
+    server = _server_module()
+
+    class Tool:
+        def __init__(self, name):
+            self.name = name
+
+    tools = [Tool("gway"), Tool("query")]
+
+    projected = server._project_tools(
+        tools,
+        {"mutation_capable": True},
+    )
+
+    assert [tool.name for tool in projected] == ["gway", "query"]
+
+
+def test_mcp_tool_projection_is_conservative_without_capability_metadata():
+    server = _server_module()
+
+    class Tool:
+        def __init__(self, name):
+            self.name = name
+
+    tools = [Tool("gway"), Tool("query")]
+
+    projected = server._project_tools(tools, {})
+
+    assert [tool.name for tool in projected] == ["gway", "query"]
