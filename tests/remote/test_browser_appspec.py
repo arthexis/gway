@@ -166,3 +166,23 @@ def test_remote_css_is_declared_for_public_https_proxy():
 
     assert "location = /remote.css {" in template
     assert "proxy_pass http://[auth_host|127.0.0.1]:[auth_port|8001];" in template
+
+
+
+def test_remote_result_page_reuses_mobile_dark_shell():
+    from gway.remote.browser import _result_page
+
+    html = _result_page(
+        "Access approved",
+        "Return to the client.",
+        action_href="/settings/connections",
+        action_label="Manage connections",
+    )
+
+    assert 'name="viewport"' in html
+    assert 'content="width=device-width, initial-scale=1"' in html
+    assert 'href="/remote.css"' in html
+    assert 'class="brand"' in html
+    assert 'class="card"' in html
+    assert 'class="button secondary"' in html
+    assert "Access approved" in html
