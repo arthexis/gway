@@ -1229,7 +1229,7 @@ class Gateway(Resolver):
 
         return ingest_path(self, path, **kwargs)
 
-    def wrap(self, func_name, func_obj, *, op=None, sub=None, receiver=None):
+    def wrap(self, func_name, func_obj, *, op=None, sub=None, receiver=None, resolver=None):
         """Normalize a Python callable to GWAY context and result conventions."""
         if not callable(func_obj):
             raise TypeError(f"{func_name!r} is not callable")
@@ -1237,8 +1237,11 @@ class Gateway(Resolver):
         subject = self.subject(func_name) if op is None else sub
 
         def wrapped(*args, **kwargs):
+            current = resolver() if callable(resolver) else func_obj
+            if not callable(current):
+                raise TypeError(f"{func_name!r} resolved to a non-callable target")
             mutation_policy = self.mutation_policy
-            supports_mutation_policy = supports_no_mutate(func_obj)
+            supports_mutation_policy = supports_no_mutate(current)
             if mutation_policy is False and not supports_mutation_policy:
                 raise MutationError(
                     f"{func_name!r} does not support non-mutating execution"
@@ -1249,7 +1252,7 @@ class Gateway(Resolver):
             call = complete_arguments(
                 self,
                 subject,
-                func_obj,
+                current,
                 args=args,
                 kwargs=kwargs,
                 receiver=receiver,
@@ -1257,7 +1260,7 @@ class Gateway(Resolver):
             result = invoke(
                 self,
                 func_name,
-                func_obj,
+                current,
                 args=call.args,
                 kwargs=call.kwargs,
             )
@@ -1267,6 +1270,8 @@ class Gateway(Resolver):
         wrapped.__name__ = getattr(func_obj, "__name__", func_name)
         wrapped.__doc__ = getattr(func_obj, "__doc__", None)
         wrapped.__wrapped__ = func_obj
+        if callable(resolver):
+            wrapped.__gway_callable_resolver__ = resolver
         signature = public_signature(func_obj, receiver=receiver is not None)
         if signature is not None:
             wrapped.__signature__ = signature
