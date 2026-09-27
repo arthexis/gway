@@ -17,6 +17,8 @@ from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
+from gway.host import run_as_identity
+from gway.identity import execution_identity
 from gway.rendering import atomic_write_text
 
 
@@ -341,13 +343,35 @@ def _atomic_reconcile(path, desired):
     atomic_write_text(path, desired)
     return str(path)
 
-def _configured_private_key(path):
+def _configured_private_key(path, *, identity=None):
     """Return an existing WireGuard interface private key without exposing it publicly."""
     path = Path(path)
-    if not path.is_file():
-        return None
+    if identity is not None and identity.privileged:
+        exists = run_as_identity(
+            identity,
+            "test",
+            "-f",
+            path,
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        if exists.returncode != 0:
+            return None
+        result = run_as_identity(
+            identity,
+            "cat",
+            path,
+            capture_output=True,
+            text=True,
+        )
+        text = result.stdout
+    else:
+        if not path.is_file():
+            return None
+        text = path.read_text(encoding="utf-8")
     section = None
-    for raw in path.read_text(encoding="utf-8").splitlines():
+    for raw in text.splitlines():
         line = raw.strip()
         if line.startswith("[") and line.endswith("]"):
             section = line
@@ -886,8 +910,22 @@ class Controller:
         store_path = Path(
             registry or self.gateway.data_root() / "wire" / "registry.sqlite3"
         )
+        registry_entry = None
+        if rollback is not None:
+            registry_paths = [store_path]
+            if not store_path.parent.exists():
+                registry_paths.insert(0, store_path.parent)
+            registry_entry = self.gateway.journal.prepare_paths(
+                rollback,
+                operation="wire.server.registry",
+                paths=tuple(registry_paths),
+            )
+
         # Opening the registry initializes durable central enrollment state.
         Registry(store_path).connect().close()
+        if registry_entry is not None:
+            self.gateway.journal.mark_mutated(rollback, registry_entry.sequence)
+            self.gateway.journal.mark_applied(rollback, registry_entry.sequence)
 
         destination = (
             Path(config)
@@ -896,7 +934,10 @@ class Controller:
         )
         active_private_key = str(private_key).strip() if private_key is not None else ""
         if not active_private_key:
-            active_private_key = _configured_private_key(destination) or ""
+            identity = execution_identity(sudo=sudo)
+            active_private_key = (
+                _configured_private_key(destination, identity=identity) or ""
+            )
         if not active_private_key:
             active_private_key, _ = _generated_keypair(self.runner, self.which)
 

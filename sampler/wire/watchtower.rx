@@ -16,13 +16,13 @@ wire server deploy
 --public-address [public_address]
 --dns-zone [dns_zone|arthexis.com]
 --dns-backend [dns_backend|godaddy]
-
-commit wire-watchtower
 --sudo
 --rollback wire-watchtower
 
 wire server activate [interface|gway]
 --config [config]
+
+commit wire-watchtower
 
 service install
 --name wire-enroll
