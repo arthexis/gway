@@ -304,6 +304,15 @@ class Gateway(Resolver):
         finally:
             self._request_state_var.reset(token)
 
+    def _evaluate_expression(self, expression):
+        """Delegate unresolved sigil expressions to the normal Gway dispatcher."""
+        from .dispatch import OperationLookupError, dispatch
+
+        try:
+            return dispatch(self, expression)
+        except OperationLookupError as exc:
+            raise KeyError(expression) from exc
+
     def _default_context(self, **values):
         """Publish explicit semantic values into the containing context."""
         from .publication import SKIP_PUBLICATION
