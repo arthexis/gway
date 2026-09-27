@@ -32,6 +32,19 @@ def resolve_recipe_stage(runtime, tokens, *, pipeline):
         stage, remaining = split_recipe_stage(tokens)
         return explicit, stage[1:], remaining
 
+    from ..sampler import resolve_tokens as resolve_sampler_tokens
+
+    sampler = resolve_sampler_tokens(tokens)
+    if sampler is not None:
+        path, size = sampler
+        from ..dispatch import resolve_operation
+
+        try:
+            resolve_operation(runtime, tokens[:size], pipeline=pipeline)
+        except LookupError:
+            stage, remaining = split_recipe_stage(tokens)
+            return path, stage[size:], remaining
+
     bare = recipe_path(runtime, source, allow_bare=True)
     if bare is None:
         return None

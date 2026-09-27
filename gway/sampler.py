@@ -49,6 +49,27 @@ def recipes():
     return tuple(sorted(names))
 
 
+def resolve_tokens(tokens):
+    """Resolve the longest sampler recipe prefix from command tokens."""
+    values = []
+    for token in tokens:
+        value = str(getattr(token, "value", token)).strip()
+        if not value or value == "-" or value.startswith("--"):
+            break
+        values.append(value.replace("-", "_"))
+
+    matches = []
+    for name in recipes():
+        parts = tuple(part.replace("-", "_") for part in name.split("/"))
+        if len(parts) <= len(values) and tuple(values[: len(parts)]) == parts:
+            matches.append((len(parts), name))
+    if not matches:
+        return None
+
+    size, name = max(matches, key=lambda item: item[0])
+    return resolve(name), size
+
+
 def resolve(name):
     """Resolve one sampler recipe package or explicit recipe name."""
     relative = Path(str(name))
