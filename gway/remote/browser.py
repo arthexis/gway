@@ -1,6 +1,7 @@
 """Recipe-composed browser/account surface for the remote service."""
 
 from dataclasses import dataclass
+from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
 from ..sampler import resolve as resolve_sampler
@@ -28,40 +29,8 @@ class BrowserController:
         self.application = application
 
     def privacy(self, request: BrowserRequest):
-        return self.application._html(
-            200,
-            "<!doctype html><html><head><title>G-Way Remote Privacy Policy</title></head>"
-            "<body><h1>G-Way Remote Privacy Policy</h1>"
-            "<p>G-Way Remote provides authenticated access to G-Way commands for "
-            "connected MCP clients.</p>"
-            "<h2>Data processed</h2>"
-            "<p>The service may process OAuth client identifiers, authorization "
-            "codes, access and refresh tokens, G-Way command strings, and command "
-            "results such as requested log output.</p>"
-            "<h2>Purpose</h2>"
-            "<p>Data is processed only to authenticate the connection, authorize "
-            "requested G-Way operations, execute those operations, and return results.</p>"
-            "<h2>Storage and retention</h2>"
-            "<p>OAuth client registrations, grants, and token state are stored in the "
-            "service security registry until revoked, expired, rotated, or deleted. "
-            "Command requests and results are not intentionally stored by this privacy "
-            "page or the remote transport itself; operational service logs may retain "
-            "limited request metadata needed for security and reliability.</p>"
-            "<h2>Sharing</h2>"
-            "<p>The service does not sell personal data. Data is shared only with the "
-            "connected client as needed to provide the requested operation and with "
-            "infrastructure providers required to operate the service.</p>"
-            "<h2>Security</h2>"
-            "<p>OAuth credentials are used for authentication and authorization. "
-            "Users should not intentionally place passwords, private keys, or other "
-            "secrets in G-Way commands or log output.</p>"
-            "<h2>Contact and deletion</h2>"
-            "<p>Connections and OAuth grants can be revoked through the service. "
-            "For privacy questions or deletion requests, contact the operator of "
-            "remote.arthexis.com.</p>"
-            "<p>Last updated: 2026-09-24.</p>"
-            "</body></html>",
-        )
+        del request
+        return {}
 
     def login(self, request: BrowserRequest):
         del request
@@ -70,14 +39,7 @@ class BrowserController:
     def index(self, request: BrowserRequest):
         session, created = self.application._session(request.headers, create=True)
         response_headers = self.application._with_cookie({}, session, created)
-        return self.application._html(
-            200,
-            "<!doctype html><html><body><h1>G-Way Remote</h1>"
-            '<p><a href="/connect">Connect G-Way</a></p>'
-            '<p><a href="/settings/connections">Connections</a></p>'
-            "</body></html>",
-            response_headers,
-        )
+        return 200, response_headers, {}
 
     def connect(self, request: BrowserRequest):
         application = self.application
@@ -89,11 +51,7 @@ class BrowserController:
             return 401, {}, {"error": "session_required"}
         if request.method == "GET":
             response_headers = application._with_cookie({}, session, created)
-            return application._html(
-                200,
-                application.account.connect_page(session),
-                response_headers,
-            )
+            return 200, response_headers, application.account.connect_context(session)
 
         form = application._form(request.body)
         previous_id = session.id
@@ -142,11 +100,11 @@ class BrowserController:
                 response_headers = application._with_cookie({}, session, created)
                 return application._redirect("/connect", response_headers)
             try:
-                page = application.account.consent_page(session)
+                context = application.account.consent_context(session)
             except (PermissionError, ValueError, LookupError):
                 return 400, {}, {"error": "invalid_consent_request"}
             response_headers = application._with_cookie({}, session, created)
-            return application._html(200, page, response_headers)
+            return 200, response_headers, context
 
         form = application._form(request.body)
         try:
@@ -202,11 +160,7 @@ class BrowserController:
             return 401, {}, {"error": "session_required"}
         if request.method == "GET":
             response_headers = application._with_cookie({}, session, created)
-            return application._html(
-                200,
-                application.account.connections_page(session),
-                response_headers,
-            )
+            return 200, response_headers, application.account.connections_context(session)
 
         form = application._form(request.body)
         if form.get("action") != "revoke":
@@ -216,6 +170,55 @@ class BrowserController:
         except PermissionError:
             return 403, {}, {"error": "connection_action_failed"}
         return application._redirect("/settings/connections")
+
+
+class BrowserRecipeAdapter:
+    """Render recipe-owned Remote views around companion-provided context."""
+
+    def __init__(self, gateway, app):
+        from ..sampler import load as load_sampler
+
+        self.gateway = gateway
+        self.app = app
+        self.dispatch = load_sampler("web/app").InMemoryAdapter(gateway, app)
+
+    def request(self, route, method="GET", arguments=None):
+        mapping = self.dispatch.resolve(route, method)
+        if mapping.static:
+            path = Path(mapping.static)
+            if not path.is_file():
+                return 404, {}, {"error": "not_found"}
+            headers = {}
+            if mapping.content_type:
+                headers["content-type"] = mapping.content_type
+            return 200, headers, path.read_bytes()
+
+        result = self.dispatch.invoke(mapping, arguments=arguments)
+        if not mapping.template:
+            return result
+
+        from ..sampler import load as load_sampler
+
+        render_template = load_sampler("web/app").render_template
+        if (
+            isinstance(result, tuple)
+            and len(result) == 3
+            and isinstance(result[0], int)
+        ):
+            status, headers, payload = result
+        else:
+            status, headers, payload = 200, {}, result
+
+        rendered = render_template(
+            self.gateway,
+            self.app,
+            mapping,
+            str(method).upper(),
+            payload,
+        )
+        headers = dict(headers or {})
+        headers.setdefault("content-type", "text/html; charset=utf-8")
+        return status, headers, rendered
 
 
 def compose(runtime, application):
@@ -235,10 +238,7 @@ def compose(runtime, application):
     with runtime.request_scope():
         app = runtime(recipe)
 
-    from ..sampler import load as load_sampler
-
-    web_app = load_sampler("web/app")
-    return web_app.InMemoryAdapter(runtime, app)
+    return BrowserRecipeAdapter(runtime, app)
 
 
 def index(request: BrowserRequest):
