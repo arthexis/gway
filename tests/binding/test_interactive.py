@@ -1,4 +1,4 @@
-from gway import Gateway
+from gway import Gateway, Sigil
 from gway.binding import bind_arguments
 
 
@@ -144,3 +144,104 @@ def test_verbose_interactive_uses_bound_gway_operation_documentation(
     assert bound.args == ("alpha",)
     assert "Resource identity to inspect." in output
     assert "Type: str" in output
+
+
+def test_interactive_sigil_default_uses_resolved_primary_without_prompt(
+    monkeypatch,
+    capsys,
+):
+    runtime = Gateway(interactive=True)
+    runtime.context["site"] = "MTY"
+    prompts = []
+    monkeypatch.setattr("builtins.input", lambda prompt: prompts.append(prompt) or "other")
+
+    def deploy(site=Sigil("site|fallback")):
+        return site
+
+    bound = bind_arguments(deploy, [], runtime=runtime, interactive=True)
+
+    assert bound.args == ()
+    assert bound.kwargs == {}
+    assert prompts == []
+
+
+def test_interactive_unresolved_sigil_prompts_with_literal_fallback(
+    monkeypatch,
+    capsys,
+):
+    runtime = Gateway(interactive=True)
+    runtime.context.clear()
+    runtime.results.clear()
+    prompts = []
+    monkeypatch.setattr("builtins.input", lambda prompt: prompts.append(prompt) or "")
+
+    def deploy(site=Sigil("site|MTY")):
+        return site
+
+    bound = bind_arguments(deploy, [], runtime=runtime, interactive=True)
+
+    assert bound.args == ("MTY",)
+    assert prompts == ["site [MTY]: "]
+
+
+def test_interactive_unresolved_sigil_allows_overriding_fallback(
+    monkeypatch,
+    capsys,
+):
+    runtime = Gateway(interactive=True)
+    runtime.context.clear()
+    runtime.results.clear()
+    prompts = []
+    monkeypatch.setattr(
+        "builtins.input",
+        lambda prompt: prompts.append(prompt) or "SALTILLO",
+    )
+
+    def deploy(site=Sigil("site|MTY")):
+        return site
+
+    bound = bind_arguments(deploy, [], runtime=runtime, interactive=True)
+
+    assert bound.args == ("SALTILLO",)
+    assert prompts == ["site [MTY]: "]
+
+
+def test_interactive_unresolved_sigil_without_fallback_prompts_normally(
+    monkeypatch,
+    capsys,
+):
+    runtime = Gateway(interactive=True)
+    runtime.context.clear()
+    runtime.results.clear()
+    prompts = []
+    monkeypatch.setattr(
+        "builtins.input",
+        lambda prompt: prompts.append(prompt) or "MTY",
+    )
+
+    def deploy(site=Sigil("site")):
+        return site
+
+    bound = bind_arguments(deploy, [], runtime=runtime, interactive=True)
+
+    assert bound.args == ("MTY",)
+    assert prompts == ["site: "]
+
+
+def test_interactive_parameter_semantic_value_precedes_sigil_default_prompt(
+    monkeypatch,
+    capsys,
+):
+    runtime = Gateway(interactive=True)
+    runtime.context["site"] = "context-site"
+    prompts = []
+    monkeypatch.setattr("builtins.input", lambda prompt: prompts.append(prompt) or "")
+
+    def deploy(site=Sigil("missing|fallback")):
+        return site
+
+    bound = bind_arguments(deploy, [], runtime=runtime, interactive=True)
+
+    assert bound.args == ()
+    assert bound.kwargs == {}
+    assert prompts == []
