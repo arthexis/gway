@@ -309,14 +309,17 @@ class Gateway(Resolver):
     def _evaluate_expression(self, expression):
         """Delegate unresolved sigil expressions to the normal Gway dispatcher."""
         if not self._sigil_dispatch_enabled:
-            raise KeyError(expression)
+            from .sigil.resolution import UnresolvedSigilError
+
+            raise UnresolvedSigilError(expression)
 
         from .dispatch import OperationLookupError, dispatch
+        from .sigil.resolution import UnresolvedSigilError
 
         try:
             return dispatch(self, expression)
         except OperationLookupError as exc:
-            raise KeyError(expression) from exc
+            raise UnresolvedSigilError(expression) from exc
 
     def _default_context(self, **values):
         """Publish explicit semantic values into the containing context."""
