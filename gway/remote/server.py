@@ -9,6 +9,7 @@ from ..dispatch import resolve_operation
 from ..mutation import MutationError
 from ..security.authentication import BearerAuthenticationError
 from ..security.oauth import OAuthAuthenticationError, OAuthRegistry
+from ..security.scopes import ScopeRegistry
 from ..security.tokens import TokenRegistry
 from ..tokens import tokenize
 from .account import RemoteAccountApplication
@@ -79,6 +80,12 @@ class RemoteApplication(RemoteDiscoveryApplication):
         super().__init__(metadata)
         self.runtime = runtime
         self._query_lock = threading.RLock()
+        if runtime is not None:
+            ScopeRegistry(runtime.security_path).replace(
+                "full-access",
+                operations={"__all__"},
+                environment={"__all__"},
+            )
         if account is None and runtime is not None:
             oauth = OAuthRegistry(runtime.security_path)
             def resolve_runtime_operation(name):
@@ -98,7 +105,7 @@ class RemoteApplication(RemoteDiscoveryApplication):
             metadata,
             self.account,
             client_resolver=client_resolver,
-            default_scope="chatgpt-logs",
+            default_scope="full-access",
         )
         self.oauth_by_resource = {metadata.resource: self.oauth}
         authorization_document = metadata.authorization_server_document()
@@ -557,7 +564,7 @@ def build_server(
     metadata = RemoteOAuthMetadata.from_origin(
         public_origin,
         resource_path=resource_path,
-        scopes_supported=("chatgpt-logs",),
+        scopes_supported=("full-access",),
         allow_insecure_loopback=allow_insecure_loopback,
     )
     application = RemoteApplication(

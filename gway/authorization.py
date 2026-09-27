@@ -26,7 +26,7 @@ class Authorization:
         )
 
     def authorize_operation(self, name):
-        if name not in self.operations:
+        if "__all__" not in self.operations and name not in self.operations:
             raise AuthorizationError(f"Operation is not authorized: {name}")
 
     def authorize_environment(self, name):

@@ -63,8 +63,13 @@ def test_scope_grants_are_unique_and_stably_loaded(tmp_path):
 def test_scope_dunder_all_round_trips(tmp_path):
     registry = ScopeRegistry(tmp_path / "security.sqlite")
 
-    scope = registry.replace("admin", environment={"__all__"})
+    scope = registry.replace(
+        "admin",
+        operations={"__all__"},
+        environment={"__all__"},
+    )
 
+    assert scope.operations == frozenset({"__all__"})
     assert scope.environment == frozenset({"__all__"})
 
 

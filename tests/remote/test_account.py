@@ -163,6 +163,27 @@ def test_revoke_connection_invalidates_existing_grant(tmp_path):
 
 
 
+def test_permission_summary_renders_full_access_as_future_proof(tmp_path):
+    scopes, _, _, account = _account(tmp_path)
+    scopes.replace(
+        "full-access",
+        operations={"__all__"},
+        environment={"__all__"},
+    )
+
+    summary = account.permission_summary({"full-access"})
+    item = summary["scopes"][0]
+    effective = summary["effective"]
+
+    assert item["all_operations"] is True
+    assert item["operation_count"] is None
+    assert item["mutation_capable"] is True
+    assert effective["all_operations"] is True
+    assert effective["operation_count"] is None
+    assert effective["mutation_capable"] is True
+    assert "All current and future operations" in account._scope_details(item)
+
+
 def test_permission_summary_limits_preview_and_counts_remaining_operations(tmp_path):
     scopes, _, _, account = _account(tmp_path)
     operations = {f"op.{index}" for index in range(8)}

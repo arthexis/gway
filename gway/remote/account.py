@@ -107,13 +107,15 @@ class RemoteAccountApplication:
             scope = self.oauth.scopes.require(name)
             scope_operations = tuple(sorted(scope.operations))
             scope_environment = tuple(sorted(scope.environment))
-            mutation_capable = any(
+            all_operations = "__all__" in scope.operations
+            mutation_capable = all_operations or any(
                 self._operation_mutates(operation) for operation in scope_operations
             )
             scope_summaries.append(
                 {
                     "name": name,
-                    "operation_count": len(scope_operations),
+                    "operation_count": None if all_operations else len(scope_operations),
+                    "all_operations": all_operations,
                     "operations": scope_operations,
                     "operations_preview": scope_operations[:OPERATION_PREVIEW_LIMIT],
                     "remaining_operations": max(
@@ -129,15 +131,19 @@ class RemoteAccountApplication:
 
         effective_operations = tuple(sorted(operations))
         effective_environment = tuple(sorted(environment))
+        effective_all_operations = "__all__" in operations
         return {
             "scopes": tuple(scope_summaries),
             "effective": {
                 "scope_count": len(names),
-                "operation_count": len(effective_operations),
+                "operation_count": (
+                    None if effective_all_operations else len(effective_operations)
+                ),
+                "all_operations": effective_all_operations,
                 "operations": effective_operations,
                 "environment_count": len(effective_environment),
                 "environment": effective_environment,
-                "mutation_capable": any(
+                "mutation_capable": effective_all_operations or any(
                     self._operation_mutates(operation)
                     for operation in effective_operations
                 ),
@@ -182,6 +188,16 @@ class RemoteAccountApplication:
 
     @staticmethod
     def _scope_details(item):
+        if item["all_operations"]:
+            return (
+                "<li>"
+                f"<strong>{escape(item['name'])}</strong>"
+                "<div>All current and future operations; includes state changes; "
+                f"{item['environment_count']} environment names</div>"
+                "<div><code>__all__</code></div>"
+                "</li>"
+            )
+
         preview = ", ".join(escape(operation) for operation in item["operations_preview"])
         preview_html = (
             f"<div><code>{preview}</code>"
@@ -238,7 +254,11 @@ class RemoteAccountApplication:
             "connection. This page is informational; scopes are not edited here.</p>"
             f"<h2>Bearer scopes</h2><ul>{scope_items}</ul>"
             "<h2>Effective access</h2>"
-            f"<p>{effective['operation_count']} unique operations; "
+            + (
+                "<p>All current and future operations; "
+                if effective["all_operations"]
+                else f"<p>{effective['operation_count']} unique operations; "
+            )
             + (
                 "includes state changes"
                 if effective["mutation_capable"]
