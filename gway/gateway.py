@@ -313,13 +313,16 @@ class Gateway(Resolver):
 
             raise UnresolvedSigilError(expression)
 
-        from .dispatch import OperationLookupError, dispatch
+        from .dispatch import OperationLookupError, dispatch, resolve_operation
         from .sigil.resolution import UnresolvedSigilError
+        from .tokens import tokenize
 
+        tokens = tokenize(expression)
         try:
-            return dispatch(self, expression)
+            resolve_operation(self, tokens)
         except OperationLookupError as exc:
             raise UnresolvedSigilError(expression) from exc
+        return dispatch(self, tokens)
 
     def _default_context(self, **values):
         """Publish explicit semantic values into the containing context."""
