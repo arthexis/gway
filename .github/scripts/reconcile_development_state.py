@@ -15,6 +15,10 @@ PARENT_RE = re.compile(
     r"(?im)\b(?:parent|closes|fixes|resolves)\s*:?[ \t]*(?:https://github\.com/[^/]+/[^/]+/issues/)?#?(\d+)\b"
 )
 MARKER_PREFIX = "<!-- development-state:pr="
+REVIEW_RESOLVED_RE = re.compile(
+    r"<!--\s*development-state:resolved-by=([0-9a-fA-F]{40})\s*-->"
+)
+TRUSTED_REVIEW_ASSOCIATIONS = {"OWNER", "MEMBER", "COLLABORATOR"}
 
 
 @dataclass(frozen=True)
@@ -40,6 +44,13 @@ def parse_parent_issue(body: str | None) -> int | None:
         return None
     match = PARENT_RE.search(body)
     return int(match.group(1)) if match else None
+
+
+def parse_review_resolution(body: str | None) -> str | None:
+    if not body:
+        return None
+    match = REVIEW_RESOLVED_RE.search(body)
+    return match.group(1).lower() if match else None
 
 
 class GitHub:
@@ -118,6 +129,64 @@ class GitHub:
     def open_pulls(self) -> list[dict[str, Any]]:
         return self.api_json(f"repos/{self.repository}/pulls?state=open&per_page=100")
 
+    def review_state(self, number: int) -> dict[str, Any]:
+        owner, name = self.repository.split("/", 1)
+        query = """
+        query($owner:String!, $name:String!, $number:Int!) {
+          repository(owner:$owner, name:$name) {
+            pullRequest(number:$number) {
+              commits(last:100) {
+                nodes { commit { oid } }
+              }
+              reviewThreads(first:100) {
+                nodes {
+                  id
+                  isResolved
+                  comments(first:100) {
+                    nodes {
+                      body
+                      authorAssociation
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+        """
+        payload = json.loads(
+            self._run(
+                "api",
+                "graphql",
+                "-f",
+                f"query={query}",
+                "-F",
+                f"owner={owner}",
+                "-F",
+                f"name={name}",
+                "-F",
+                f"number={number}",
+            )
+        )
+        return payload["data"]["repository"]["pullRequest"]
+
+    def resolve_review_thread(self, thread_id: str) -> None:
+        mutation = """
+        mutation($thread:ID!) {
+          resolveReviewThread(input:{threadId:$thread}) {
+            thread { id isResolved }
+          }
+        }
+        """
+        self._run(
+            "api",
+            "graphql",
+            "-f",
+            f"query={mutation}",
+            "-F",
+            f"thread={thread_id}",
+        )
+
     def comments(self, issue_number: int) -> list[dict[str, Any]]:
         return self.api_json(
             f"repos/{self.repository}/issues/{issue_number}/comments?per_page=100"
@@ -166,6 +235,31 @@ def ensure_reciprocal_link(gh: GitHub, parent: int, pr: int) -> None:
     gh.add_comment(parent, f"{marker}\nImplementation PR: #{pr}\n")
 
 
+def reconcile_review_threads(gh: GitHub, number: int) -> None:
+    state = gh.review_state(number)
+    commit_shas = {
+        node["commit"]["oid"].lower()
+        for node in state["commits"]["nodes"]
+    }
+    for thread in state["reviewThreads"]["nodes"]:
+        if thread["isResolved"]:
+            continue
+        for comment in thread["comments"]["nodes"]:
+            sha = parse_review_resolution(comment.get("body"))
+            association = str(comment.get("authorAssociation") or "").upper()
+            if (
+                sha is not None
+                and sha in commit_shas
+                and association in TRUSTED_REVIEW_ASSOCIATIONS
+            ):
+                print(
+                    f"PR #{number}: resolving review thread {thread['id']} "
+                    f"from trusted marker for {sha}."
+                )
+                gh.resolve_review_thread(thread["id"])
+                break
+
+
 def reconcile_pr(gh: GitHub, number: int) -> int | None:
     pr = gh.pull(number)
     labels = labels_from(pr)
@@ -180,6 +274,9 @@ def reconcile_pr(gh: GitHub, number: int) -> int | None:
     if state.on_hold:
         print(f"PR #{number}: on-hold; leaving development state unchanged.")
         return parse_parent_issue(pr.get("body"))
+
+    if state.open:
+        reconcile_review_threads(gh, number)
 
     if state.approved and state.open and state.draft:
         print(f"PR #{number}: approved; marking Ready for Review.")
@@ -232,6 +329,16 @@ def run_self_tests() -> None:
     assert parse_parent_issue("Parent: #1084") == 1084
     assert parse_parent_issue("Closes #12") == 12
     assert parse_parent_issue("no parent") is None
+    sample_sha = "a" * 40
+    assert (
+        parse_review_resolution(
+            f"Fixed here. <!-- development-state:resolved-by={sample_sha} -->"
+        )
+        == sample_sha
+    )
+    assert parse_review_resolution("fixed, but no marker") is None
+    assert "OWNER" in TRUSTED_REVIEW_ASSOCIATIONS
+    assert "NONE" not in TRUSTED_REVIEW_ASSOCIATIONS
     print("development-state reconciler self-tests passed")
 
 
