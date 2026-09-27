@@ -185,7 +185,8 @@ jobs:
             exit 0
           fi
 
-          echo "Approval, freshness, and CI gates are satisfied for PR #$PR_NUMBER."\n          echo "The in-progress label does not block an Approved PR."
+          echo "Approval, freshness, and CI gates are satisfied for PR #$PR_NUMBER."
+          echo "The in-progress label does not block an Approved PR."
           echo "Review-thread resolution is enforced by the protected branch ruleset."
           echo "head_sha=$head_sha" >> "$GITHUB_OUTPUT"
           echo "ready=true" >> "$GITHUB_OUTPUT"
