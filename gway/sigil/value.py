@@ -52,6 +52,9 @@ class Sigil:
         return self.original[1:-1]
 
     def resolve(self, context):
+        resolver = getattr(context, "resolve", None)
+        if callable(resolver):
+            return resolver(self.original)
         return resolve_text(self.original, _lookup_for(context))
 
     def list_sigils(self):
