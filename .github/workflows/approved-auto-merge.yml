@@ -95,9 +95,7 @@ jobs:
           pr_json="$(gh api "repos/$REPOSITORY/pulls/$PR_NUMBER")"
           head_sha="$(jq -r '.head.sha' <<< "$pr_json")"
           changed_at="$(
-            gh api --paginate "repos/$REPOSITORY/issues/$PR_NUMBER/timeline" \
-              --jq ".[] | select(.event == \"committed\" and .sha == \"$head_sha\") | .created_at" \
-              | tail -n 1
+            gh api "repos/$REPOSITORY/commits/$head_sha" --jq '.commit.committer.date // empty'
           )"
 
           if [[ -z "$changed_at" || "$changed_at" == "null" ]]; then
