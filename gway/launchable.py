@@ -241,6 +241,19 @@ def resolve_launchable(runtime, target):
             metadata={"recipe": str(explicit_recipe.resolve())},
         )
 
+    executable = Path(first).expanduser()
+    if (
+        executable.is_absolute()
+        and executable.is_file()
+        and executable.stat().st_mode & 0o111
+    ):
+        command = tuple(token_value(item) for item in tokens)
+        return Launchable.executable(
+            command,
+            root=Path.cwd(),
+            metadata={"executable": str(executable.resolve())},
+        )
+
     try:
         resolution = resolve_operation(runtime, tokens)
     except LookupError:
@@ -250,19 +263,6 @@ def resolve_launchable(runtime, target):
                 bare_recipe,
                 arguments=tuple(token_value(item) for item in tokens[1:]),
                 metadata={"recipe": str(bare_recipe.resolve())},
-            )
-
-        executable = Path(first).expanduser()
-        if (
-            executable.is_absolute()
-            and executable.is_file()
-            and executable.stat().st_mode & 0o111
-        ):
-            command = tuple(token_value(item) for item in tokens)
-            return Launchable.executable(
-                command,
-                root=Path.cwd(),
-                metadata={"executable": str(executable.resolve())},
             )
         raise
 
