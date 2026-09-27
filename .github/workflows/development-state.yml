@@ -4,7 +4,9 @@ on:
   issues:
     types: [opened, reopened, closed, labeled, unlabeled]
   pull_request_target:
-    types: [opened, reopened, closed, labeled, unlabeled, converted_to_draft, ready_for_review]
+    types: [opened, reopened, closed, labeled, unlabeled, converted_to_draft, ready_for_review, synchronize]
+  pull_request_review_comment:
+    types: [created, edited]
   workflow_dispatch:
     inputs:
       issue_number:
@@ -52,7 +54,7 @@ jobs:
             issues)
               python "$script" --issue "$ISSUE_NUMBER"
               ;;
-            pull_request_target)
+            pull_request_target|pull_request_review_comment)
               python "$script" --pr "$EVENT_PR_NUMBER"
               ;;
             workflow_dispatch)
