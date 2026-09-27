@@ -216,3 +216,29 @@ def test_declared_topic_order_is_preferred_when_both_orders_exist(gateway):
 
     with gateway.topics("dns", "godaddy"):
         assert gateway.resolve("[api_key]") == "declared"
+
+
+def test_nested_sigil_can_supply_normal_gway_operation_argument(gateway):
+    gateway.context["site"] = "MTY"
+    gateway.wrap("decorate", lambda value: f"<{value}>")
+
+    assert gateway.resolve("[decorate [site]]") == "<MTY>"
+
+
+def test_operation_result_containing_sigil_is_recursively_resolved(gateway):
+    gateway.context["site"] = "MTY"
+    gateway.wrap("indirect", lambda: "[site]")
+
+    assert gateway.resolve("[indirect]") == "MTY"
+
+
+def test_inline_fallback_is_literal_even_when_named_value_exists(gateway):
+    gateway.context["fallback"] = "resolved-value"
+
+    assert gateway.resolve("[missing|fallback]") == "fallback"
+
+
+def test_inline_fallback_does_not_resolve_nested_sigil_text(gateway):
+    gateway.context["site"] = "MTY"
+
+    assert gateway.resolve("[missing|[site]]") == "[site]"
