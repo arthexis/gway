@@ -1021,7 +1021,7 @@ def _install_log_acceptance_fixture(tmp_path, monkeypatch):
     monkeypatch.setattr(log_operations, "read_journal", fake_read_journal)
 
 
-def _assert_chatgpt_log_results(tools, results, expected_tools=("gway", "query")):
+def _assert_chatgpt_log_results(tools, results, expected_tools=("query",)):
     assert tools == list(expected_tools)
     for index, command in enumerate(("sources", "read", "tail", "search")):
         assert "value" in results[index], (command, results[index])
@@ -1209,7 +1209,7 @@ def test_mcp_http_logs_read_scope_uses_canonical_gway_operations(
     with gateway.authorized(operations={"mcplogs.server"}):
         tools, results = gateway("mcplogs server")
 
-    assert tools == ["gway", "query"]
+    assert tools == ["query"]
 
     for index, command in enumerate(("sources", "read", "tail", "search")):
         assert "value" in results[index], (command, results[index])
