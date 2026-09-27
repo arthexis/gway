@@ -1482,33 +1482,41 @@ def test_mcp_query_does_not_change_generic_gway_mutation_behavior(
 
 
 
-def test_mcp_semantic_local_operation_delegates_to_maintained_recipe(
-    gateway, monkeypatch
-):
+
+def test_mcp_semantic_surface_is_not_eagerly_registered(gateway):
+    assert gateway.ops.resolve("mcp.local") is None
+    assert gateway.ops.resolve("mcp.serve") is None
+
+
+def test_mcp_sampler_fallback_registers_semantic_surface(gateway, monkeypatch):
+    import gway.sampler as sampler
+
     calls = []
 
-    def run(recipe_name, **context):
-        calls.append((recipe_name, context))
+    def fake_run(runtime, recipe_name, **context):
+        calls.append((runtime, recipe_name, context))
         return {"recipe": recipe_name, "context": context}
 
-    monkeypatch.setattr(gateway, "_run_sampler_recipe", run)
+    monkeypatch.setattr(sampler, "run", fake_run)
 
     result = gateway("mcp local")
 
     assert result == {"recipe": "mcp/local", "context": {}}
-    assert calls == [("mcp/local", {})]
+    assert calls == [(gateway, "mcp/local", {})]
+    assert gateway.ops.resolve("mcp.local") is not None
+    assert gateway.ops.resolve("mcp.serve") is not None
 
 
-def test_mcp_semantic_serve_operation_hides_transport_detail(
-    gateway, monkeypatch
-):
+def test_mcp_semantic_serve_hides_transport_detail(gateway, monkeypatch):
+    import gway.sampler as sampler
+
     calls = []
 
-    def run(recipe_name, **context):
-        calls.append((recipe_name, context))
+    def fake_run(runtime, recipe_name, **context):
+        calls.append((runtime, recipe_name, context))
         return context
 
-    monkeypatch.setattr(gateway, "_run_sampler_recipe", run)
+    monkeypatch.setattr(sampler, "run", fake_run)
 
     result = gateway(
         "mcp serve --host 127.0.0.2 --port 8123 "
@@ -1521,30 +1529,27 @@ def test_mcp_semantic_serve_operation_hides_transport_detail(
         "route": "/agent-mcp",
         "endpoint": "http://127.0.0.2:8123/agent-mcp",
     }
-    assert calls == [("mcp/serve", result)]
+    assert calls == [(gateway, "mcp/serve", result)]
 
 
 def test_mcp_server_is_compatibility_alias_for_serve(gateway, monkeypatch):
-    calls = []
+    import gway.sampler as sampler
 
-    def run(recipe_name, **context):
-        calls.append((recipe_name, context))
-        return recipe_name
-
-    monkeypatch.setattr(gateway, "_run_sampler_recipe", run)
+    monkeypatch.setattr(
+        sampler,
+        "run",
+        lambda runtime, recipe_name, **context: recipe_name,
+    )
 
     assert gateway("mcp server") == "mcp/serve"
-    assert calls[0][0] == "mcp/serve"
 
 
-def test_mcp_help_advertises_local_agent_launcher(gateway):
-    namespace = gateway("help mcp")
+def test_mcp_help_discovers_sampler_namespace(gateway):
     local = gateway("help mcp local")
 
-    assert "local" in namespace
-    assert "serve" in namespace
     assert "command: gway" in local
     assert 'args: ["mcp", "local"]' in local
+    assert gateway.ops.resolve("mcp.local") is not None
 
 
 def test_mcp_semantic_recipes_are_maintained_sampler_entries():
