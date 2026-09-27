@@ -120,6 +120,10 @@ def resolve_single(raw, lookup, evaluate=None, *, depth=0):
     if value is not _MISSING:
         return value
 
+    if fallback_spec is not None:
+        fallback_source = _unquote(fallback_spec) if fallback_quoted else fallback_spec
+        return fallback_source
+
     if evaluate is not None and not quoted:
         try:
             value = evaluate(evaluation_expression)
@@ -129,10 +133,6 @@ def resolve_single(raw, lookup, evaluate=None, *, depth=0):
             if isinstance(value, str) and "[" in value and "]" in value:
                 return resolve_text(value, lookup, evaluate=evaluate, depth=depth + 1)
             return value
-
-    if fallback_spec is not None:
-        fallback_source = _unquote(fallback_spec) if fallback_quoted else fallback_spec
-        return fallback_source
 
     raise UnresolvedSigilError(f"Unresolved sigil: [{original_raw}]")
 
