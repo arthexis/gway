@@ -91,7 +91,7 @@ def _module_entry_operation(source, root):
     if callable(direct):
         callable_ = direct
         kind = "python"
-        metadata = {"object": callable_, "entrypoint": "callable"}
+        metadata = {"object": callable_, "entrypoint": "callable", "owner": source, "attribute": "__main__"}
     else:
         callable_ = _package_main_callable(source)
         if callable_ is None:
@@ -146,7 +146,7 @@ def _receiver_subject(source, root, name, child):
 
 def _child_operation(source, root, name, child):
     """Describe one callable child and any semantic instance receiver."""
-    metadata = {"object": child}
+    metadata = {"object": child, "owner": source, "attribute": name}
     receiver = _receiver_subject(source, root, name, child)
     if receiver is not None:
         metadata["receiver"] = receiver
@@ -191,7 +191,7 @@ def _operation(source, root, name, child):
         kind="python",
         op=op,
         sub=sub,
-        metadata={"object": child},
+        metadata={"object": child, "owner": source, "attribute": name},
     )
 
 
@@ -343,7 +343,7 @@ def ingest_python(gateway, source, *, path=None, **kwargs):
         if name == "__main__" and callable(child):
             child_path = root
             child_record = _remember_child(gateway, child, child_path)
-            metadata = {"object": child, "entrypoint": "callable"}
+            metadata = {"object": child, "entrypoint": "callable", "owner": source, "attribute": "__main__"}
             receiver = _receiver_subject(source, root, name, child)
             if receiver is not None:
                 metadata["receiver"] = receiver
