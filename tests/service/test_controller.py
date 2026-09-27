@@ -568,7 +568,7 @@ def test_service_definition_supports_native_executable(
     assert definition.root == project.resolve()
 
 
-def test_service_definition_rejects_relative_native_executable(
+def test_relative_executable_keeps_existing_path_resolution(
     tmp_path,
     monkeypatch,
 ):
@@ -578,8 +578,9 @@ def test_service_definition_rejects_relative_native_executable(
     monkeypatch.chdir(tmp_path)
     gateway = Gateway()
 
-    with pytest.raises(LookupError):
-        gateway._service_controller._definition(
-            ("./worker",),
-            name="native-worker",
-        )
+    definition = gateway._service_controller._definition(
+        ("./worker",),
+        name="native-worker",
+    )
+
+    assert definition.launchable.kind != "executable"
