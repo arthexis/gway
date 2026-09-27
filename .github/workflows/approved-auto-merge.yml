@@ -19,6 +19,7 @@ on:
 permissions:
   contents: write
   pull-requests: write
+  issues: read
   checks: read
   actions: write
 
@@ -93,7 +94,17 @@ jobs:
 
           pr_json="$(gh api "repos/$REPOSITORY/pulls/$PR_NUMBER")"
           head_sha="$(jq -r '.head.sha' <<< "$pr_json")"
-          changed_at="$(jq -r '.updated_at' <<< "$pr_json")"
+          changed_at="$(
+            gh api --paginate "repos/$REPOSITORY/issues/$PR_NUMBER/timeline" \
+              --jq ".[] | select(.event == \"committed\" and .sha == \"$head_sha\") | .created_at" \
+              | tail -n 1
+          )"
+
+          if [[ -z "$changed_at" || "$changed_at" == "null" ]]; then
+            echo "Unable to determine the server-observed time for head $head_sha; refusing to arm auto-merge."
+            echo "stable=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
 
           # A synchronize event can leave an older auto-merge request armed.
           # Disarm it before waiting so the PR cannot merge during this settling window.
@@ -104,19 +115,24 @@ jobs:
           age=$((now_epoch - changed_epoch))
           settle_seconds=300
 
+          # Timeline timestamps are server-observed, but clamp tiny negative clock skew
+          # so the workflow can never sleep longer than the intended five minutes.
+          if (( age < 0 )); then
+            age=0
+          fi
+
           if (( age < settle_seconds )); then
             remaining=$((settle_seconds - age))
-            echo "PR #$PR_NUMBER was updated ${age}s ago; waiting ${remaining}s before merge evaluation."
+            echo "PR #$PR_NUMBER head revision was observed ${age}s ago; waiting ${remaining}s before merge evaluation."
             sleep "$remaining"
           else
-            echo "PR #$PR_NUMBER has had no GitHub PR updates for at least five minutes."
+            echo "PR #$PR_NUMBER head revision has been stable for at least five minutes."
           fi
 
           current_json="$(gh api "repos/$REPOSITORY/pulls/$PR_NUMBER")"
           current_sha="$(jq -r '.head.sha' <<< "$current_json")"
-          current_updated_at="$(jq -r '.updated_at' <<< "$current_json")"
-          if [[ "$current_sha" != "$head_sha" || "$current_updated_at" != "$changed_at" ]]; then
-            echo "PR changed while settling; this run will not arm auto-merge."
+          if [[ "$current_sha" != "$head_sha" ]]; then
+            echo "PR head changed while settling; this run will not arm auto-merge."
             echo "stable=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
@@ -184,6 +200,7 @@ jobs:
           fi
 
           echo "Approval, freshness, and CI gates are satisfied for PR #$PR_NUMBER."
+          echo "The in-progress label does not block an Approved PR."
           echo "Review-thread resolution is enforced by the protected branch ruleset."
           echo "head_sha=$head_sha" >> "$GITHUB_OUTPUT"
           echo "ready=true" >> "$GITHUB_OUTPUT"
