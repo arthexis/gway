@@ -2,10 +2,32 @@
 
 from collections.abc import Mapping
 from dataclasses import dataclass
+from html import escape
 from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
 from ..sampler import resolve as resolve_sampler
+
+
+def _result_page(title, message, *, action_href="/", action_label="Back"):
+    """Render a compact browser result using the shared Remote presentation."""
+    return (
+        "<!doctype html><html lang=\"en\"><head>"
+        "<meta charset=\"utf-8\">"
+        "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">"
+        "<meta name=\"color-scheme\" content=\"dark\">"
+        f"<title>{escape(str(title))}</title>"
+        "<link rel=\"stylesheet\" href=\"/remote.css\">"
+        "</head><body><main>"
+        "<div class=\"brand\">G-Way Remote</div>"
+        "<section class=\"card\">"
+        f"<h1>{escape(str(title))}</h1>"
+        f"<p class=\"muted\">{escape(str(message))}</p>"
+        "<nav>"
+        f"<a class=\"button secondary\" href=\"{escape(str(action_href), quote=True)}\">"
+        f"{escape(str(action_label))}</a>"
+        "</nav></section></main></body></html>"
+    )
 
 
 @dataclass(frozen=True)
@@ -65,7 +87,20 @@ class BrowserController:
         except PermissionError as error:
             message = str(error)
             status = 403 if "CSRF" in message else 401
-            return status, {}, {"error": "connection_failed"}
+            detail = (
+                "This connection form is no longer valid. Start the connection again."
+                if "CSRF" in message
+                else "The bearer token could not be verified. Check the token and try again."
+            )
+            return application._html(
+                status,
+                _result_page(
+                    "Connection failed",
+                    detail,
+                    action_href="/connect",
+                    action_label="Try again",
+                ),
+            )
         destination = (
             "/consent"
             if session.pending_client_id and session.pending_scopes
@@ -103,7 +138,15 @@ class BrowserController:
             try:
                 context = application.account.consent_context(session)
             except (PermissionError, ValueError, LookupError):
-                return 400, {}, {"error": "invalid_consent_request"}
+                return application._html(
+                    400,
+                    _result_page(
+                        "Unable to authorize",
+                        "This authorization request is invalid, expired, or no longer available.",
+                        action_href="/connect",
+                        action_label="Reconnect",
+                    ),
+                )
             response_headers = application._with_cookie({}, session, created)
             return 200, response_headers, context
 
@@ -115,9 +158,25 @@ class BrowserController:
                 decision=form.get("decision"),
             )
         except PermissionError:
-            return 403, {}, {"error": "consent_failed"}
+            return application._html(
+                403,
+                _result_page(
+                    "Authorization failed",
+                    "The authorization request could not be approved with the current connection.",
+                    action_href="/connect",
+                    action_label="Reconnect",
+                ),
+            )
         except (ValueError, LookupError):
-            return 400, {}, {"error": "invalid_consent_request"}
+            return application._html(
+                400,
+                _result_page(
+                    "Unable to authorize",
+                    "This authorization request is invalid, expired, or no longer available.",
+                    action_href="/connect",
+                    action_label="Reconnect",
+                ),
+            )
 
         if session.pending_redirect_uri:
             from .oauth import OAuthProtocolError
@@ -142,13 +201,21 @@ class BrowserController:
         if grant is None:
             return application._html(
                 200,
-                "<!doctype html><html><body><h1>Access denied</h1></body></html>",
+                _result_page(
+                    "Access denied",
+                    "No remote access was granted.",
+                    action_href="/settings/connections",
+                    action_label="Manage connections",
+                ),
             )
         return application._html(
             200,
-            "<!doctype html><html><body><h1>Access approved</h1>"
-            f"<p>Grant {grant.id} is ready for authorization-code issuance.</p>"
-            "</body></html>",
+            _result_page(
+                "Access approved",
+                "The remote client is authorized. You can return to the client now.",
+                action_href="/settings/connections",
+                action_label="Manage connections",
+            ),
         )
 
     def connections(self, request: BrowserRequest):
@@ -165,11 +232,27 @@ class BrowserController:
 
         form = application._form(request.body)
         if form.get("action") != "revoke":
-            return 400, {}, {"error": "invalid_connection_action"}
+            return application._html(
+                400,
+                _result_page(
+                    "Invalid connection action",
+                    "That connection action is not supported.",
+                    action_href="/settings/connections",
+                    action_label="Back to connections",
+                ),
+            )
         try:
             application.account.revoke_connection(session, csrf=form.get("csrf"))
         except PermissionError:
-            return 403, {}, {"error": "connection_action_failed"}
+            return application._html(
+                403,
+                _result_page(
+                    "Connection update failed",
+                    "The connection could not be changed. Refresh the page and try again.",
+                    action_href="/settings/connections",
+                    action_label="Back to connections",
+                ),
+            )
         return application._redirect("/settings/connections")
 
 

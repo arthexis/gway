@@ -356,7 +356,7 @@ def test_deployed_mcp_service_accepts_real_http_bearer_client(tmp_path, monkeypa
             auth=BearerAuth(issued.bearer),
         ) as client:
             tools = [tool.name for tool in await client.list_tools()]
-            result = await client.call_tool("gway", {"command": "log sources"})
+            result = await client.call_tool("query", {"command": "log sources"})
             return tools, json.loads(result.content[0].text)
 
     try:
@@ -383,7 +383,7 @@ def test_deployed_mcp_service_accepts_real_http_bearer_client(tmp_path, monkeypa
                 time.sleep(0.05)
 
         tools, sources = asyncio.run(call())
-        assert tools == ["gway", "query"]
+        assert tools == ["query"]
         assert any(item["identity"] == "gway" for item in sources)
     finally:
         stopped = gateway._service_controller.stop(

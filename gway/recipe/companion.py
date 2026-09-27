@@ -8,11 +8,13 @@ import struct
 import subprocess
 import threading
 
+from ..dispatch import resolve_operation
 from ..environment import process_environment
 from ..ingestion.base import IngestedOperation, register_operation
 from ..security.authentication import authenticate_bearer
 from ..security.oauth import OAuthRegistry
 from ..security.tokens import TokenRegistry
+from ..tokens import tokenize
 
 
 _HEADER = struct.Struct("!Q")
@@ -494,6 +496,24 @@ def _describe_parent_operation(runtime, name):
     }
 
 
+def _authority_mutation_capable(runtime, operations):
+    """Return whether an authority can reach any mutation-capable operation."""
+    operations = frozenset(operations)
+    if "__all__" in operations:
+        return True
+    for name in operations:
+        try:
+            operation, remaining, _ = resolve_operation(runtime, tokenize(name))
+        except LookupError:
+            # Unknown authority must remain conservative at the projection layer.
+            return True
+        if remaining:
+            return True
+        if bool(getattr(operation, "mutates", True)):
+            return True
+    return False
+
+
 def _service_parent_request(runtime, stream, request):
     request_id = request.get("id")
     method = request.get("method")
@@ -541,6 +561,10 @@ def _service_parent_request(runtime, stream, request):
                     "principal": identity.principal,
                     "client_id": identity.client_id,
                     "scopes": sorted(identity.scopes),
+                    "mutation_capable": _authority_mutation_capable(
+                        runtime,
+                        identity.authority.operations,
+                    ),
                 }
             else:
                 with runtime.authorized(
