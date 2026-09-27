@@ -875,8 +875,12 @@ class Controller:
                     raise RuntimeError(
                         f"unable to disable legacy enrollment service {_LEGACY_ENROLLMENT_UNIT}"
                     )
-            except Exception:
-                _restore_legacy_enrollment()
+            except Exception as primary:
+                if not _restore_legacy_enrollment():
+                    raise RuntimeError(
+                        f"replacement enrollment service failed and legacy service "
+                        f"{_LEGACY_ENROLLMENT_UNIT} could not be restored"
+                    ) from primary
                 raise
         try:
             return server.serve_forever()
