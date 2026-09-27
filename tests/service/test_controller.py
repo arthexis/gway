@@ -535,3 +535,52 @@ def test_service_status_remains_rejected_under_non_mutating_execution(
         gateway.execute("service status worker", mutate=False)
 
     assert backend.calls == []
+
+
+def test_service_definition_supports_native_executable(
+    tmp_path,
+    monkeypatch,
+):
+    project = tmp_path / "product"
+    project.mkdir()
+    (project / "pyproject.toml").write_text(
+        '[project]\nname = "product"\nversion = "1.0.0"\n',
+        encoding="utf-8",
+    )
+    executable = tmp_path / "worker"
+    executable.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    executable.chmod(0o755)
+    monkeypatch.chdir(project)
+    gateway = Gateway()
+
+    definition = gateway._service_controller._definition(
+        (str(executable), "--flag", "value"),
+        name="native-worker",
+    )
+
+    assert definition.identity == ("product", "native-worker")
+    assert definition.launchable.kind == "executable"
+    assert definition.launchable.command == (
+        str(executable),
+        "--flag",
+        "value",
+    )
+    assert definition.root == project.resolve()
+
+
+def test_relative_executable_keeps_existing_path_resolution(
+    tmp_path,
+    monkeypatch,
+):
+    executable = tmp_path / "worker"
+    executable.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    executable.chmod(0o755)
+    monkeypatch.chdir(tmp_path)
+    gateway = Gateway()
+
+    definition = gateway._service_controller._definition(
+        ("./worker",),
+        name="native-worker",
+    )
+
+    assert definition.launchable.kind != "executable"
