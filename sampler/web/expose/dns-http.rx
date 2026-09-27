@@ -11,9 +11,7 @@ dns ready [domain]
 --type A
 --value [public_ipv4]
 --backend [dns_backend|godaddy]
---zone [zone]
-
-repeat
+--zone [zone] - repeat
 --until true
 --interval 10
 --max 60
