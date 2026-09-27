@@ -259,7 +259,7 @@ def test_enrollment_service_takes_over_known_legacy_listener(tmp_path, monkeypat
     module = sampler.load("wire")
     controller = module.register(gateway, which=lambda name: "/usr/bin/wg")
     config = tmp_path / "gway.conf"
-    config.write_text("[Interface]\\nPrivateKey = EXISTING\\n", encoding="utf-8")
+    config.write_text("[Interface]\nPrivateKey = EXISTING\n", encoding="utf-8")
     fake_server = type(
         "FakeServer",
         (),
@@ -298,7 +298,7 @@ def test_enrollment_service_restores_legacy_listener_when_takeover_fails(tmp_pat
     module = sampler.load("wire")
     controller = module.register(gateway, which=lambda name: "/usr/bin/wg")
     config = tmp_path / "gway.conf"
-    config.write_text("[Interface]\\nPrivateKey = EXISTING\\n", encoding="utf-8")
+    config.write_text("[Interface]\nPrivateKey = EXISTING\n", encoding="utf-8")
     commands = []
 
     monkeypatch.setattr(module, "_public_key_from_private", lambda *args: "S" * 43 + "=")
