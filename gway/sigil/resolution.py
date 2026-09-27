@@ -113,12 +113,7 @@ def resolve_single(raw, lookup, evaluate=None, *, depth=0):
                     value = _MISSING
 
     if value is not _MISSING:
-        if (
-            isinstance(value, str)
-            and "[" in value
-            and "]" in value
-            and depth < MAX_RESOLUTION_DEPTH
-        ):
+        if isinstance(value, str) and "[" in value and "]" in value:
             return resolve_text(value, lookup, evaluate=evaluate, depth=depth + 1)
         return value
 
@@ -128,12 +123,7 @@ def resolve_single(raw, lookup, evaluate=None, *, depth=0):
         except KeyError:
             value = _MISSING
         if value is not _MISSING:
-            if (
-                isinstance(value, str)
-                and "[" in value
-                and "]" in value
-                and depth < MAX_RESOLUTION_DEPTH
-            ):
+            if isinstance(value, str) and "[" in value and "]" in value:
                 return resolve_text(value, lookup, evaluate=evaluate, depth=depth + 1)
             return value
 
