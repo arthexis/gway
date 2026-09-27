@@ -131,13 +131,7 @@ class Gateway(Resolver):
         self.ops.register_alias("clear-env", self.clear_env)
         self.require = self.wrap("require", self._require)
         self.help = self.wrap("help", self._help)
-        self.resolve_target = self.wrap(
-            "resolve.target",
-            self._resolve_target,
-            op="resolve",
-            sub="target",
-        )
-        self.ops.register_alias("resolve", self.resolve_target)
+        self.resolve_target = self._resolve_target
         self.guide = self.wrap("guide", self._guide)
         self.node = self.wrap("node", self._node)
         self.wrap("ingest", self.ingest)
