@@ -617,6 +617,30 @@ def resolve_operation(runtime, tokens, *, pipeline=_MISSING):
     raise OperationLookupError(query, _operation_suggestions(runtime, values))
 
 
+def resolve_target(runtime, tokens):
+    """Describe the command target selected by normal dispatch without executing it."""
+    tokens = list(tokens)
+    if not tokens:
+        raise ValueError("Resolve target cannot be empty")
+
+    recipe = resolve_recipe_stage(runtime, tokens, pipeline=_MISSING)
+    if recipe is not None:
+        path, arguments, remaining = recipe
+        return {
+            "kind": "recipe",
+            "target": str(path),
+            "arguments": tuple(token_value(token) for token in arguments),
+            "remaining": tuple(token_value(token) for token in remaining),
+        }
+
+    resolution = resolve_operation(runtime, tokens)
+    return {
+        "kind": "operation",
+        "target": resolution.candidate,
+        "arguments": tuple(token_value(token) for token in resolution.arguments),
+    }
+
+
 def _enforce_cardinality(resolution, result):
     """Apply semantic ONE/MANY intent to collection-producing operations."""
     if resolution.cardinality is None:
