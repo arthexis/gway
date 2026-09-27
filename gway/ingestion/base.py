@@ -113,12 +113,21 @@ def register_operation(gateway, operation):
     if not isinstance(operation, IngestedOperation):
         raise TypeError("operation must be an IngestedOperation")
 
+    owner = operation.metadata.get("owner")
+    attribute = operation.metadata.get("attribute")
+
+    resolver = None
+    if owner is not None and isinstance(attribute, str) and attribute:
+        def resolver(owner=owner, attribute=attribute):
+            return getattr(owner, attribute)
+
     wrapped = gateway.wrap(
         operation.name,
         operation.callable,
         op=operation.op,
         sub=operation.sub,
         receiver=operation.metadata.get("receiver"),
+        resolver=resolver,
     )
     wrapped.__gway_source__ = operation.source
     wrapped.__gway_source_kind__ = operation.kind
