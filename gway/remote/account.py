@@ -306,7 +306,12 @@ class RemoteAccountApplication:
             + context["resource_html"]
             + f'<p>{context["authority_notice"]}</p>'
             + f'<h2>Bearer scopes</h2><ul>{context["scope_items_html"]}</ul>'
-            + f'<h2>Environment</h2><ul>{context["environment_items_html"]}</ul>',
+            + f'<h2>Environment</h2><ul>{context["environment_items_html"]}</ul>'
+            + '<form method="post" action="/consent">'
+            + f'<input type="hidden" name="csrf" value="{context["csrf"]}">'
+            + '<button name="decision" value="approve" type="submit">Authorize</button>'
+            + '<button name="decision" value="deny" type="submit">Deny</button>'
+            + "</form>",
         )
 
     def decide_consent(self, session, *, csrf, decision):
