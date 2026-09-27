@@ -335,3 +335,49 @@ def test_project_binding_can_replace_provider_defaults(tmp_path, monkeypatch):
 
     with runtime.topics("dns", "godaddy"):
         assert runtime.resolve("[api_key]") == "project-key"
+
+
+def test_gateway_bootstrap_executes_src_layout_project_script_out_of_process(
+    tmp_path,
+    monkeypatch,
+):
+    package = tmp_path / "src" / "acme"
+    package.mkdir(parents=True)
+    (package / "__init__.py").write_text("", encoding="utf-8")
+    (package / "cli.py").write_text(
+        "def main(value='ok'):\n"
+        "    return f'src:{value}'\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "pyproject.toml").write_text(
+        '[project]\nname = "acme"\n[project.scripts]\n'
+        'probe = "acme.cli:main"\n',
+        encoding="utf-8",
+    )
+    monkeypatch.chdir(tmp_path)
+
+    from gway.gateway import Gateway
+
+    runtime = Gateway()
+
+    assert runtime("probe value") == "src:value"
+
+
+def test_gateway_bootstrap_awaits_async_project_script(tmp_path, monkeypatch):
+    (tmp_path / "demo.py").write_text(
+        "async def main(value='ok'):\n"
+        "    return f'async:{value}'\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "pyproject.toml").write_text(
+        '[project]\nname = "demo"\n[project.scripts]\n'
+        'probe = "demo:main"\n',
+        encoding="utf-8",
+    )
+    monkeypatch.chdir(tmp_path)
+
+    from gway.gateway import Gateway
+
+    runtime = Gateway()
+
+    assert runtime("probe value") == "async:value"
