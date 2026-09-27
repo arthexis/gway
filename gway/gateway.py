@@ -337,7 +337,7 @@ class Gateway(Resolver):
             raise UnresolvedSigilError(expression) from exc
         return dispatch(self, tokens)
 
-    def _resolve_target(self, value, *command, mutate=False):
+    def _resolve_target(self, value: str, *command, mutate=False):
         """Resolve a semantic value or command target without executing the command.
 
         A single argument uses ordinary sigil/value resolution. Two or more
@@ -346,7 +346,7 @@ class Gateway(Resolver):
         """
         del mutate
         if not command:
-            return self.resolve(value)
+            return value
 
         from .dispatch import resolve_target
 
