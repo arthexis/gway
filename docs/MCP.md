@@ -106,14 +106,25 @@ authorizes every canonical operation resolved now or added later, so a bearer bo
 to `full-access` does not need its scope rewritten when G-Way gains new operations.
 Named operation scopes remain exact allowlists and do not gain future operations.
 
-Declarative TOML may be applied transactionally:
+Declarative TOML may be applied transactionally. By default, application is
+additive: declared operation and environment grants are added to each named scope,
+and existing grants are preserved.
 
 ```text
 gway security scope apply scopes.toml
 ```
 
-Applying the same document repeatedly is convergent. Scopes listed in the document
-are replaced atomically; unrelated existing scopes are left unchanged.
+Use absolute application when the document is authoritative for each scope it names,
+including when revoking grants that are absent from the document:
+
+```text
+gway security scope apply scopes.toml --absolute
+gway security scope replace-from scopes.toml
+```
+
+Both modes are transactional across the document. Absolute application replaces the
+complete definition of each scope listed in the document; unrelated existing scope
+names are left unchanged.
 
 Export the current registry with:
 
