@@ -204,6 +204,36 @@ class ScopeRegistry:
         return self.require(name)
 
 
+    def add_many(self, definitions):
+        """Atomically add grants from multiple named scope definitions."""
+        normalized = {}
+        for name, definition in dict(definitions).items():
+            name = self._name(name)
+            definition = dict(definition)
+            unknown = set(definition) - {"operations", "environment"}
+            if unknown:
+                raise ValueError(
+                    f"Unknown scope fields for {name}: {', '.join(sorted(unknown))}"
+                )
+            normalized[name] = (
+                self._grants(definition.get("operations", ()), label="operation"),
+                self._grants(definition.get("environment", ()), label="environment"),
+            )
+
+        results = []
+        for name in sorted(normalized):
+            operations, environment = normalized[name]
+            if self.get(name) is None:
+                self.replace(name, operations=operations, environment=environment)
+            else:
+                self.update_grants(
+                    name,
+                    add_operations=operations,
+                    add_environment=environment,
+                )
+            results.append(self.require(name))
+        return results
+
     def replace_many(self, definitions):
         """Atomically converge multiple named scope definitions."""
         normalized = {}
