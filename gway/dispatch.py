@@ -848,6 +848,16 @@ def dispatch_pipeline(
     current = pipeline
     first = True
 
+    # resolve is observational introspection: its target is opaque command
+    # data, including options and dash tokens that would otherwise become an
+    # outer pipeline and execute a suffix operation.
+    if remaining and is_unquoted(remaining[0]) and token_value(remaining[0]) == "resolve":
+        descriptor = resolve_target(runtime, remaining[1:])
+        results.append(descriptor)
+        if statement is not None:
+            statement.append(Stage(tokens=tuple(remaining), operation="resolve", arguments=tuple(remaining[1:]), incoming=None if current is _MISSING else current, outgoing=descriptor, statement=statement.index, subject="target", published=False, has_incoming=current is not _MISSING))
+        return results, descriptor
+
     while remaining:
         stage_args = args if first else ()
         stage_source = list(remaining)
