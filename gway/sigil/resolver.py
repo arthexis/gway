@@ -65,7 +65,7 @@ class Resolver:
             text = expression.original if isinstance(expression, Sigil) else expression
 
             try:
-                return resolve_text(text, self._lookup)
+                return resolve_text(text, self._lookup, evaluate=self._evaluate_expression)
             except KeyError as exc:
                 last_exc = exc
 
@@ -74,6 +74,10 @@ class Resolver:
         if last_exc is not None:
             raise last_exc
         raise KeyError("No arguments provided to resolve() or all were None")
+
+    def _evaluate_expression(self, expression):
+        """Resolve non-data expressions through a richer owning runtime, if any."""
+        raise KeyError(expression)
 
     def find_value(
         self,
