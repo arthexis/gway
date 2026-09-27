@@ -25,6 +25,7 @@ wire server activate [interface|gway]
 commit wire-watchtower
 
 service install
+--backend systemd
 --name wire-enroll
 --system
 -- ./enroll.rx

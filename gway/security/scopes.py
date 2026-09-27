@@ -204,6 +204,48 @@ class ScopeRegistry:
         return self.require(name)
 
 
+    def add_many(self, definitions):
+        """Atomically add grants from multiple named scope definitions."""
+        normalized = {}
+        for name, definition in dict(definitions).items():
+            name = self._name(name)
+            definition = dict(definition)
+            unknown = set(definition) - {"operations", "environment"}
+            if unknown:
+                raise ValueError(
+                    f"Unknown scope fields for {name}: {', '.join(sorted(unknown))}"
+                )
+            normalized[name] = (
+                self._grants(definition.get("operations", ()), label="operation"),
+                self._grants(definition.get("environment", ()), label="environment"),
+            )
+
+        with self.state.connect() as connection:
+            for name in sorted(normalized):
+                operations, environment = normalized[name]
+                connection.execute(
+                    "INSERT INTO scopes (name) VALUES (?) "
+                    "ON CONFLICT(name) DO NOTHING",
+                    (name,),
+                )
+                row = connection.execute(
+                    "SELECT id FROM scopes WHERE name = ?",
+                    (name,),
+                ).fetchone()
+                scope_id = row["id"]
+                connection.executemany(
+                    "INSERT OR IGNORE INTO scope_operations "
+                    "(scope_id, operation) VALUES (?, ?)",
+                    ((scope_id, operation) for operation in sorted(operations)),
+                )
+                connection.executemany(
+                    "INSERT OR IGNORE INTO scope_environment "
+                    "(scope_id, variable_name) VALUES (?, ?)",
+                    ((scope_id, variable) for variable in sorted(environment)),
+                )
+
+        return [self.require(name) for name in sorted(normalized)]
+
     def replace_many(self, definitions):
         """Atomically converge multiple named scope definitions."""
         normalized = {}

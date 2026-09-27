@@ -81,15 +81,26 @@ class Controller:
         """Return the union of named security scopes."""
         return self.registry.resolve(names, readonly=not mutate)
 
-    def apply(self, path):
-        """Apply scope definitions from a TOML file transactionally."""
+    @staticmethod
+    def _definitions(path):
         path = Path(path).expanduser()
         with path.open("rb") as stream:
             document = _toml.load(stream)
         scopes = document.get("scopes")
         if not isinstance(scopes, dict):
             raise ValueError("scope TOML requires a [scopes] table")
-        return self.registry.replace_many(scopes)
+        return scopes
+
+    def apply(self, path, *, absolute=False):
+        """Apply scope definitions, adding grants unless absolute is requested."""
+        scopes = self._definitions(path)
+        if absolute:
+            return self.registry.replace_many(scopes)
+        return self.registry.add_many(scopes)
+
+    def replace_from(self, path):
+        """Replace complete definitions for scopes declared in a TOML file."""
+        return self.registry.replace_many(self._definitions(path))
 
     @staticmethod
     def _toml_string(value):
