@@ -93,6 +93,19 @@ operations = ["log.sources", "log.read", "log.tail", "log.search"]
 environment = []
 ```
 
+G-Way Remote also maintains an explicit full-access scope:
+
+```toml
+[scopes.full-access]
+operations = ["__all__"]
+environment = ["__all__"]
+```
+
+`__all__` in the operation grant set is a deliberate wildcard capability. It
+authorizes every canonical operation resolved now or added later, so a bearer bound
+to `full-access` does not need its scope rewritten when G-Way gains new operations.
+Named operation scopes remain exact allowlists and do not gain future operations.
+
 Declarative TOML may be applied transactionally:
 
 ```text
@@ -246,9 +259,11 @@ operations, and raw user-facing bearer material must not be logged or persisted.
 OAuth access tokens are accepted only for the protected resource recorded on their
 grant.
 
-No wildcard operation scope is created implicitly, no new operation becomes
-authorized merely because it is later ingested, and no environment permission is
-granted unless explicitly present in a scope.
+Wildcard authority is never implicit. Only a scope containing the explicit
+`__all__` operation grant authorizes current and future operations. Exact named
+operation scopes remain fixed allowlists, and no environment permission is granted
+unless explicitly present in a scope. G-Way Remote converges the canonical
+`full-access` scope with `__all__` for both operations and environment.
 
 ## Deferred features
 
