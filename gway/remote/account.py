@@ -60,14 +60,18 @@ class RemoteAccountApplication:
         session.approved_grant_id = None
         return session
 
+    def connect_context(self, session):
+        return {"csrf": escape(session.csrf, quote=True)}
+
     def connect_page(self, session):
+        context = self.connect_context(session)
         return _page(
             "Connect G-Way",
             "<h1>Connect G-Way</h1>"
             "<p>Enter a G-Way bearer once to link this browser session. "
             "The bearer is verified and discarded.</p>"
             '<form method="post" action="/connect">'
-            f'<input type="hidden" name="csrf" value="{escape(session.csrf)}">'
+            f'<input type="hidden" name="csrf" value="{context["csrf"]}">'
             '<label>Bearer <input type="password" name="bearer" '
             'autocomplete="off" required></label>'
             '<button type="submit">Connect</button></form>',
@@ -247,54 +251,69 @@ class RemoteAccountApplication:
             + "</li>"
         )
 
-    def consent_page(self, session):
+    def consent_context(self, session):
         details = self.consent_details(session)
         summary = details["permission_summary"]
         scope_items = "".join(self._scope_details(item) for item in summary["scopes"])
-        if summary["effective"]["all_environment"]:
+        effective = summary["effective"]
+
+        if effective["all_environment"]:
             environment_items = "<li>All current and future environment variables</li>"
+            environment_summary = "All current and future environment variables"
         else:
             environment_items = "".join(
                 f"<li>{escape(name)}</li>" for name in sorted(details["environment"])
             )
             if not environment_items:
                 environment_items = "<li>None</li>"
-        effective = summary["effective"]
-        resource = (
-            f"<p>Resource: <code>{escape(details['resource'])}</code></p>"
+            environment_summary = f"{effective['environment_count']} named variables"
+
+        operations_summary = (
+            "All current and future operations"
+            if effective["all_operations"]
+            else f"{effective['operation_count']} unique operations"
+        )
+        mutation_summary = (
+            "includes state-changing operations"
+            if effective["mutation_capable"]
+            else "read-only"
+        )
+        authority_notice = (
+            f"{operations_summary}; {mutation_summary}; {environment_summary}."
+        )
+        resource_html = (
+            f'<p class="meta muted">Resource: <code>{escape(details["resource"])}</code></p>'
             if details["resource"]
             else ""
         )
+        return {
+            "csrf": escape(session.csrf, quote=True),
+            "client_id": escape(details["client_id"]),
+            "resource_html": resource_html,
+            "authority_notice": escape(authority_notice),
+            "operations_summary": escape(f"{operations_summary}; {mutation_summary}"),
+            "environment_summary": escape(environment_summary),
+            "scope_items_html": scope_items,
+            "environment_items_html": environment_items,
+        }
+
+    def consent_page(self, session):
+        context = self.consent_context(session)
         return _page(
             "Remote access consent",
             "<h1>Authorize remote access</h1>"
-            f"<p>Client: <code>{escape(details['client_id'])}</code></p>"
-            + resource
-            + "<p>The linked bearer defines the maximum G-Way authority for this "
-            "connection. This page is informational; scopes are not edited here.</p>"
-            f"<h2>Bearer scopes</h2><ul>{scope_items}</ul>"
-            "<h2>Effective access</h2>"
-            + (
-                "<p>All current and future operations; "
-                if effective["all_operations"]
-                else f"<p>{effective['operation_count']} unique operations; "
-            )
-            + (
-                "includes state changes"
-                if effective["mutation_capable"]
-                else "read-only"
-            )
-            + (
-                "; all current and future environment variables</p>"
-                if effective["all_environment"]
-                else f"; {effective['environment_count']} environment names</p>"
-            )
-            + f"<h2>Environment</h2><ul>{environment_items}</ul>"
-            '<form method="post" action="/consent">'
-            f'<input type="hidden" name="csrf" value="{escape(session.csrf)}">'
-            '<button name="decision" value="approve" type="submit">Authorize</button>'
-            '<button name="decision" value="deny" type="submit">Deny</button>'
-            "</form>",
+            f'<p>Client: <code>{context["client_id"]}</code></p>'
+            + context["resource_html"]
+            + f'<p>{context["authority_notice"]}</p>'
+            + '<p>This consent screen is informational: authorization grants the '
+            'full effective scope set associated with the linked bearer.</p>'
+            + f'<h2>Bearer scopes</h2><ul>{context["scope_items_html"]}</ul>'
+            + f'<h2>Environment</h2><ul>{context["environment_items_html"]}</ul>'
+            + '<form method="post" action="/consent">'
+            + f'<input type="hidden" name="csrf" value="{context["csrf"]}">'
+            + '<button name="decision" value="approve" type="submit">Authorize</button>'
+            + '<button name="decision" value="deny" type="submit">Deny</button>'
+            + "</form>",
         )
 
     def decide_consent(self, session, *, csrf, decision):
@@ -323,31 +342,42 @@ class RemoteAccountApplication:
         self.sessions.rotate_csrf(session)
         return grant
 
-    def connections_page(self, session):
+    def connections_context(self, session):
+        linked = False
         if not session.link_name:
-            state = "<p>No G-Way connection is linked.</p>"
+            connection_html = '<p class="muted">No G-Way connection is linked.</p>'
         else:
             link = self.oauth.get_link(session.link_name)
             if link is None:
-                state = "<p>No G-Way connection is linked.</p>"
+                connection_html = '<p class="muted">No G-Way connection is linked.</p>'
             else:
+                linked = True
                 status = "revoked" if link.revoked_at else "connected"
-                state = (
-                    f"<p>Connection: <strong>{escape(status)}</strong></p>"
-                    f"<p>Token identity: <code>{escape(link.token_name)}</code></p>"
+                connection_html = (
+                    f'<div class="summary"><strong>Connection</strong>{escape(status)}</div>'
+                    f'<div class="summary"><strong>Token identity</strong>'
+                    f'<code>{escape(link.token_name)}</code></div>'
                 )
+        revoke_form_html = ""
+        if linked:
+            revoke_form_html = (
+                '<form method="post" action="/settings/connections">'
+                f'<input type="hidden" name="csrf" value="{escape(session.csrf, quote=True)}">'
+                '<div class="actions"><button class="danger" name="action" '
+                'value="revoke" type="submit">Revoke connection</button></div></form>'
+            )
+        return {
+            "connection_html": connection_html,
+            "revoke_form_html": revoke_form_html,
+        }
+
+    def connections_page(self, session):
+        context = self.connections_context(session)
         return _page(
             "Remote connections",
             "<h1>Remote connections</h1>"
-            + state
-            + (
-                '<form method="post" action="/settings/connections">'
-                f'<input type="hidden" name="csrf" value="{escape(session.csrf)}">'
-                '<button name="action" value="revoke" type="submit">Revoke</button>'
-                "</form>"
-                if session.link_name
-                else ""
-            ),
+            + context["connection_html"]
+            + context["revoke_form_html"],
         )
 
     def revoke_connection(self, session, *, csrf):

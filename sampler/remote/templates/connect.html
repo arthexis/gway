@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>Connect G-Way</title>
+  <link rel="stylesheet" href="/remote.css">
+</head>
+<body>
+<main>
+  <div class="brand">G-Way Remote</div>
+  <section class="card">
+    <h1>Connect G-Way</h1>
+    <p class="muted">Enter a G-Way bearer once to link this browser session. The bearer is verified and discarded; it is not stored by the browser connection.</p>
+    <form method="post" action="/connect">
+      <input type="hidden" name="csrf" value="[csrf]">
+      <label for="bearer">Bearer token</label>
+      <input id="bearer" type="password" name="bearer" autocomplete="off" autocapitalize="none" spellcheck="false" inputmode="text" required autofocus>
+      <div class="actions">
+        <button class="primary" type="submit">Connect securely</button>
+      </div>
+    </form>
+    <p class="small muted">Treat this token like a password. Only paste a bearer you created for this G-Way server.</p>
+  </section>
+</main>
+</body>
+</html>
