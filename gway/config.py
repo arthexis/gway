@@ -351,15 +351,17 @@ def _main_alias(runtime, project, name):
 
 
 def _script_callable(root, command, target):
-    """Return a project script callable without importing project dependencies."""
-    from .project import resolve_target
+    """Return a project script callable isolated in the project's interpreter."""
+    from .project import invoke_target
 
     def invoke(*args, **kwargs):
-        callable_ = resolve_target(root, target)
-        return callable_(*args, **kwargs)
+        return invoke_target(root, target, *args, **kwargs)
 
     invoke.__name__ = command
-    invoke.__doc__ = f"Lazily invoke project script {command!r} -> {target!r}."
+    invoke.__doc__ = (
+        f"Invoke project script {command!r} -> {target!r} "
+        "inside the project-owned Python runtime."
+    )
     return invoke
 
 
@@ -390,6 +392,18 @@ def load_project_scripts(runtime, root, project):
     return wrapped
 
 
+def _package_main_callable(root, package):
+    """Return an isolated project package-main operation."""
+    from .project import invoke_package_main
+
+    def invoke(*arguments):
+        return invoke_package_main(root, package, *arguments)
+
+    invoke.__name__ = package.rsplit(".", 1)[-1]
+    invoke.__doc__ = f"Run {package!r} inside the project-owned Python runtime."
+    return invoke
+
+
 def load_project_main_packages(
     runtime,
     root,
@@ -397,48 +411,45 @@ def load_project_main_packages(
     *,
     qualified=False,
 ):
-    """Expose conventional package __main__ entrypoints from a project tree."""
-    from dataclasses import replace
-
-    from .project import import_project_module, main_packages
+    """Expose package __main__ entrypoints without importing project code."""
+    from .ingestion.base import IngestedOperation, register_operation
+    from .project import main_packages
 
     root = Path(root).expanduser().resolve()
     wrapped = []
     for name in main_packages(root):
-        module = import_project_module(root, name)
+        if name == __package__.split(".", 1)[0]:
+            import sys
+
+            current = sys.modules.get(name)
+            if current is not None:
+                wrapped.extend(runtime.ingest(current, path=(name,)))
+                continue
+
         package_path = tuple(name.split("."))
         path = (
             (project, *package_path)
             if qualified and project is not None
             else package_path
         )
-        wrapped.extend(runtime.ingest(module, path=path))
+        operation = IngestedOperation(
+            path,
+            _package_main_callable(root, name),
+            source=root,
+            kind="project-main",
+            aliases=(name,) if qualified and project is not None else (),
+            op=path[-1],
+            sub=None,
+            metadata={
+                "root": root,
+                "project": project,
+                "package": name,
+            },
+        )
+        registered = register_operation(runtime, operation)
+        wrapped.append(registered)
 
-        canonical = ".".join(path)
-        operation = runtime.ops.resolve(canonical)
-        if (
-            qualified
-            and project is not None
-            and operation is not None
-            and _main_alias(runtime, project, name)
-        ):
-            runtime.ops.register_alias(name, operation)
-
-        launchable = runtime.launchables.resolve(canonical)
-        if launchable is not None:
-            metadata = dict(launchable.metadata)
-            metadata["root"] = root
-            if project is not None:
-                metadata["project"] = project
-            runtime.launchables.register(
-                replace(
-                    launchable,
-                    root=root,
-                    metadata=metadata,
-                )
-            )
     return wrapped
-
 
 def expand_installed_project(runtime, installation, *, path=None):
     """Load one installed project's conventional execution surface once."""

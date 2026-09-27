@@ -103,14 +103,18 @@ def test_gateway_bootstrap_exposes_project_script_as_operation(tmp_path, monkeyp
     assert runtime("demo hello Ada") == "hello Ada"
 
 
-def test_gateway_bootstrap_does_not_import_project_script_dependencies(
+def test_gateway_bootstrap_executes_project_script_out_of_process(
     tmp_path,
     monkeypatch,
 ):
+    (tmp_path / "project_only_dependency.py").write_text(
+        'VALUE = "isolated"\n',
+        encoding="utf-8",
+    )
     (tmp_path / "demo.py").write_text(
-        "import dependency_not_installed_in_gway\n"
-        "def main():\n"
-        "    return 0\n",
+        "from project_only_dependency import VALUE\n"
+        "def main(name='world'):\n"
+        "    return f'{VALUE}:{name}'\n",
         encoding="utf-8",
     )
     (tmp_path / "pyproject.toml").write_text(
@@ -119,13 +123,20 @@ def test_gateway_bootstrap_does_not_import_project_script_dependencies(
     )
     monkeypatch.chdir(tmp_path)
 
+    import gway.project
     from gway.gateway import Gateway
 
     runtime = Gateway()
+    monkeypatch.setattr(
+        gway.project,
+        "resolve_target",
+        lambda *args, **kwargs: (_ for _ in ()).throw(
+            AssertionError("project code must not be imported by GWAY")
+        ),
+    )
 
     assert runtime.ops.resolve("hello") is not None
-    with pytest.raises(ModuleNotFoundError, match="dependency_not_installed_in_gway"):
-        runtime("hello")
+    assert runtime("hello Ada") == "isolated:Ada"
 
 
 def test_pyproject_semantic_variables_are_available_to_sigils(tmp_path, monkeypatch):
@@ -324,3 +335,49 @@ def test_project_binding_can_replace_provider_defaults(tmp_path, monkeypatch):
 
     with runtime.topics("dns", "godaddy"):
         assert runtime.resolve("[api_key]") == "project-key"
+
+
+def test_gateway_bootstrap_executes_src_layout_project_script_out_of_process(
+    tmp_path,
+    monkeypatch,
+):
+    package = tmp_path / "src" / "acme"
+    package.mkdir(parents=True)
+    (package / "__init__.py").write_text("", encoding="utf-8")
+    (package / "cli.py").write_text(
+        "def main(value='ok'):\n"
+        "    return f'src:{value}'\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "pyproject.toml").write_text(
+        '[project]\nname = "acme"\n[project.scripts]\n'
+        'probe = "acme.cli:main"\n',
+        encoding="utf-8",
+    )
+    monkeypatch.chdir(tmp_path)
+
+    from gway.gateway import Gateway
+
+    runtime = Gateway()
+
+    assert runtime("probe value") == "src:value"
+
+
+def test_gateway_bootstrap_awaits_async_project_script(tmp_path, monkeypatch):
+    (tmp_path / "demo.py").write_text(
+        "async def main(value='ok'):\n"
+        "    return f'async:{value}'\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "pyproject.toml").write_text(
+        '[project]\nname = "demo"\n[project.scripts]\n'
+        'probe = "demo:main"\n',
+        encoding="utf-8",
+    )
+    monkeypatch.chdir(tmp_path)
+
+    from gway.gateway import Gateway
+
+    runtime = Gateway()
+
+    assert runtime("probe value") == "async:value"

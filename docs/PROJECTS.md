@@ -54,6 +54,17 @@ owner.
 
 No GWAY-specific duplicate of `[project.scripts]` is needed.
 
+Project-owned Python is executed in the project's runtime, not imported into the
+GWAY interpreter. When a project has a conventional `.venv`, GWAY uses that
+interpreter for console-script and package-main execution; otherwise it falls
+back to the current Python interpreter while still isolating execution in a
+subprocess. This keeps application dependencies such as Django, Celery, or
+vendor SDKs owned by the project instead of becoming GWAY dependencies.
+
+Project discovery remains metadata/filesystem-only. Importing arbitrary project
+modules into the GWAY process is reserved for explicitly ingested GWAY
+extensions or companions.
+
 ## GWAY-specific metadata
 
 GWAY-specific configuration lives under `[tool.gway]` and is used only for
