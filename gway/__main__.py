@@ -19,4 +19,4 @@ Testing, QA Acceptance and mischief instigation by Dr. A. Lince (and His team.)
 """
 
 if __name__ == "__main__":
-    cli_main()
+    raise SystemExit(cli_main())
