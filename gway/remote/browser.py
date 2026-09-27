@@ -199,7 +199,7 @@ class BrowserRecipeAdapter:
 
         from ..sampler import load as load_sampler
 
-        render_template = load_sampler("web/app").render_template
+        render_template = load_sampler("web/app").server.render_template
         if (
             isinstance(result, tuple)
             and len(result) == 3
