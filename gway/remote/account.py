@@ -108,6 +108,7 @@ class RemoteAccountApplication:
             scope_operations = tuple(sorted(scope.operations))
             scope_environment = tuple(sorted(scope.environment))
             all_operations = "__all__" in scope.operations
+            all_environment = "__all__" in scope.environment
             mutation_capable = all_operations or any(
                 self._operation_mutates(operation) for operation in scope_operations
             )
@@ -121,7 +122,10 @@ class RemoteAccountApplication:
                     "remaining_operations": max(
                         0, len(scope_operations) - OPERATION_PREVIEW_LIMIT
                     ),
-                    "environment_count": len(scope_environment),
+                    "environment_count": (
+                        None if all_environment else len(scope_environment)
+                    ),
+                    "all_environment": all_environment,
                     "environment": scope_environment,
                     "mutation_capable": mutation_capable,
                 }
@@ -132,6 +136,7 @@ class RemoteAccountApplication:
         effective_operations = tuple(sorted(operations))
         effective_environment = tuple(sorted(environment))
         effective_all_operations = "__all__" in operations
+        effective_all_environment = "__all__" in environment
         return {
             "scopes": tuple(scope_summaries),
             "effective": {
@@ -141,7 +146,10 @@ class RemoteAccountApplication:
                 ),
                 "all_operations": effective_all_operations,
                 "operations": effective_operations,
-                "environment_count": len(effective_environment),
+                "environment_count": (
+                    None if effective_all_environment else len(effective_environment)
+                ),
+                "all_environment": effective_all_environment,
                 "environment": effective_environment,
                 "mutation_capable": effective_all_operations or any(
                     self._operation_mutates(operation)
@@ -193,7 +201,12 @@ class RemoteAccountApplication:
                 "<li>"
                 f"<strong>{escape(item['name'])}</strong>"
                 "<div>All current and future operations; includes state changes; "
-                f"{item['environment_count']} environment names</div>"
+                + (
+                    "all current and future environment variables"
+                    if item["all_environment"]
+                    else f"{item['environment_count']} environment names"
+                )
+                + "</div>"
                 "<div><code>__all__</code></div>"
                 "</li>"
             )
@@ -234,11 +247,14 @@ class RemoteAccountApplication:
         details = self.consent_details(session)
         summary = details["permission_summary"]
         scope_items = "".join(self._scope_details(item) for item in summary["scopes"])
-        environment_items = "".join(
-            f"<li>{escape(name)}</li>" for name in sorted(details["environment"])
-        )
-        if not environment_items:
-            environment_items = "<li>None</li>"
+        if summary["effective"]["all_environment"]:
+            environment_items = "<li>All current and future environment variables</li>"
+        else:
+            environment_items = "".join(
+                f"<li>{escape(name)}</li>" for name in sorted(details["environment"])
+            )
+            if not environment_items:
+                environment_items = "<li>None</li>"
         effective = summary["effective"]
         resource = (
             f"<p>Resource: <code>{escape(details['resource'])}</code></p>"
@@ -264,7 +280,11 @@ class RemoteAccountApplication:
                 if effective["mutation_capable"]
                 else "read-only"
             )
-            + f"; {effective['environment_count']} environment names</p>"
+            + (
+                "; all current and future environment variables</p>"
+                if effective["all_environment"]
+                else f"; {effective['environment_count']} environment names</p>"
+            )
             f"<h2>Environment</h2><ul>{environment_items}</ul>"
             '<form method="post" action="/consent">'
             f'<input type="hidden" name="csrf" value="{escape(session.csrf)}">'
