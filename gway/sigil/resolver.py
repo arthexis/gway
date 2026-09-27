@@ -5,7 +5,7 @@ import re
 
 from .paths import follow_path
 from ..environment import process_environment
-from .resolution import resolve_text
+from .resolution import UnresolvedSigilError, resolve_text
 from ..semantic import AmbiguousKeyError, mapping_value, semantic_candidates
 from .value import Sigil
 
@@ -65,8 +65,8 @@ class Resolver:
             text = expression.original if isinstance(expression, Sigil) else expression
 
             try:
-                return resolve_text(text, self._lookup)
-            except KeyError as exc:
+                return resolve_text(text, self._lookup, evaluate=self._evaluate_expression)
+            except UnresolvedSigilError as exc:
                 last_exc = exc
 
         if default is not _RAISE:
@@ -74,6 +74,10 @@ class Resolver:
         if last_exc is not None:
             raise last_exc
         raise KeyError("No arguments provided to resolve() or all were None")
+
+    def _evaluate_expression(self, expression):
+        """Resolve non-data expressions through a richer owning runtime, if any."""
+        raise UnresolvedSigilError(expression)
 
     def find_value(
         self,

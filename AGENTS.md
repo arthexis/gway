@@ -180,7 +180,10 @@ conversion. Direct Python calls to wrapped functions are not silently retyped;
 CLI/recipe conversion belongs to the binding boundary.
 
 With `--interactive`, missing required arguments are prompted for before
-semantic completion.
+semantic completion. A parameter whose default is a sigil is also prompted when
+the sigil's primary expression cannot resolve. If that sigil declares a literal
+fallback, the prompt displays it as the default and an empty response accepts it;
+interactive mode does not silently consume that fallback without prompting.
 
 
 ## Operation documentation
