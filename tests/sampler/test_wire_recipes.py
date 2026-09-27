@@ -33,10 +33,26 @@ def test_wire_watchtower_recipe_composes_service_and_https_exposure():
     assert any(command.startswith("service start") for command in flattened)
     assert any("../web/expose/expose" in command for command in flattened)
     assert any(command.startswith("wire server check") for command in flattened)
-    deploy = next(command for command in flattened if command.startswith("wire server deploy"))
-    commit = next(command for command in flattened if command.startswith("commit wire-watchtower"))
+    deploy_index = next(
+        index
+        for index, command in enumerate(flattened)
+        if command.startswith("wire server deploy")
+    )
+    activate_index = next(
+        index
+        for index, command in enumerate(flattened)
+        if command.startswith("wire server activate")
+    )
+    commit_index = next(
+        index
+        for index, command in enumerate(flattened)
+        if command.startswith("commit wire-watchtower")
+    )
+    deploy = flattened[deploy_index]
+    commit = flattened[commit_index]
     assert "--sudo" in deploy
     assert "--rollback wire-watchtower" in deploy
+    assert deploy_index < activate_index < commit_index
     assert commit == "commit wire-watchtower"
 
 
