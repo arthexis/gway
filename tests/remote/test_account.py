@@ -373,3 +373,19 @@ def test_scope_policy_changes_affect_effective_authority_without_broadening_gran
     assert authenticated.authority.operations == frozenset(
         {"log.read", "log.tail", "service.restart"}
     )
+
+
+def test_legacy_consent_page_keeps_decision_controls(tmp_path):
+    scopes, tokens, _, account = _account(tmp_path)
+    scopes.replace("full-access", operations={"__all__"}, environment={"__all__"})
+    issued = tokens.create("operator", scopes={"full-access"})
+    session = account.new_session()
+    account.connect(session, csrf=session.csrf, bearer=issued.bearer)
+    account.stage_consent(session, "client", {"full-access"})
+
+    page = account.consent_page(session)
+
+    assert 'action="/consent"' in page
+    assert f'value="{session.csrf}"' in page
+    assert 'name="decision" value="approve"' in page
+    assert 'name="decision" value="deny"' in page
