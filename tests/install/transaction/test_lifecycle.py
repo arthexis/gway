@@ -316,3 +316,68 @@ def test_gway_project_remains_extension(make_project, managed_paths):
 
     assert installed.kind == "extension"
     assert installed.install_path == managed_paths.projects / "gway"
+
+
+def test_forced_kind_migration_replaces_matching_existing_product_target(
+    make_project,
+    managed_paths,
+):
+    source = make_project("arthexis")
+    extension = transaction.install_local(
+        InstallRequest(str(source), kind="extension"),
+        paths=managed_paths,
+    )
+    product = managed_paths.products / "arthexis"
+    transaction._copy_project(source, product)
+    (product / "module.py").write_text("VALUE = 0\n", encoding="utf-8")
+
+    migrated = transaction.install_local(
+        InstallRequest(str(source), kind="product", force=True),
+        paths=managed_paths,
+    )
+
+    assert extension.kind == "extension"
+    assert migrated.kind == "product"
+    assert migrated.install_path == product
+    assert (product / "module.py").read_text(encoding="utf-8") == "VALUE = 1\n"
+    assert not (managed_paths.projects / "arthexis").exists()
+    assert InstallState(managed_paths.state).get("arthexis") == migrated
+
+
+def test_kind_migration_rejects_existing_product_target_without_force(
+    make_project,
+    managed_paths,
+):
+    source = make_project("arthexis")
+    transaction.install_local(
+        InstallRequest(str(source), kind="extension"),
+        paths=managed_paths,
+    )
+    product = managed_paths.products / "arthexis"
+    transaction._copy_project(source, product)
+
+    with pytest.raises(RuntimeError, match="New product destination already exists"):
+        transaction.install_local(
+            InstallRequest(str(source), kind="product"),
+            paths=managed_paths,
+        )
+
+
+def test_forced_kind_migration_rejects_different_project_target(
+    make_project,
+    managed_paths,
+):
+    source = make_project("arthexis")
+    transaction.install_local(
+        InstallRequest(str(source), kind="extension"),
+        paths=managed_paths,
+    )
+    product = managed_paths.products / "arthexis"
+    other = make_project("other")
+    transaction._copy_project(other, product)
+
+    with pytest.raises(RuntimeError, match="different project 'other'"):
+        transaction.install_local(
+            InstallRequest(str(source), kind="product", force=True),
+            paths=managed_paths,
+        )
