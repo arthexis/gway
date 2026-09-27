@@ -110,10 +110,23 @@ class Controller:
         if restart_sec is not None:
             policy["restart_sec"] = restart_sec
         if environment is not None:
-            policy["environment"] = (
+            requested_environment = (
                 (environment,)
                 if isinstance(environment, str)
                 else tuple(environment)
+            )
+            protected = {
+                assignment.partition("=")[0]
+                for assignment in definition.environment
+            }
+            requested_environment = tuple(
+                assignment
+                for assignment in requested_environment
+                if str(assignment).partition("=")[0] not in protected
+            )
+            policy["environment"] = (
+                *definition.environment,
+                *requested_environment,
             )
         return replace(definition, **policy) if policy else definition
 
