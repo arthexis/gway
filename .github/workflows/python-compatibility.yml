@@ -24,7 +24,7 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -e '.[dev,toml]'
       - name: Run regression suite
-        run: timeout -s ABRT 60s python -X faulthandler -m pytest -vv tests/recipe/test_mcp.py::test_mcp_http_concurrent_clients_keep_distinct_scopes tests/recipe/test_mcp.py::test_chatgpt_logs_oauth_query_acceptance_and_refresh
+        run: timeout -s ABRT 180s python -X faulthandler -m pytest -vv --durations=20
 
   forward-compatibility:
     name: Compatibility (Python 3.13)
