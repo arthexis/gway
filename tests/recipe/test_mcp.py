@@ -1021,8 +1021,8 @@ def _install_log_acceptance_fixture(tmp_path, monkeypatch):
     monkeypatch.setattr(log_operations, "read_journal", fake_read_journal)
 
 
-def _assert_chatgpt_log_results(tools, results):
-    assert tools == ["gway", "query"]
+def _assert_chatgpt_log_results(tools, results, expected_tools=("gway", "query")):
+    assert tools == list(expected_tools)
     for index, command in enumerate(("sources", "read", "tail", "search")):
         assert "value" in results[index], (command, results[index])
 
@@ -1089,7 +1089,11 @@ def test_chatgpt_logs_oauth_query_acceptance_and_refresh(
     with gateway.authorized(operations={"mcpchatgptlogs.server"}):
         refreshed_tools, refreshed_results = gateway("mcpchatgptlogs server")
 
-    _assert_chatgpt_log_results(refreshed_tools, refreshed_results)
+    _assert_chatgpt_log_results(
+        refreshed_tools,
+        refreshed_results,
+        expected_tools=("query",),
+    )
     assert "Operation is not authorized: clear" in refreshed_results[4]["error"]
     assert "GWAY_SECRET" not in repr((results, refreshed_results))
 
