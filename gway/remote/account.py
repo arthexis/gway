@@ -237,7 +237,11 @@ class RemoteAccountApplication:
             f"<strong>{escape(item['name'])}</strong>"
             f"<div>{item['operation_count']} operations; "
             + ("includes state changes" if item["mutation_capable"] else "read-only")
-            + f"; {item['environment_count']} environment names</div>"
+            + (
+                "; all current and future environment variables</div>"
+                if item["all_environment"]
+                else f"; {item['environment_count']} environment names</div>"
+            )
             + preview_html
             + expand_html
             + "</li>"
