@@ -220,19 +220,31 @@ class ScopeRegistry:
                 self._grants(definition.get("environment", ()), label="environment"),
             )
 
-        results = []
-        for name in sorted(normalized):
-            operations, environment = normalized[name]
-            if self.get(name) is None:
-                self.replace(name, operations=operations, environment=environment)
-            else:
-                self.update_grants(
-                    name,
-                    add_operations=operations,
-                    add_environment=environment,
+        with self.state.connect() as connection:
+            for name in sorted(normalized):
+                operations, environment = normalized[name]
+                connection.execute(
+                    "INSERT INTO scopes (name) VALUES (?) "
+                    "ON CONFLICT(name) DO NOTHING",
+                    (name,),
                 )
-            results.append(self.require(name))
-        return results
+                row = connection.execute(
+                    "SELECT id FROM scopes WHERE name = ?",
+                    (name,),
+                ).fetchone()
+                scope_id = row["id"]
+                connection.executemany(
+                    "INSERT OR IGNORE INTO scope_operations "
+                    "(scope_id, operation) VALUES (?, ?)",
+                    ((scope_id, operation) for operation in sorted(operations)),
+                )
+                connection.executemany(
+                    "INSERT OR IGNORE INTO scope_environment "
+                    "(scope_id, variable_name) VALUES (?, ?)",
+                    ((scope_id, variable) for variable in sorted(environment)),
+                )
+
+        return [self.require(name) for name in sorted(normalized)]
 
     def replace_many(self, definitions):
         """Atomically converge multiple named scope definitions."""
