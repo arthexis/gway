@@ -6,9 +6,15 @@ import re
 from ..semantic import AmbiguousKeyError
 from .paths import follow_path
 
+MAX_RESOLUTION_DEPTH = 16
+
 _PATTERN = re.compile(r"\[([^\[\]]+)\]")
 _LITERAL_PATTERN = re.compile(r"\[\[([^\[\]]*)\]\]")
 _MISSING = object()
+
+
+class UnresolvedSigilError(KeyError):
+    """Raised when sigil syntax cannot resolve semantic data or a Gway expression."""
 
 
 def is_single_sigil(text):
@@ -49,7 +55,7 @@ def _unquote(value):
     return value
 
 
-def resolve_single(raw, lookup):
+def resolve_single(raw, lookup, evaluate=None, *, depth=0):
     raw = raw.strip()
     original_raw = raw
     quoted = (raw.startswith('"') and raw.endswith('"')) or (
@@ -68,10 +74,11 @@ def resolve_single(raw, lookup):
                 fallback_spec.startswith('"') and fallback_spec.endswith('"')
             ) or (fallback_spec.startswith("'") and fallback_spec.endswith("'"))
 
+    evaluation_expression = raw
     key = _unquote(raw) if quoted else raw
 
     if not quoted and "[" in key and "]" in key:
-        nested = resolve_text(key, lookup)
+        nested = resolve_text(key, lookup, evaluate=evaluate, depth=depth + 1)
         if not isinstance(nested, str):
             return nested
         key = nested
@@ -98,7 +105,12 @@ def resolve_single(raw, lookup):
                         base,
                         parts[1:],
                         lookup=lookup,
-                        resolve_text=resolve_text,
+                        resolve_text=lambda text, inner_lookup: resolve_text(
+                            text,
+                            inner_lookup,
+                            evaluate=evaluate,
+                            depth=depth + 1,
+                        ),
                     )
                 except AmbiguousKeyError:
                     raise
@@ -108,19 +120,26 @@ def resolve_single(raw, lookup):
     if value is not _MISSING:
         return value
 
+    if evaluate is not None and not quoted:
+        try:
+            value = evaluate(evaluation_expression)
+        except UnresolvedSigilError:
+            value = _MISSING
+        if value is not _MISSING:
+            if isinstance(value, str) and "[" in value and "]" in value:
+                return resolve_text(value, lookup, evaluate=evaluate, depth=depth + 1)
+            return value
+
     if fallback_spec is not None:
         fallback_source = _unquote(fallback_spec) if fallback_quoted else fallback_spec
-        if not fallback_source:
-            return ""
-        try:
-            return resolve_text(fallback_source, lookup)
-        except KeyError:
-            return fallback_source
+        return fallback_source
 
-    raise KeyError(f"Unresolved sigil: [{original_raw}]")
+    raise UnresolvedSigilError(f"Unresolved sigil: [{original_raw}]")
 
 
-def resolve_text(text, lookup):
+def resolve_text(text, lookup, evaluate=None, *, depth=0):
+    if depth > MAX_RESOLUTION_DEPTH:
+        raise RecursionError("sigil resolution exceeded maximum depth")
     literals = []
 
     def protect(match):
@@ -141,14 +160,14 @@ def resolve_text(text, lookup):
         return value
 
     if is_single_sigil(text):
-        return restore(resolve_single(text[1:-1], lookup))
+        return restore(resolve_single(text[1:-1], lookup, evaluate=evaluate, depth=depth))
 
     matches = list(_PATTERN.finditer(text))
     if len(matches) == 1 and matches[0].span() == (0, len(text)):
-        return restore(resolve_single(matches[0].group(1), lookup))
+        return restore(resolve_single(matches[0].group(1), lookup, evaluate=evaluate, depth=depth))
 
     def replacer(match):
-        value = resolve_single(match.group(1), lookup)
+        value = resolve_single(match.group(1), lookup, evaluate=evaluate, depth=depth)
         if isinstance(value, str):
             return value
         return json.dumps(value, default=str)

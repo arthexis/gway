@@ -216,3 +216,59 @@ def test_declared_topic_order_is_preferred_when_both_orders_exist(gateway):
 
     with gateway.topics("dns", "godaddy"):
         assert gateway.resolve("[api_key]") == "declared"
+
+
+def test_nested_sigil_can_supply_normal_gway_operation_argument(gateway):
+    gateway.context["site"] = "MTY"
+    gateway.wrap("decorate", lambda value: f"<{value}>")
+
+    assert gateway.resolve("[decorate [site]]") == "<MTY>"
+
+
+def test_operation_result_containing_sigil_is_recursively_resolved(gateway):
+    gateway.context["site"] = "MTY"
+    gateway.wrap("indirect", lambda: "[site]")
+
+    assert gateway.resolve("[indirect]") == "MTY"
+
+
+def test_inline_fallback_is_literal_even_when_named_value_exists(gateway):
+    gateway.context["fallback"] = "resolved-value"
+
+    assert gateway.resolve("[missing|fallback]") == "fallback"
+
+
+def test_inline_fallback_does_not_resolve_nested_sigil_text(gateway):
+    gateway.context["site"] = "MTY"
+
+    assert gateway.resolve("[missing|[site]]") == "[site]"
+
+
+def test_nested_sigil_argument_preserves_whitespace_boundary(gateway):
+    gateway.context["site"] = "New York"
+    gateway.wrap("decorate", lambda value: f"<{value}>")
+
+    assert gateway.resolve("[decorate [site]]") == "<New York>"
+
+
+def test_nested_sigil_argument_cannot_inject_statement_separator(gateway):
+    gateway.context["site"] = "x ; env PATH"
+    gateway.wrap("decorate", lambda value: f"<{value}>")
+
+    assert gateway.resolve("[decorate [site]]") == "<x ; env PATH>"
+
+
+def test_semantic_string_with_brackets_is_returned_as_data(gateway):
+    gateway.context["address"] = "http://[::1]/"
+
+    assert gateway.resolve("[address]") == "http://[::1]/"
+
+
+def test_dispatched_operation_keyerror_is_not_replaced_by_fallback(gateway):
+    def boom():
+        raise KeyError("domain failure")
+
+    gateway.wrap("boom", boom)
+
+    with pytest.raises(KeyError, match="domain failure"):
+        gateway.resolve("[boom|fallback]")

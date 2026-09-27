@@ -40,6 +40,7 @@ class Gateway(Resolver):
         **values,
     ):
         self.name = name
+        self._sigil_dispatch_enabled = False
         self._cache_explicit = cache is not None
         self.environment = process_environment
         self.bindings = Bindings()
@@ -201,6 +202,7 @@ class Gateway(Resolver):
 
         self._souschef_controller = SousChefController(self)
         ingest_python(self, self._souschef_controller, path=("sous", "chef"))
+        self._sigil_dispatch_enabled = True
 
     @property
     def request_state(self):
@@ -303,6 +305,24 @@ class Gateway(Resolver):
             yield state
         finally:
             self._request_state_var.reset(token)
+
+    def _evaluate_expression(self, expression):
+        """Delegate unresolved sigil expressions to the normal Gway dispatcher."""
+        if not self._sigil_dispatch_enabled:
+            from .sigil.resolution import UnresolvedSigilError
+
+            raise UnresolvedSigilError(expression)
+
+        from .dispatch import OperationLookupError, dispatch, resolve_operation
+        from .sigil.resolution import UnresolvedSigilError
+        from .tokens import tokenize
+
+        tokens = tokenize(expression)
+        try:
+            resolve_operation(self, tokens)
+        except OperationLookupError as exc:
+            raise UnresolvedSigilError(expression) from exc
+        return dispatch(self, tokens)
 
     def _default_context(self, **values):
         """Publish explicit semantic values into the containing context."""

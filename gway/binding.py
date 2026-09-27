@@ -8,10 +8,12 @@ from typing import get_args, get_origin
 
 from .operations import singularize
 from .sigil import Sigil
+from .sigil.resolution import UnresolvedSigilError
 from .tokens import Token, is_literal, is_unquoted, token_value
 
 
 _NO_PIPELINE = object()
+_MISSING = object()
 _CHAIN_SELECTOR = re.compile(r"^\[\s*(\*|[+-]?\d+)\s*\]$")
 
 
@@ -524,15 +526,40 @@ def bind_arguments(
                 inspect.Parameter.VAR_KEYWORD,
             ):
                 continue
-            if parameter.default is not inspect.Parameter.empty:
+
+            prompt_default = None
+            sigil_default = (
+                parameter.default
+                if isinstance(parameter.default, Sigil)
+                else None
+            )
+            if sigil_default is not None:
+                semantic = runtime.find_value(name, _MISSING)
+                if semantic is not _MISSING:
+                    continue
+                try:
+                    sigil_default.resolve_primary(runtime)
+                except UnresolvedSigilError:
+                    prompt_default = sigil_default.fallback
+                else:
+                    continue
+            elif parameter.default is not inspect.Parameter.empty:
                 continue
+
             if getattr(runtime, "verbose", False):
                 from .documentation import render_parameter
 
                 details = render_parameter(func, name)
                 if details:
                     print(details)
-            response = input(f"{name}: ")
+            prompt = (
+                f"{name} [{prompt_default}]: "
+                if prompt_default is not None
+                else f"{name}: "
+            )
+            response = input(prompt)
+            if response == "" and prompt_default is not None:
+                response = prompt_default
             bound.arguments[name] = convert_argument(
                 Token(response),
                 parameter,

@@ -161,6 +161,16 @@ This is useful when the surrounding language has its own square-bracket syntax, 
 
 The fallback is part of sigil resolution rather than recipe-parameter parsing, so the same form can be used inside ordinary operation arguments.
 
+In interactive CLI mode, a sigil used as a callable parameter default behaves differently when its primary expression is unresolved: Gway prompts for that parameter instead of silently taking the fallback. The literal fallback is shown as the prompt default, and pressing Enter accepts it. If the primary expression already resolves, no prompt is needed. Its right-hand side is a literal constant: it is not looked up or recursively resolved.
+
+Nested sigils are interpolated before the containing expression is resolved:
+
+~~~text
+[decorate [site]]
+~~~
+
+Gway first applies normal semantic/path lookup. If the complete expression still does not identify semantic data, the owning Gateway may dispatch it as an ordinary Gway operation. Operation lookup, argument binding, authorization, pipelines, and execution therefore remain part of the normal Gway engine rather than a separate sigil tool language.
+
 Single quotes protect literal text from GWAY interpretation:
 
 ~~~text
