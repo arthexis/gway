@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import datetime as dt
+import errno
 import hashlib
 import ipaddress
 import json
@@ -28,6 +29,7 @@ _DEVICE_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,62}$")
 _PUBLIC_KEY_RE = re.compile(r"^[A-Za-z0-9+/]{43}=$")
 _DEFAULT_REGISTER_HOST = "register.arthexis.com"
 _DEFAULT_ENROLLMENT_PATH = "/v1/enroll"
+_LEGACY_ENROLLMENT_UNIT = "gway-wireguard-enroll.service"
 
 
 def _utcnow():
@@ -428,6 +430,33 @@ def _run(argv):
     return subprocess.run(argv, check=False, capture_output=True, text=True)
 
 
+def _legacy_enrollment_command(*args):
+    systemctl = shutil.which("systemctl")
+    if systemctl is None:
+        return None
+    return _run([systemctl, *args, _LEGACY_ENROLLMENT_UNIT])
+
+
+def _legacy_enrollment_active():
+    result = _legacy_enrollment_command("is-active", "--quiet")
+    return result is not None and result.returncode == 0
+
+
+def _stop_legacy_enrollment():
+    result = _legacy_enrollment_command("stop")
+    return result is not None and result.returncode == 0
+
+
+def _disable_legacy_enrollment():
+    result = _legacy_enrollment_command("disable")
+    return result is not None and result.returncode == 0
+
+
+def _restore_legacy_enrollment():
+    result = _legacy_enrollment_command("enable", "--now")
+    return result is not None and result.returncode == 0
+
+
 def _wg_values(output):
     values = {
         "public_key": None,
@@ -819,18 +848,36 @@ class Controller:
                 )
             active_public_key = _public_key_from_private(private_key, self.which)
 
-        server = build_enrollment_server(
-            self,
-            host=host,
-            port=port,
-            domain=domain,
-            registry=registry or self.gateway.data_root() / "wire" / "registry.sqlite3",
-            config=config,
-            server_public_key=active_public_key,
-            server_endpoint=server_endpoint,
-            network=network,
-            gateway_address=gateway_address,
-        )
+        settings = {
+            "host": host,
+            "port": port,
+            "domain": domain,
+            "registry": registry or self.gateway.data_root() / "wire" / "registry.sqlite3",
+            "config": config,
+            "server_public_key": active_public_key,
+            "server_endpoint": server_endpoint,
+            "network": network,
+            "gateway_address": gateway_address,
+        }
+        try:
+            server = build_enrollment_server(self, **settings)
+        except OSError as error:
+            if error.errno != errno.EADDRINUSE or not _legacy_enrollment_active():
+                raise
+            if not _stop_legacy_enrollment():
+                raise RuntimeError(
+                    f"unable to stop legacy enrollment service {_LEGACY_ENROLLMENT_UNIT}"
+                ) from error
+            try:
+                server = build_enrollment_server(self, **settings)
+                if not _disable_legacy_enrollment():
+                    server.server_close()
+                    raise RuntimeError(
+                        f"unable to disable legacy enrollment service {_LEGACY_ENROLLMENT_UNIT}"
+                    )
+            except Exception:
+                _restore_legacy_enrollment()
+                raise
         try:
             return server.serve_forever()
         finally:
