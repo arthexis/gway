@@ -58,6 +58,9 @@ def test_remote_auth_is_builtin_service_preset():
         "remote",
         "serve",
     )
+    assert definition.environment == (
+        f"GWAY_CACHE_DIR={gateway.cache.root}",
+    )
 
 
 def test_remote_auth_systemd_rendering_uses_generic_backend():
@@ -72,6 +75,7 @@ def test_remote_auth_systemd_rendering_uses_generic_backend():
     assert "Restart=on-failure" in rendered
     assert "RestartSec=5.0" in rendered
     assert "StartLimitBurst=4" in rendered
+    assert f"Environment=GWAY_CACHE_DIR={gateway.cache.root}" in rendered
     assert "gway.service.supervisor" not in rendered
     assert "systemctl" not in rendered
     assert "daemon-reload" not in rendered
