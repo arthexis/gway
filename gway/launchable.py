@@ -65,6 +65,31 @@ class Launchable:
         )
 
     @classmethod
+    def executable(
+        cls,
+        command,
+        *,
+        name=None,
+        root=None,
+        metadata=None,
+    ):
+        """Create a launchable for one explicit native executable command."""
+        command = tuple(str(part) for part in command)
+        if not command:
+            raise ValueError("Executable launchable requires a command")
+        executable = Path(command[0]).expanduser()
+        if not executable.is_absolute():
+            raise ValueError("Executable launchable requires an absolute executable path")
+        return cls(
+            name=name or executable.name,
+            kind="executable",
+            command=command,
+            root=Path.cwd() if root is None else root,
+            target=executable,
+            metadata={} if metadata is None else metadata,
+        )
+
+    @classmethod
     def recipe(
         cls,
         path,
@@ -116,6 +141,23 @@ class Launchables(Mapping):
             Launchable.operation(
                 name,
                 arguments=arguments,
+                root=root,
+                metadata=metadata,
+            )
+        )
+
+    def executable(
+        self,
+        command,
+        *,
+        name=None,
+        root=None,
+        metadata=None,
+    ):
+        return self.register(
+            Launchable.executable(
+                command,
+                name=name,
                 root=root,
                 metadata=metadata,
             )
@@ -203,13 +245,26 @@ def resolve_launchable(runtime, target):
         resolution = resolve_operation(runtime, tokens)
     except LookupError:
         bare_recipe = recipe_path(runtime, first, allow_bare=True)
-        if bare_recipe is None or not bare_recipe.is_file():
-            raise
-        return Launchable.recipe(
-            bare_recipe,
-            arguments=tuple(token_value(item) for item in tokens[1:]),
-            metadata={"recipe": str(bare_recipe.resolve())},
-        )
+        if bare_recipe is not None and bare_recipe.is_file():
+            return Launchable.recipe(
+                bare_recipe,
+                arguments=tuple(token_value(item) for item in tokens[1:]),
+                metadata={"recipe": str(bare_recipe.resolve())},
+            )
+
+        executable = Path(first).expanduser()
+        if (
+            executable.is_absolute()
+            and executable.is_file()
+            and executable.stat().st_mode & 0o111
+        ):
+            command = tuple(token_value(item) for item in tokens)
+            return Launchable.executable(
+                command,
+                root=Path.cwd(),
+                metadata={"executable": str(executable.resolve())},
+            )
+        raise
 
     base = _canonical_operation_launchable(runtime, resolution)
     if base is None:
