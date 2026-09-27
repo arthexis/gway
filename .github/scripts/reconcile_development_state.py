@@ -132,13 +132,13 @@ class GitHub:
     def review_state(self, number: int) -> dict[str, Any]:
         owner, name = self.repository.split("/", 1)
         query = """
-        query($owner:String!, $name:String!, $number:Int!) {
+        query($owner:String!, $name:String!, $number:Int!, $cursor:String) {
           repository(owner:$owner, name:$name) {
             pullRequest(number:$number) {
               commits(last:100) {
                 nodes { commit { oid } }
               }
-              reviewThreads(first:100) {
+              reviewThreads(first:100, after:$cursor) {
                 nodes {
                   id
                   isResolved
@@ -149,26 +149,34 @@ class GitHub:
                     }
                   }
                 }
+                pageInfo { hasNextPage endCursor }
               }
             }
           }
         }
         """
-        payload = json.loads(
-            self._run(
-                "api",
-                "graphql",
-                "-f",
-                f"query={query}",
-                "-F",
-                f"owner={owner}",
-                "-F",
-                f"name={name}",
-                "-F",
-                f"number={number}",
-            )
-        )
-        return payload["data"]["repository"]["pullRequest"]
+        threads: list[dict[str, Any]] = []
+        commits: dict[str, Any] | None = None
+        cursor: str | None = None
+        while True:
+            args = [
+                "api", "graphql", "-f", f"query={query}",
+                "-F", f"owner={owner}", "-F", f"name={name}",
+                "-F", f"number={number}",
+            ]
+            if cursor is not None:
+                args.extend(["-F", f"cursor={cursor}"])
+            payload = json.loads(self._run(*args))
+            pull = payload["data"]["repository"]["pullRequest"]
+            if commits is None:
+                commits = pull["commits"]
+            page = pull["reviewThreads"]
+            threads.extend(page["nodes"])
+            page_info = page["pageInfo"]
+            if not page_info["hasNextPage"]:
+                break
+            cursor = page_info["endCursor"]
+        return {"commits": commits, "reviewThreads": {"nodes": threads}}
 
     def resolve_review_thread(self, thread_id: str) -> None:
         mutation = """
