@@ -94,9 +94,7 @@ jobs:
 
           pr_json="$(gh api "repos/$REPOSITORY/pulls/$PR_NUMBER")"
           head_sha="$(jq -r '.head.sha' <<< "$pr_json")"
-          changed_at="$(
-            gh api "repos/$REPOSITORY/commits/$head_sha" --jq '.commit.committer.date // empty'
-          )"
+          changed_at="$(jq -r '.updated_at // empty' <<< "$pr_json")"
 
           if [[ -z "$changed_at" || "$changed_at" == "null" ]]; then
             echo "Unable to determine the server-observed time for head $head_sha; refusing to arm auto-merge."
