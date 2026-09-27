@@ -141,12 +141,16 @@ def project_python(project):
 
 
 _PROJECT_CALL = r"""
+import asyncio
 import importlib
+import inspect
 import pickle
 import sys
 
-project, target, request_path, response_path = sys.argv[1:5]
-sys.path.insert(0, project)
+roots, target, request_path, response_path = sys.argv[1:5]
+for root in reversed(roots.split("\0")):
+    if root:
+        sys.path.insert(0, root)
 module_name, attribute = target.split(":", 1)
 value = importlib.import_module(module_name)
 for part in attribute.split("."):
@@ -154,6 +158,43 @@ for part in attribute.split("."):
 with open(request_path, "rb") as stream:
     args, kwargs = pickle.load(stream)
 result = value(*args, **kwargs)
+if inspect.isawaitable(result):
+    result = asyncio.run(result)
+with open(response_path, "wb") as stream:
+    pickle.dump(result, stream, protocol=pickle.HIGHEST_PROTOCOL)
+"""
+
+
+_PROJECT_MAIN = r"""
+import pickle
+import runpy
+import sys
+
+roots, package, request_path, response_path = sys.argv[1:5]
+for root in reversed(roots.split("\0")):
+    if root:
+        sys.path.insert(0, root)
+with open(request_path, "rb") as stream:
+    arguments = pickle.load(stream)
+previous = sys.argv
+sys.argv = [package, *map(str, arguments)]
+try:
+    namespace = runpy.run_module(
+        f"{package}.__main__",
+        run_name="__main__",
+        alter_sys=True,
+    )
+finally:
+    sys.argv = previous
+result = {}
+for key, value in namespace.items():
+    if key.startswith("__"):
+        continue
+    try:
+        pickle.dumps(value, protocol=pickle.HIGHEST_PROTOCOL)
+    except Exception:
+        continue
+    result[key] = value
 with open(response_path, "wb") as stream:
     pickle.dump(result, stream, protocol=pickle.HIGHEST_PROTOCOL)
 """
@@ -168,13 +209,41 @@ def invoke_target(project, target, *args, **kwargs):
         response = Path(directory) / "response.pkl"
         with request.open("wb") as stream:
             pickle.dump((args, kwargs), stream, protocol=pickle.HIGHEST_PROTOCOL)
+        roots = "\0".join(str(root) for root in _source_roots(project))
         subprocess.run(
             [
                 str(python),
                 "-c",
                 _PROJECT_CALL,
-                str(project),
+                roots,
                 target,
+                str(request),
+                str(response),
+            ],
+            cwd=project,
+            check=True,
+        )
+        with response.open("rb") as stream:
+            return pickle.load(stream)
+
+
+def invoke_package_main(project, package, *arguments):
+    """Run a project package __main__ and return its serializable namespace."""
+    project = Path(project).expanduser().resolve()
+    python = project_python(project)
+    with tempfile.TemporaryDirectory(prefix="gway-project-main-") as directory:
+        request = Path(directory) / "request.pkl"
+        response = Path(directory) / "response.pkl"
+        with request.open("wb") as stream:
+            pickle.dump(arguments, stream, protocol=pickle.HIGHEST_PROTOCOL)
+        roots = "\0".join(str(root) for root in _source_roots(project))
+        subprocess.run(
+            [
+                str(python),
+                "-c",
+                _PROJECT_MAIN,
+                roots,
+                package,
                 str(request),
                 str(response),
             ],
