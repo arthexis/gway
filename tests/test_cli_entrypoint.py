@@ -63,6 +63,31 @@ def test_cli_resolve_reports_wire_sampler_without_executing_it():
     assert payload["kind"] == "recipe"
     assert payload["target"].endswith("sampler/wire/watchtower.rx")
 
+def test_cli_resolve_keeps_target_options_opaque():
+    completed = subprocess.run(
+        [sys.executable, "-m", "gway", "--json", "resolve", "log", "message", "--level", "INFO"],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert completed.returncode == 0, completed.stderr
+    payload = json.loads(completed.stdout)
+    assert payload["kind"] == "operation"
+    assert payload["target"].replace(".", " ") == "log"
+    assert "--level" in payload["arguments"]
+
+
+def test_cli_resolve_does_not_execute_dash_suffix(tmp_path):
+    marker = tmp_path / "executed"
+    command = [
+        sys.executable, "-m", "gway", "--json", "resolve",
+        "log", "message", "-", "path", str(marker),
+    ]
+    completed = subprocess.run(command, check=False, capture_output=True, text=True)
+    assert completed.returncode == 0, completed.stderr
+    assert not marker.exists()
+
+
 def test_cli_lookup_error_is_concise_without_traceback(tmp_path):
     env = os.environ.copy()
     env["GWAY_DATA_DIR"] = str(tmp_path)
