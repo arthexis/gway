@@ -38,8 +38,8 @@ def test_ingested_help_uses_monkeypatched_signature(gateway, monkeypatch):
 
     help_text = gateway._help("latebound_help", "inspect_value", verbose=True)
 
-    assert "limit" in help_text
-    assert "value" not in help_text
+    assert "(limit: int = 3)" in help_text
+    assert "(value: str)" not in help_text
 
 
 def test_ingested_class_method_follows_monkeypatch(gateway, monkeypatch):
