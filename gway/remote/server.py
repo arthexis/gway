@@ -9,7 +9,6 @@ from ..dispatch import resolve_operation
 from ..mutation import MutationError
 from ..security.authentication import BearerAuthenticationError
 from ..security.oauth import OAuthAuthenticationError, OAuthRegistry
-from ..security.scopes import ScopeRegistry
 from ..security.tokens import TokenRegistry
 from ..tokens import tokenize
 from .account import RemoteAccountApplication
