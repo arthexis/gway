@@ -6,7 +6,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import get_args, get_origin
 
-from .callable_reference import callable_signature
+from .callableref import callable_signature
 from .operations import singularize
 from .sigil import Sigil
 from .sigil.resolution import UnresolvedSigilError
