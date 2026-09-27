@@ -15,6 +15,7 @@ from fastmcp.server.auth import TokenVerifier as _TokenVerifier
 from fastmcp.server.auth.auth import AccessToken as _AccessToken
 from fastmcp.server.dependencies import get_http_headers as _get_http_headers
 from fastmcp.server.dependencies import get_http_request as _get_http_request
+from fastmcp.server.middleware import Middleware
 
 
 _DEFAULT_PUBLIC_ORIGIN = "http://127.0.0.1:8000"
@@ -360,6 +361,30 @@ def _has_http_request():
     except RuntimeError:
         return False
     return True
+
+
+def _project_tools(tools, identity):
+    """Project the advertised MCP surface without changing execution authority."""
+    if identity.get("mutation_capable", True):
+        return tools
+    return [tool for tool in tools if getattr(tool, "name", None) != "gway"]
+
+
+class _CapabilityProjectionMiddleware(Middleware):
+    """Hide the mutating tool when the authenticated authority is read-only."""
+
+    async def on_list_tools(self, context, call_next):
+        tools = await call_next(context)
+        if not _has_http_request():
+            return tools
+        identity = _parent().authenticate_bearer(
+            _bearer_from_http(),
+            _auth.resource,
+        )
+        return _project_tools(tools, identity)
+
+
+mcp.add_middleware(_CapabilityProjectionMiddleware())
 
 
 @mcp.tool(
