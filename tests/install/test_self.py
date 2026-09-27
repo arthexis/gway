@@ -139,9 +139,7 @@ def test_gway_self_install_crosses_git_install_activation_and_runtime_boundaries
         launcher,
         outside,
         "resolve",
-        "[site]",
-        "--site",
-        "MTY",
+        "[site|MTY]",
     )
     assert command_result.returncode == 0
     assert command_result.stdout.strip() == "MTY"
