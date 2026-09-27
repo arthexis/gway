@@ -37,7 +37,7 @@ def _option_argv(options):
 
 
 def _callable(executable, *, as_user=None):
-    executable = str(Path(executable).expanduser().resolve())
+    executable = os.path.abspath(os.fspath(Path(executable).expanduser()))
 
     def invoke(*arguments, sudo=False, **options):
         identity = execution_identity(
@@ -77,7 +77,7 @@ def _resolve_executable(source):
             raise FileNotFoundError(path)
         if not os.access(path, os.X_OK):
             raise ValueError(f"Process path is not executable: {path}")
-        return path.resolve()
+        return Path(os.path.abspath(os.fspath(path)))
 
     found = shutil.which(source)
     if found is None:
