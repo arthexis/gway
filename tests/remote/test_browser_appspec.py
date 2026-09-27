@@ -137,3 +137,32 @@ def test_remote_connect_uses_mobile_dark_recipe_template(tmp_path):
     assert css_headers["content-type"] == "text/css"
     assert b"color-scheme: dark" in css
     assert b"min-height: 56px" in css
+
+
+def test_templated_consent_redirect_is_preserved_without_rendering(tmp_path):
+    runtime = Gateway(cache=tmp_path / "cache")
+    metadata = RemoteOAuthMetadata.from_origin(
+        "http://127.0.0.1:9000",
+        allow_insecure_loopback=True,
+    )
+    application = RemoteApplication(metadata, runtime=runtime)
+
+    status, headers, payload = application.response(
+        "GET",
+        "/consent?client_id=client&scope=full-access",
+    )
+
+    assert status == 303
+    assert headers["location"] == "/connect"
+    assert payload == ""
+
+
+def test_remote_css_is_declared_for_public_https_proxy():
+    from pathlib import Path
+
+    template = Path("sampler/web/remote/nginx-https-[site].conf").read_text(
+        encoding="utf-8"
+    )
+
+    assert "location = /remote.css {" in template
+    assert "proxy_pass http://[auth_host|127.0.0.1]:[auth_port|8001];" in template
