@@ -17,6 +17,10 @@ class Controller:
         """Return the token registry bound to the active Gateway security path."""
         return TokenRegistry(self.gateway.security_path)
 
+    def scopes(self, *, mutate=True):
+        """Return named security scopes available for token binding."""
+        return self.registry.scopes.all(readonly=not mutate)
+
     def create(self, name, *scopes, expires=None):
         """Issue a token and return its bearer secret exactly once.
 
