@@ -1499,10 +1499,12 @@ def test_mcp_sampler_fallback_registers_semantic_surface(gateway, monkeypatch):
 
     monkeypatch.setattr(sampler, "run", fake_run)
 
+    monkeypatch.setattr("sampler.mcp._run_local", lambda runtime: "local")
+
     result = gateway("mcp local")
 
-    assert result == {"recipe": "mcp/local", "context": {}}
-    assert calls == [(gateway, "mcp/local", {})]
+    assert result == "local"
+    assert calls == []
     assert gateway.ops.resolve("mcp.local") is not None
     assert gateway.ops.resolve("mcp.serve") is not None
 
@@ -1545,7 +1547,7 @@ def test_mcp_server_is_compatibility_alias_for_serve(gateway, monkeypatch):
 
 
 def test_mcp_help_discovers_sampler_namespace(gateway):
-    local = gateway("help mcp local")
+    local = gateway._help("mcp", "local", verbose=True)
 
     assert "command: gway" in local
     assert 'args: ["mcp", "local"]' in local
@@ -1561,13 +1563,10 @@ def test_mcp_semantic_recipes_are_maintained_sampler_entries():
     assert "mcp/serve" in available
 
 
-def test_mcp_local_recipe_keeps_stdio_as_backend_detail():
+def test_mcp_local_recipe_is_semantic_alias():
     recipe = (sampler_root() / "mcp" / "local.rx").read_text(encoding="utf-8")
-    companion = (sampler_root() / "mcp" / "local.py").read_text(encoding="utf-8")
 
-    assert recipe == "require fastmcp>=4,<5\nlocal run\n"
-    assert 'with_name("server.py")' in companion
-    assert 'transport="stdio"' in companion
+    assert recipe == "mcp local\n"
 
 
 def test_mcp_serve_recipe_reuses_shared_server_with_loopback_defaults():
