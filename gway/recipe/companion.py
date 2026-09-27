@@ -8,11 +8,13 @@ import struct
 import subprocess
 import threading
 
+from ..dispatch import resolve_operation
 from ..environment import process_environment
 from ..ingestion.base import IngestedOperation, register_operation
 from ..security.authentication import authenticate_bearer
 from ..security.oauth import OAuthRegistry
 from ..security.tokens import TokenRegistry
+from ..tokens import tokenize
 
 
 _HEADER = struct.Struct("!Q")
@@ -500,9 +502,12 @@ def _authority_mutation_capable(runtime, operations):
     if "__all__" in operations:
         return True
     for name in operations:
-        operation = runtime.ops.resolve(name)
-        if operation is None:
+        try:
+            operation, remaining, _ = resolve_operation(runtime, tokenize(name))
+        except LookupError:
             # Unknown authority must remain conservative at the projection layer.
+            return True
+        if remaining:
             return True
         if bool(getattr(operation, "mutates", True)):
             return True
