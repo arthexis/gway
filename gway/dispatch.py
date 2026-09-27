@@ -852,7 +852,11 @@ def dispatch_pipeline(
     # data, including options and dash tokens that would otherwise become an
     # outer pipeline and execute a suffix operation.
     if remaining and is_unquoted(remaining[0]) and token_value(remaining[0]) == "resolve":
-        descriptor = resolve_target(runtime, remaining[1:])
+        target = remaining[1:]
+        if len(target) == 1 and token_value(target[0]).startswith("[") and token_value(target[0]).endswith("]"):
+            descriptor = runtime.resolve(token_value(target[0]))
+        else:
+            descriptor = resolve_target(runtime, target)
         results.append(descriptor)
         if statement is not None:
             statement.append(Stage(tokens=tuple(remaining), operation="resolve", arguments=tuple(remaining[1:]), incoming=None if current is _MISSING else current, outgoing=descriptor, statement=statement.index, subject="target", published=False, has_incoming=current is not _MISSING))
