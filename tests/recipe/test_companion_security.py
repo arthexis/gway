@@ -56,7 +56,7 @@ def test_companion_bearer_authentication_uses_parent_security_path(
         "principal": "client",
         "client_id": "gway:client",
         "scopes": ["reader"],
-        "mutation_capable": True,
+        "mutation_capable": False,
     }
     assert captured["path"] == gateway.security_path
 
