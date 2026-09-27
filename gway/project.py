@@ -170,10 +170,11 @@ import pickle
 import runpy
 import sys
 
-roots, package, request_path, response_path = sys.argv[1:5]
-for root in reversed(roots.split("\0")):
-    if root:
-        sys.path.insert(0, root)
+roots_path, package, request_path, response_path = sys.argv[1:5]
+with open(roots_path, "rb") as stream:
+    roots = pickle.load(stream)
+for root in reversed(roots):
+    sys.path.insert(0, root)
 with open(request_path, "rb") as stream:
     arguments = pickle.load(stream)
 previous = sys.argv
@@ -209,13 +210,19 @@ def invoke_target(project, target, *args, **kwargs):
         response = Path(directory) / "response.pkl"
         with request.open("wb") as stream:
             pickle.dump((args, kwargs), stream, protocol=pickle.HIGHEST_PROTOCOL)
-        roots = "\0".join(str(root) for root in _source_roots(project))
+        roots = Path(directory) / "roots.pkl"
+        with roots.open("wb") as stream:
+            pickle.dump(
+                tuple(str(root) for root in _source_roots(project)),
+                stream,
+                protocol=pickle.HIGHEST_PROTOCOL,
+            )
         subprocess.run(
             [
                 str(python),
                 "-c",
                 _PROJECT_CALL,
-                roots,
+                str(roots),
                 target,
                 str(request),
                 str(response),
@@ -236,13 +243,19 @@ def invoke_package_main(project, package, *arguments):
         response = Path(directory) / "response.pkl"
         with request.open("wb") as stream:
             pickle.dump(arguments, stream, protocol=pickle.HIGHEST_PROTOCOL)
-        roots = "\0".join(str(root) for root in _source_roots(project))
+        roots = Path(directory) / "roots.pkl"
+        with roots.open("wb") as stream:
+            pickle.dump(
+                tuple(str(root) for root in _source_roots(project)),
+                stream,
+                protocol=pickle.HIGHEST_PROTOCOL,
+            )
         subprocess.run(
             [
                 str(python),
                 "-c",
                 _PROJECT_MAIN,
-                roots,
+                str(roots),
                 package,
                 str(request),
                 str(response),
