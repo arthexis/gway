@@ -134,13 +134,6 @@ class Gateway(Resolver):
         self.node = self.wrap("node", self._node)
         self.wrap("ingest", self.ingest)
         self.recipe = self.wrap("recipe", self._run_sampler_recipe)
-        self.mcp_local = self.wrap(
-            "mcp.local", self._mcp_local, op="mcp", sub="local"
-        )
-        self.mcp_serve = self.wrap(
-            "mcp.serve", self._mcp_serve, op="mcp", sub="serve"
-        )
-        self.ops.register_alias("mcp.server", self.mcp_serve)
         self.reload = self.wrap("reload", self._reload)
 
         from .providers.core import register as register_core_provider
@@ -748,38 +741,6 @@ class Gateway(Resolver):
 
         return run(self, recipe_name, **context)
 
-    def _mcp_local(self):
-        """Start the local MCP interface for a client-managed agent session.
-
-        Stable MCP client configuration:
-
-            command: gway
-            args: ["mcp", "local"]
-
-        The concrete local transport is an implementation detail of the maintained
-        sampler recipe. The MCP tools execute through this authoritative Gateway.
-        """
-        return self._run_sampler_recipe("mcp/local")
-
-    def _mcp_serve(
-        self,
-        host="127.0.0.1",
-        port=8000,
-        route="/mcp",
-        endpoint="http://127.0.0.1:8000/mcp",
-    ):
-        """Run the maintained persistent MCP service.
-
-        Defaults to a loopback HTTP endpoint. Remote exposure, authentication,
-        OAuth, TLS, and proxy composition remain separate Remote concerns.
-        """
-        return self._run_sampler_recipe(
-            "mcp/serve",
-            host=host,
-            port=port,
-            route=route,
-            endpoint=endpoint,
-        )
     def _reload(
         self,
         timeout: float = 30.0,
