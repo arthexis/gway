@@ -108,7 +108,16 @@ class Gateway(Resolver):
 
         from .source import inspect_source
 
-        self.source = self.wrap("source", lambda *operation, mutate=False: inspect_source(self, *operation, mutate=mutate))
+        self.source = self.wrap(
+            "source",
+            lambda *operation, search=None, context=2, mutate=False: inspect_source(
+                self,
+                *operation,
+                search=search,
+                context=context,
+                mutate=mutate,
+            ),
+        )
 
         from .filesystem import Filesystem
         from .rendering import Renderer
