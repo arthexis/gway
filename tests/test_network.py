@@ -4,6 +4,8 @@ from pathlib import Path
 import pytest
 
 from gway import Gateway
+from gway.ingestion.python import ingest_python
+from gway.mutation import rollback_with
 from gway.network import Controller, RedirectUnavailable
 
 
@@ -303,3 +305,26 @@ def test_network_redirect_journal_rolls_back_through_semantic_inverse(
 
     assert exists["value"] is False
     assert gateway.journal.open_names() == ()
+
+
+
+def test_explicit_rollback_override_is_discoverable():
+    gateway = Gateway()
+
+    class CustomController:
+        @rollback_with("custom.finish")
+        def begin(self, token, mutate=True):
+            del mutate
+            return {"token": token}
+
+        def finish(self, token, mutate=True):
+            del mutate
+            return token
+
+    controller = CustomController()
+    ingest_python(gateway, controller, path=("custom",))
+
+    forward = gateway.ops.resolve("custom.begin")
+    inverse = gateway.ops.rollback_operation(forward)
+
+    assert inverse is gateway.ops.resolve("custom.finish")
