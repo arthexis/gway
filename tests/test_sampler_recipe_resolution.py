@@ -47,3 +47,16 @@ def test_gway_ci_recipe_uses_generic_recipe_and_test_contracts():
     assert "recipe check sampler" in recipe
     assert "test run - check --is 0" in recipe
     assert "github" not in recipe.lower()
+
+
+def test_python_310_workflow_delegates_regression_to_project_ci():
+    from pathlib import Path
+
+    workflow = Path(".github/workflows/python-compatibility.yml").read_text(encoding="utf-8")
+
+    regression, forward = workflow.split("  forward-compatibility:", 1)
+    assert "python -m gway ci" in regression
+    assert "python -m pytest" not in regression
+    assert "timeout -s ABRT 300s" in regression
+    assert "PYTHONFAULTHANDLER" in regression
+    assert "python -m pytest" in forward
