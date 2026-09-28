@@ -84,3 +84,29 @@ def journal_entry(gateway):
         return gateway.journal.require_open(name).entries[index]
 
     return lookup
+
+
+class ScriptedGitHubClient:
+    """Record GitHub calls while returning or raising scripted outcomes."""
+
+    def __init__(self, responses=()):
+        self.responses = list(responses)
+        self.calls = []
+
+    def request(self, method, path, *, params=None, json=None, headers=None):
+        self.calls.append(
+            {"method": method, "path": path, "params": params, "json": json}
+        )
+        if not self.responses:
+            return SimpleNamespace(data=None)
+        outcome = self.responses.pop(0)
+        if isinstance(outcome, Exception):
+            raise outcome
+        return SimpleNamespace(data=outcome)
+
+
+@pytest.fixture
+def github_client():
+    """Build a recording GitHub client with optional scripted responses."""
+
+    return ScriptedGitHubClient
