@@ -12,7 +12,8 @@ is therefore still non-mutating even though it requires higher privilege.
 
 The admin surface covers repository rulesets, branch protection, collaborator
 permission metadata, webhook metadata, and repository Actions policy. Ruleset
-create/update/delete are the first administrative mutations. The scopes are additive
+create/update/delete and complete branch-protection replacement/removal are the
+initial administrative mutations. The scopes are additive
 rather than hierarchical: `source-admin` does not imply ordinary `source-write`,
 and ordinary source access does not imply admin access.
 
@@ -26,8 +27,15 @@ Ruleset creation and replacement require one complete explicit policy mapping wi
 `name`, `target`, `enforcement`, `bypass_actors`, `conditions`, and `rules`.
 GWAY rejects partial patch-shaped policies and unsupported fields rather than
 silently preserving or weakening omitted policy. Ruleset deletion requires an
-explicit numeric ruleset ID. All ruleset mutations remain subject to the normal
-no-mutate ceiling.
+explicit numeric ruleset ID.
+
+Branch protection replacement likewise requires the complete GitHub protection
+policy, including status checks, admin enforcement, review requirements, restrictions,
+linear-history/force-push/deletion/creation controls, conversation resolution, branch
+locking, and fork-sync policy. This is intentionally replacement rather than implicit
+merge behavior because GitHub replaces several nested arrays/settings on update.
+Deleting branch protection requires an explicit branch name. All of these admin
+mutations remain subject to the normal no-mutate ceiling.
 
 GWAY does not make repository policy decisions for the caller. Pull-request merge
 requires the expected head SHA. File update and delete require the expected blob SHA.
@@ -63,9 +71,9 @@ remain rejected.
 
 ## Scope boundary
 
-The `source-admin` surface now includes ruleset administration in addition to
-repository-level policy/configuration inspection. Branch-protection and Actions
-policy writes remain separate follow-up work.
+The `source-admin` surface now includes ruleset and branch-protection
+administration in addition to repository-level policy/configuration inspection.
+Actions policy writes remain separate follow-up work.
 
 Identity and ownership administration remain excluded: token creation/revocation,
 GitHub App permission management, organization administration, repository transfer,
