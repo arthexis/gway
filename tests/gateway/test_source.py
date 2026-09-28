@@ -194,3 +194,75 @@ def test_search_source_requires_source_search_capability(gateway):
     with gateway.authorized(operations={"env"}):
         with pytest.raises(AuthorizationError):
             gateway("search source Return")
+
+
+def test_source_all_reports_selected_and_shadowed_in_resolver_order(gateway):
+    def first():
+        return "first"
+
+    def second():
+        return "second"
+
+    def selected():
+        return "selected"
+
+    gateway.wrap("diagnostic.target", first)
+    gateway.wrap("diagnostic.target", second)
+    gateway.wrap("diagnostic.target", selected)
+
+    result = gateway("source diagnostic target --all")
+
+    assert result["operation"] == "diagnostic target"
+    assert "selected" in result["selected"]["source"]
+    assert len(result["shadowed"]) == 2
+    assert "second" in result["shadowed"][0]["source"]
+    assert "first" in result["shadowed"][1]["source"]
+
+
+def test_source_without_all_reports_only_selected_candidate(gateway):
+    def old():
+        return "old"
+
+    def current():
+        return "current"
+
+    gateway.wrap("diagnostic.single", old)
+    gateway.wrap("diagnostic.single", current)
+
+    result = gateway("source diagnostic single")
+
+    assert "current" in result["source"]
+    assert "shadowed" not in result
+
+
+def test_source_all_does_not_change_normal_resolution(gateway):
+    def old():
+        return "old"
+
+    def current():
+        return "current"
+
+    gateway.wrap("diagnostic.execute", old)
+    gateway.wrap("diagnostic.execute", current)
+
+    gateway("source diagnostic execute --all")
+
+    assert gateway("diagnostic execute") == "current"
+
+
+def test_source_all_respects_target_visibility(gateway):
+    from gway.authorization import AuthorizationError
+
+    def hidden():
+        return "hidden"
+
+    gateway.wrap("diagnostic.hidden", hidden)
+
+    with gateway.authorized(operations={"source"}):
+        with pytest.raises(AuthorizationError):
+            gateway("source diagnostic hidden --all")
+
+
+def test_source_all_rejects_search_combination(gateway):
+    with pytest.raises(TypeError, match="cannot be combined"):
+        gateway("source env --all --search Return")
