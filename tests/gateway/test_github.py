@@ -65,3 +65,13 @@ def test_github_reads_support_no_mutate(gateway):
 
     assert operation.mutates is False
     assert gateway.execute("help github status", mutate=False)
+
+
+def test_every_github_operation_has_exactly_one_access_topic(gateway):
+    for record in gateway.ops.records():
+        if not record.name.startswith("github."):
+            continue
+        topics = set(record.callable.__gway_metadata__["topics"])
+        assert {"github", "source"} <= topics
+        assert len({"read", "write"} & topics) == 1
+        assert record.mutates is ("write" in topics)
