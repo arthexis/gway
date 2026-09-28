@@ -1272,10 +1272,15 @@ class Gateway(Resolver):
         if not requested:
             raise ValueError("scope name must be a non-empty string")
 
-        if current is not None and requested not in current.scopes:
-            raise AuthorizationError(
-                f"Security scope is not available to current caller: {requested}"
+        if current is not None:
+            can_inspect_scopes = (
+                "__all__" in current.operations
+                or "security.scope.show" in current.operations
             )
+            if requested not in current.scopes and not can_inspect_scopes:
+                raise AuthorizationError(
+                    f"Security scope is not available to current caller: {requested}"
+                )
 
         scope = ScopeRegistry(self.security_path).require(requested, readonly=True)
         narrowed = attenuate(current, scope)
