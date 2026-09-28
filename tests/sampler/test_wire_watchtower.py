@@ -323,3 +323,100 @@ def test_enrollment_service_restores_legacy_listener_when_takeover_fails(tmp_pat
     assert commands[-1] == (
         "/bin/systemctl", "enable", "--now", "gway-wireguard-enroll.service"
     )
+
+
+def test_reclaim_enrollment_listener_is_noop_when_port_is_free(monkeypatch):
+    gateway = Gateway()
+    module = sampler.load("wire")
+    controller = module.register(gateway)
+    monkeypatch.setattr(module, "_listener_owner", lambda *args, **kwargs: None)
+
+    result = controller.reclaim_enrollment_listener()
+
+    assert result == {
+        "host": "127.0.0.1",
+        "port": 8787,
+        "state": "free",
+        "changed": False,
+    }
+
+
+def test_reclaim_enrollment_listener_preserves_managed_service(monkeypatch):
+    gateway = Gateway()
+    module = sampler.load("wire")
+    controller = module.register(gateway)
+    monkeypatch.setattr(
+        module,
+        "_listener_owner",
+        lambda *args, **kwargs: {
+            "pid": 42,
+            "argv": ("python", "-m", "gway", "wire", "server", "serve"),
+            "managed": True,
+            "wire_enrollment": True,
+        },
+    )
+
+    result = controller.reclaim_enrollment_listener()
+
+    assert result["state"] == "managed"
+    assert result["pid"] == 42
+    assert result["changed"] is False
+
+
+def test_reclaim_enrollment_listener_refuses_unrelated_process(monkeypatch):
+    gateway = Gateway()
+    module = sampler.load("wire")
+    controller = module.register(gateway)
+    monkeypatch.setattr(
+        module,
+        "_listener_owner",
+        lambda *args, **kwargs: {
+            "pid": 99,
+            "argv": ("python", "-m", "http.server", "8787"),
+            "managed": False,
+            "wire_enrollment": False,
+        },
+    )
+
+    try:
+        controller.reclaim_enrollment_listener()
+    except RuntimeError as error:
+        assert "refusing to reclaim" in str(error)
+        assert "pid 99" in str(error)
+    else:
+        raise AssertionError("expected unrelated listener refusal")
+
+
+def test_reclaim_enrollment_listener_terminates_matching_unmanaged_gway(monkeypatch):
+    gateway = Gateway()
+    module = sampler.load("wire")
+    controller = module.register(gateway)
+    owners = iter(
+        [
+            {
+                "pid": 123,
+                "argv": ("python", "-m", "gway", "wire", "server", "serve"),
+                "managed": False,
+                "wire_enrollment": True,
+            },
+            None,
+        ]
+    )
+    signals = []
+    monkeypatch.setattr(module, "_listener_owner", lambda *args, **kwargs: next(owners))
+    monkeypatch.setattr(module.os, "kill", lambda pid, sig: signals.append((pid, sig)))
+
+    result = controller.reclaim_enrollment_listener(timeout=0.5)
+
+    assert result["state"] == "reclaimed"
+    assert result["pid"] == 123
+    assert result["changed"] is True
+    assert signals == [(123, module.signal.SIGTERM)]
+
+
+def test_wire_server_reclaim_is_mutating():
+    gateway = Gateway()
+    module = sampler.load("wire")
+    module.register(gateway)
+
+    assert gateway.ops.resolve("wire.server.reclaim").mutates is True
