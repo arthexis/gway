@@ -60,6 +60,10 @@ class Controller:
             ),
         }
 
+    def rename(self, name, new_name):
+        """Rename one scope while preserving grants and bearer bindings."""
+        return self.registry.rename(name, new_name)
+
     def delete(self, name):
         """Delete one named security scope."""
         return self.registry.remove(name)
