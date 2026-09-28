@@ -1102,6 +1102,24 @@ class Gateway(Resolver):
         with self.invocation_authority(operation):
             return operation(*arguments)
 
+    def add_operation_root(self, path):
+        """Add one local, request-scoped operation root ahead of sampler fallback."""
+        from pathlib import Path
+        from .sampler import expand_root
+
+        root = Path(path).expanduser().resolve()
+        if not root.is_dir():
+            raise ValueError(f"Operation root is not a directory: {root}")
+        name = f"root:{root}"
+        if any(route.name == name for route in self.operation_routes.routes):
+            return root
+
+        def expand(runtime, tokens, *, _root=root, _name=name):
+            return expand_root(runtime, tokens, _root, route_name=_name)
+
+        self.operation_routes.register(name, expand, before="sampler")
+        return root
+
     @property
     def last(self):
         """Return the raw result of the most recently completed operation."""
