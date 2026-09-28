@@ -124,11 +124,12 @@ class Gateway(Resolver):
 
         self.source = self.wrap(
             "source",
-            lambda *operation, search=None, context=2, mutate=False: inspect_source(
+            lambda *operation, search=None, context=2, all=False, mutate=False: inspect_source(
                 self,
                 *operation,
                 search=search,
                 context=context,
+                all=all,
                 mutate=mutate,
             ),
         )
