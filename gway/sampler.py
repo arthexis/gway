@@ -151,6 +151,75 @@ def _semantic_values(tokens):
     )
 
 
+def _first_class_recipe_entries(root_path):
+    """Return public first-class recipe entries for one operation root."""
+    base = Path(root_path).expanduser().resolve()
+    if not base.is_dir():
+        return ()
+
+    entries = []
+    names = {}
+
+    def add(name, path):
+        canonical = ".".join(
+            part.replace("-", "_")
+            for part in str(name).replace("/", ".").split(".")
+            if part
+        )
+        previous = names.get(canonical)
+        if previous is not None and previous != path:
+            raise LookupError(
+                f"Ambiguous first-class recipe {canonical!r}: {previous}, {path}"
+            )
+        names[canonical] = path
+        entries.append((canonical, path))
+
+    for recipe in sorted(base.glob("*.rx")):
+        if recipe.is_file() and recipe.stem != "__main__":
+            add(recipe.stem, recipe.resolve())
+
+    for directory in sorted(path for path in base.iterdir() if path.is_dir()):
+        entry = directory / "__main__.rx"
+        if not entry.is_file():
+            continue
+        family = directory.name
+        add(family, entry.resolve())
+        for child in sorted(directory.glob("*.rx")):
+            if not child.is_file() or child.name == "__main__.rx":
+                continue
+            add(f"{family}.{child.stem}", child.resolve())
+
+    return tuple(entries)
+
+
+def _register_first_class_recipes(runtime, root_path, *, route_name):
+    """Register eligible recipe entry points once for one operation route."""
+    base = Path(root_path).expanduser().resolve()
+    discovered = getattr(runtime, "_operation_recipe_routes", None)
+    if discovered is None:
+        discovered = set()
+        runtime._operation_recipe_routes = discovered
+
+    key = (str(route_name), base)
+    if key in discovered:
+        return False
+
+    from .recipe.operation import register_recipe_operation
+
+    registered = False
+    for name, recipe in _first_class_recipe_entries(base):
+        wrapped = register_recipe_operation(
+            runtime,
+            name,
+            recipe,
+            route_name=route_name,
+            root=base,
+        )
+        registered = registered or wrapped is not None
+    discovered.add(key)
+    return registered
+
+
 def _fallback_routes(root_path=None):
     """Return capability packages in deterministic semantic-search order."""
     sampler_root = root() if root_path is None else Path(root_path).resolve()
@@ -193,12 +262,19 @@ def fallback_routes(tokens, *, root_path=None):
 
 
 def expand_root(runtime, tokens, root_path, *, route_name="root"):
-    """Load exactly one next capability package from an explicit operation root."""
+    """Expand first-class recipes or one capability package from an operation root."""
     values = _semantic_values(tokens)
     if not values:
         return False
 
     base = Path(root_path).expanduser().resolve()
+    recipes_registered = _register_first_class_recipes(
+        runtime,
+        base,
+        route_name=route_name,
+    )
+    if recipes_registered:
+        return True
     loaded = getattr(runtime, "_operation_route_loaded", None)
     if loaded is None:
         loaded = set()
