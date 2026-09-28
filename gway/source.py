@@ -135,3 +135,63 @@ def inspect_source(gateway, *operation, search=None, context=2, mutate=False):
     if search is not None:
         return search_descriptor(descriptor, search, context=context)
     return descriptor.result()
+
+
+def _source_topics(callable_):
+    """Return explicit semantic topics attached by operation ingestion."""
+    metadata = getattr(callable_, "__gway_metadata__", {})
+    topics = metadata.get("topics", ())
+    if isinstance(topics, str):
+        topics = (topics,)
+    return tuple(dict.fromkeys(str(topic).strip() for topic in topics if str(topic).strip()))
+
+
+def _corpus_descriptor(gateway, record):
+    """Describe one registered operation without introducing alternate resolution."""
+    callable_ = record.callable
+    resolution = type(
+        "_CorpusResolution",
+        (),
+        {"callable": callable_, "candidate": record.name},
+    )()
+    return describe_resolved_source(resolution)
+
+
+def search_source_corpus(gateway, query, *, kind=None, topic=(), context=0, mutate=False):
+    """Search retrievable sources belonging to registered Gway operations."""
+    del mutate
+    if context < 0:
+        raise ValueError("source search context must be non-negative")
+
+    topics = (topic,) if isinstance(topic, str) else tuple(topic)
+    topics = tuple(str(value).strip() for value in topics if str(value).strip())
+    wanted_topics = set(topics)
+    results = []
+
+    for record in sorted(gateway.ops.records(), key=lambda item: item.name):
+        if not gateway._operation_visible(record.name):
+            continue
+        callable_ = record.callable
+        source_kind = getattr(callable_, "__gway_source_kind__", None) or "python"
+        normalized_kind = "recipe" if source_kind == "recipe" else "python"
+        if kind is not None and normalized_kind != str(kind):
+            continue
+
+        operation_topics = set(_source_topics(callable_))
+        if wanted_topics and not wanted_topics.issubset(operation_topics):
+            continue
+
+        descriptor = _corpus_descriptor(gateway, record)
+        searched = search_descriptor(descriptor, query, context=context)
+        if not searched["matches"]:
+            continue
+        results.append(
+            {
+                "operation": record.name.replace(".", " "),
+                "kind": normalized_kind,
+                "path": descriptor.path,
+                "topics": sorted(operation_topics),
+                "matches": searched["matches"],
+            }
+        )
+    return results
