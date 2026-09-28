@@ -1,4 +1,4 @@
-def __main__(*, mutate=False):
+def __main__(scope=None, *, mutate=False):
     """Inspect the current node through bounded read-only observations."""
 
 
@@ -9,11 +9,24 @@ def __help__(topic=None):
             "Build a bounded structured snapshot from ordinary read-only Gway "
             "operations. Unsupported role-specific sections degrade independently."
         ),
-        "examples": ["gway watch", "gway --json watch"],
+        "examples": [
+            "gway watch",
+            "gway watch --scope operations-basic",
+            "gway --json watch",
+        ],
         "notes": [
             "The base watch snapshot is read-only.",
+            "--scope can only reduce the caller's existing authority.",
             "Filtering and incremental observation are added in the next chunk.",
         ],
+        "--scope": {
+            "summary": "Narrow watch authority",
+            "description": (
+                "Intersect the caller's current authority with one visible named "
+                "security scope. This can never add operation or environment grants."
+            ),
+            "examples": ["gway watch --scope operations-basic"],
+        },
         "node": {
             "description": "Generic node role, project, and running Gway identity."
         },
