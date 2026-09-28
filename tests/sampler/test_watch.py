@@ -452,3 +452,141 @@ def test_watch_filter_help_documents_section_reduction(tmp_path, monkeypatch):
     assert "comma-separated section list" in only
     assert "Exclude selected watch sections" in except_
     assert "cannot be used together" in except_
+
+
+def test_watch_since_is_forwarded_to_bounded_error_search(tmp_path, monkeypatch):
+    gateway = _role_gateway(tmp_path, monkeypatch, "control")
+    calls = []
+
+    def search(
+        pattern,
+        *source,
+        since=None,
+        until=None,
+        limit=100,
+        all=False,
+        mutate=False,
+    ):
+        calls.append(
+            {
+                "pattern": pattern,
+                "since": since,
+                "limit": limit,
+                "all": all,
+                "mutate": mutate,
+            }
+        )
+        return []
+
+    gateway.wrap("log.search", search, op="search", sub="log")
+
+    gateway('watch --since "10 minutes ago"')
+
+    assert calls == [
+        {
+            "pattern": "ERROR|CRITICAL",
+            "since": "10 minutes ago",
+            "limit": 20,
+            "all": True,
+            "mutate": False,
+        }
+    ]
+
+
+def test_watch_errors_keeps_only_problematic_sections(tmp_path, monkeypatch):
+    gateway = _role_gateway(tmp_path, monkeypatch, "control")
+
+    def fail(*, mutate=False):
+        raise ConnectionError("wire offline")
+
+    gateway.wrap("wire.check", fail, op="check", sub="wire")
+
+    result = gateway("watch --errors")
+
+    assert set(result) == {
+        "wire",
+        "health",
+        "changed_at",
+        "cursor",
+    }
+    assert result["wire"]["status"] == "error"
+    assert result["health"]["status"] == "degraded"
+    assert result["health"]["sections"] == {"wire": "error"}
+
+
+def test_watch_errors_includes_nonempty_recent_error_logs(tmp_path, monkeypatch):
+    gateway = _role_gateway(tmp_path, monkeypatch, "control")
+
+    gateway.wrap(
+        "log.search",
+        lambda pattern, *source, since=None, until=None, limit=100, all=False, mutate=False: [
+            {"message": "ERROR example"}
+        ],
+        op="search",
+        sub="log",
+    )
+
+    result = gateway("watch --errors")
+
+    assert set(result) == {
+        "errors",
+        "health",
+        "changed_at",
+        "cursor",
+    }
+    assert result["errors"]["status"] == "ok"
+    assert result["errors"]["result"] == [{"message": "ERROR example"}]
+    assert result["health"]["status"] == "ok"
+
+
+def test_watch_errors_composes_after_only_filter(tmp_path, monkeypatch):
+    gateway = _role_gateway(tmp_path, monkeypatch, "control")
+
+    def fail(*, mutate=False):
+        raise ConnectionError("wire offline")
+
+    gateway.wrap("wire.check", fail, op="check", sub="wire")
+
+    result = gateway("watch --only node,wire --errors")
+
+    assert set(result) == {
+        "wire",
+        "health",
+        "changed_at",
+        "cursor",
+    }
+
+
+def test_watch_changed_fails_before_observation_work(tmp_path, monkeypatch):
+    gateway = _role_gateway(tmp_path, monkeypatch, "control")
+    calls = []
+
+    gateway.wrap(
+        "wire.check",
+        lambda *, mutate=False: calls.append("wire"),
+        op="check",
+        sub="wire",
+    )
+
+    with pytest.raises(
+        NotImplementedError,
+        match="requires cursor/change tracking",
+    ):
+        gateway("watch --changed")
+
+    assert calls == []
+
+
+def test_watch_time_error_change_help(tmp_path, monkeypatch):
+    gateway = _role_gateway(tmp_path, monkeypatch, "control")
+
+    since = gateway("help watch --since")
+    errors = gateway("help watch --errors")
+    changed = gateway("help watch --changed")
+
+    assert "Bound time-aware observations" in since
+    assert "10 minutes ago" in since
+    assert "Show only problematic observations" in errors
+    assert "Optional unavailable capabilities are not treated as errors" in errors
+    assert "Show only changed observations" in changed
+    assert "requires a comparison cursor" in changed
