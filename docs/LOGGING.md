@@ -158,7 +158,7 @@ process runtime -> rotating-file storage on non-journald hosts
 ```
 
 Process-backed GWAY services propagate their logical
-`<project>/<service>` identity into the child GWAY process. GWAY does not
+`<product>/<service>` identity into the child GWAY process. GWAY does not
 currently capture arbitrary subprocess stdout/stderr as a structured logging
 stream.
 
