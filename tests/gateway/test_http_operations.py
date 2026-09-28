@@ -1,5 +1,6 @@
-from gway.documentation import describe\nimport pytest
+import pytest
 
+from gway.documentation import describe
 from gway.mutation import mutates
 
 
