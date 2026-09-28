@@ -18,24 +18,30 @@ class Controller:
     def __init__(self, gateway):
         self.gateway = gateway
 
-    def observe(self, *command, section=None, mutate=False):
+    def observe(self, *command, section=None, scope=None, mutate=False):
         """Execute one command read-only and return a structured observation envelope.
 
         Args:
             command: Command tokens to execute under the existing caller authority.
             section: Optional context key used to publish the observation for composition.
+            scope: Optional named security scope used only to narrow caller authority.
         """
         del mutate
         if not command:
             raise TypeError("observe requires a command")
 
-        target = command[0] if len(command) == 1 and isinstance(command[0], str) else list(command)
+        target = (
+            command[0]
+            if len(command) == 1 and isinstance(command[0], str)
+            else list(command)
+        )
         try:
-            if self.gateway.authorization is not None:
-                with self.gateway.external_authority():
+            with self.gateway.attenuated_scope(scope):
+                if self.gateway.authorization is not None:
+                    with self.gateway.external_authority():
+                        result = self.gateway.execute(target, mutate=False)
+                else:
                     result = self.gateway.execute(target, mutate=False)
-            else:
-                result = self.gateway.execute(target, mutate=False)
         except AuthorizationError as exception:
             envelope = {
                 "status": "unauthorized",
