@@ -250,10 +250,16 @@ class Gateway(Resolver):
 
         self._github_controller = GitHubController(self)
         ingest_python(self, self._github_controller, path=("github",))
+        github_writes = {"github.set_variable", "github.delete_variable"}
         for record in self.ops.records():
             if record.name.startswith("github."):
+                access = "write" if record.name in github_writes else "read"
                 metadata = dict(getattr(record.callable, "__gway_metadata__", {}) or {})
-                metadata["topics"] = tuple(dict.fromkeys((*metadata.get("topics", ()), "github", "source", "read")))
+                metadata["topics"] = tuple(
+                    dict.fromkeys(
+                        (*metadata.get("topics", ()), "github", "source", access)
+                    )
+                )
                 record.callable.__gway_metadata__ = metadata
 
         from .dns import Controller as DNSController
