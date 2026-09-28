@@ -360,3 +360,34 @@ class Controller:
             "GET",
             f"{self._repo(repository)}/actions/secrets/{_segment(name)}",
         ).data
+
+    def set_variable(self, repository, name, value, mutate=True):
+        """Create or update a GitHub Actions repository variable."""
+        del mutate
+        path = f"{self._repo(repository)}/actions/variables/{_segment(name)}"
+        try:
+            self._github().request("GET", path)
+        except Exception as error:
+            if getattr(error, "status", None) != 404:
+                raise
+            self._github().request(
+                "POST",
+                f"{self._repo(repository)}/actions/variables",
+                json={"name": str(name), "value": str(value)},
+            )
+            return {"name": str(name), "value": str(value), "created": True}
+        self._github().request(
+            "PATCH",
+            path,
+            json={"name": str(name), "value": str(value)},
+        )
+        return {"name": str(name), "value": str(value), "created": False}
+
+    def delete_variable(self, repository, name, mutate=True):
+        """Delete a GitHub Actions repository variable."""
+        del mutate
+        self._github().request(
+            "DELETE",
+            f"{self._repo(repository)}/actions/variables/{_segment(name)}",
+        )
+        return {"name": str(name), "deleted": True}
