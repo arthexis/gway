@@ -5,22 +5,8 @@ import pytest
 
 from gway.authorization import AuthorizationError
 from gway.github import GitHubError
-from gway.githubops import Controller
+from gway.githubops import Controller, WRITE_OPERATIONS
 
-
-WRITE_OPERATIONS = {
-    "github.dispatch_workflow",
-    "github.dispatch_repository",
-    "github.create_release",
-    "github.update_release",
-    "github.create_ref",
-    "github.create_branch",
-    "github.delete_ref",
-    "github.delete_branch",
-    "github.create_file",
-    "github.update_file",
-    "github.delete_file",
-}
 
 
 class RepositoryMutationClient:
@@ -78,7 +64,14 @@ class RepositoryMutationClient:
         raise AssertionError((method, path, json))
 
 
-@pytest.mark.parametrize("operation", sorted(WRITE_OPERATIONS))
+@pytest.mark.parametrize(
+    "operation",
+    sorted(f"github.{name}" for name in WRITE_OPERATIONS if name in {
+        "dispatch_workflow", "dispatch_repository", "create_release",
+        "update_release", "create_ref", "create_branch", "delete_ref",
+        "delete_branch", "create_file", "update_file", "delete_file",
+    }),
+)
 def test_read_authority_rejects_g6_writes(gateway, operation):
     with gateway.authorized(operations={"github.repository", "github.file"}):
         with pytest.raises(AuthorizationError, match=operation):
