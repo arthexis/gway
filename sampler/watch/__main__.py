@@ -1,4 +1,4 @@
-def __main__(scope=None, only=None, except_=None, since=None, errors=False, changed=False, *, mutate=False):
+def __main__(scope=None, only=None, except_=None, since=None, errors=False, changed=False, cursor=None, *, mutate=False):
     """Inspect the current node through bounded read-only observations."""
 
 
@@ -16,6 +16,7 @@ def __help__(topic=None):
             "gway watch --except errors,wire",
             "gway watch --since \"10 minutes ago\"",
             "gway watch --errors",
+            "gway watch --changed --cursor <cursor>",
             "gway --json watch",
         ],
         "notes": [
@@ -24,7 +25,8 @@ def __help__(topic=None):
             "--only and --except reduce the visible section set after authorization.",
             "--since currently constrains time-aware observations such as recent errors.",
             "--errors keeps only problematic observations and non-empty recent-error logs.",
-            "--changed is reserved and requires cursor tracking from the next chunk.",
+            "Every watch response includes an opaque cursor for later comparison.",
+            "--changed requires --cursor and returns only currently visible changed sections.",
         ],
         "--scope": {
             "summary": "Narrow watch authority",
@@ -71,10 +73,21 @@ def __help__(topic=None):
         "--changed": {
             "summary": "Show only changed observations",
             "description": (
-                "Reserved incremental filter. It requires a comparison cursor, which "
-                "is implemented in the next chunk."
+                "Compare the current visible watch surface with a prior opaque cursor "
+                "and return only sections whose fingerprints changed."
             ),
-            "examples": ["gway watch --changed"],
+            "examples": ["gway watch --changed --cursor <cursor>"],
+            "notes": [
+                "Sections no longer visible to the caller are never surfaced as removals."
+            ],
+        },
+        "--cursor": {
+            "summary": "Compare against a previous watch snapshot",
+            "description": (
+                "Opaque versioned watch cursor returned by an earlier invocation. "
+                "It contains section fingerprints, not server-side watch state."
+            ),
+            "examples": ["gway watch --changed --cursor <cursor>"],
         },
         "node": {
             "description": "Generic node role, project, and running Gway identity."
