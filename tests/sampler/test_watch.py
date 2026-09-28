@@ -186,3 +186,61 @@ def test_watch_help_uses_first_class_recipe_documentation(tmp_path, monkeypatch)
     assert "Build a bounded structured snapshot" in general
     assert "Examples:" in general
     assert "At most 20 recent ERROR or CRITICAL log records" in errors
+
+
+def test_watch_omits_sections_outside_external_authority(tmp_path, monkeypatch):
+    gateway = _role_gateway(tmp_path, monkeypatch, "watchtower")
+    gateway._github_controller = FakeGitHub()
+
+    with gateway.authorized(
+        operations={
+            "watch",
+            "node",
+            "service.statuses",
+        }
+    ):
+        result = gateway("watch")
+
+    assert set(result) == {
+        "node",
+        "health",
+        "services",
+        "changed_at",
+        "cursor",
+    }
+    assert result["node"]["status"] == "ok"
+    assert result["services"]["status"] == "ok"
+    assert result["health"]["status"] == "ok"
+    assert result["health"]["sections"] == {
+        "node": "ok",
+        "services": "ok",
+    }
+    assert "deploy" not in result
+    assert "release" not in result
+    assert "queue" not in result
+    assert "wire" not in result
+    assert "errors" not in result
+
+
+def test_watch_keeps_authorized_but_unavailable_sections(tmp_path, monkeypatch):
+    gateway = _role_gateway(tmp_path, monkeypatch, "control")
+
+    with gateway.authorized(
+        operations={
+            "watch",
+            "node",
+            "service.statuses",
+            "wire.check",
+            "log.search",
+        }
+    ):
+        result = gateway("watch")
+
+    assert result["node"]["status"] == "ok"
+    assert result["services"]["status"] == "ok"
+    assert result["wire"]["status"] == "ok"
+    assert result["errors"]["status"] == "ok"
+    assert result["deploy"]["status"] == "unavailable"
+    assert result["release"]["status"] == "unavailable"
+    assert result["queue"]["status"] == "unavailable"
+    assert result["health"]["status"] == "ok"
