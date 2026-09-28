@@ -32,7 +32,8 @@ def test_sampler_contains_gway_and_arthexis_recipe_families():
 
     assert (root / "web" / "expose" / "expose.rx").is_file()
     assert (root / "arthexis" / "setup.rx").is_file()
-    assert (root / "arthexis" / "expose.rx").is_file()\n    assert (root / "ci" / "__main__.rx").is_file()
+    assert (root / "arthexis" / "expose.rx").is_file()
+    assert (root / "ci" / "__main__.rx").is_file()
 
 
 def test_sampler_tree_can_be_ingested_as_one_command_namespace(gateway):
