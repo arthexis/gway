@@ -61,3 +61,58 @@ def test_source_reports_unavailable_dynamic_callable(gateway):
     assert result["available"] is False
     assert result["source"] is None
     assert result["reason"]
+
+
+def test_source_search_finds_python_match_with_absolute_line(gateway):
+    source = gateway("source env")
+    result = gateway("source env --search Return --context 1")
+
+    assert result["operation"] == "env"
+    assert result["kind"] == "python"
+    assert len(result["matches"]) == 1
+    match = result["matches"][0]
+    assert match["line"] >= source["start_line"]
+    assert "Return" in match["text"]
+    assert len(match["before"]) <= 1
+    assert len(match["after"]) <= 1
+
+
+def test_source_search_finds_multiple_matches(gateway):
+    result = gateway("source env --search default --context 0")
+
+    assert len(result["matches"]) >= 2
+    assert all("default" in match["text"] for match in result["matches"])
+    assert all(match["before"] == [] for match in result["matches"])
+    assert all(match["after"] == [] for match in result["matches"])
+
+
+def test_source_search_returns_empty_matches_without_widening(gateway):
+    result = gateway("source env --search definitely_not_in_env_source")
+
+    assert result["operation"] == "env"
+    assert result["matches"] == []
+    assert "source" not in result
+
+
+def test_source_search_finds_recipe_match(gateway, tmp_path):
+    root = tmp_path / "recipes"
+    recipe = root / "deploy.rx"
+    root.mkdir()
+    recipe.write_text(
+        "env FIRST\nservice install web\nenv LAST\n",
+        encoding="utf-8",
+    )
+    gateway.ingest(root)
+
+    result = gateway("source recipes deploy --search service --context 1")
+
+    assert result["kind"] == "recipe"
+    assert result["path"] == str(recipe)
+    assert result["matches"] == [
+        {
+            "line": 2,
+            "text": "service install web",
+            "before": ["env FIRST"],
+            "after": ["env LAST"],
+        }
+    ]
