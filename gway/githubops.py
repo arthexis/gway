@@ -200,6 +200,74 @@ class Controller:
         """Reopen a GitHub pull request."""
         return self.update_pull(repository, number, state="open", mutate=mutate)
 
+    def _pull_node_id(self, repository, number):
+        pull = self.pull(repository, number)
+        node_id = pull.get("node_id") if isinstance(pull, dict) else None
+        if not node_id:
+            raise ValueError("GitHub pull request response is missing node_id")
+        return node_id
+
+    def _pull_lifecycle(self, repository, number, mutation, field, mutate=True):
+        if not mutate:
+            raise PermissionError("GitHub pull request mutation is disabled")
+        node_id = self._pull_node_id(repository, number)
+        query = f"""
+        mutation($id: ID!) {{
+          {mutation}(input: {{pullRequestId: $id}}) {{
+            pullRequest {{ id number isDraft url }}
+          }}
+        }}
+        """
+        payload = self._github().graphql(query, {"id": node_id}).data
+        if payload.get("errors"):
+            raise RuntimeError(f"GitHub GraphQL error: {payload['errors']}")
+        return payload["data"][field]["pullRequest"]
+
+    def ready_pull(self, repository, number, mutate=True):
+        """Mark a draft pull request ready for review."""
+        return self._pull_lifecycle(
+            repository,
+            number,
+            "markPullRequestReadyForReview",
+            "markPullRequestReadyForReview",
+            mutate=mutate,
+        )
+
+    def draft_pull(self, repository, number, mutate=True):
+        """Convert a pull request back to draft."""
+        return self._pull_lifecycle(
+            repository,
+            number,
+            "convertPullRequestToDraft",
+            "convertPullRequestToDraft",
+            mutate=mutate,
+        )
+
+    def merge_pull(
+        self, repository, number, sha, method=None, title=None, message=None,
+        mutate=True
+    ):
+        """Explicitly merge a pull request at the expected head SHA."""
+        if not mutate:
+            raise PermissionError("GitHub pull request mutation is disabled")
+        if not str(sha):
+            raise ValueError("expected pull request head sha is required")
+        payload = {"sha": str(sha)}
+        if method is not None:
+            method = str(method).lower()
+            if method not in {"merge", "squash", "rebase"}:
+                raise ValueError("merge method must be merge, squash, or rebase")
+            payload["merge_method"] = method
+        if title is not None:
+            payload["commit_title"] = str(title)
+        if message is not None:
+            payload["commit_message"] = str(message)
+        return self._github().request(
+            "PUT",
+            f"{self._repo(repository)}/pulls/{int(number)}/merge",
+            json=payload,
+        ).data
+
     def issues(self, repository, state="open"):
         """List issue records, including pull requests as GitHub returns them."""
         return self._all(
