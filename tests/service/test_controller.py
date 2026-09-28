@@ -18,6 +18,8 @@ from gway.security.scopes import ScopeRegistry
 from gway.security.tokens import TokenRegistry
 from gway.service.model import Service
 
+pytestmark = pytest.mark.xdist_group("process-integration")
+
 
 class FakeBackend:
     def __init__(self):
