@@ -74,4 +74,4 @@ def test_every_github_operation_has_exactly_one_access_topic(gateway):
         topics = set(record.callable.__gway_metadata__["topics"])
         assert {"github", "source"} <= topics
         assert len({"read", "write"} & topics) == 1
-        assert record.mutates is ("write" in topics)
+        assert record.callable.mutates is ("write" in topics)

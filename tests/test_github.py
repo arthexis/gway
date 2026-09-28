@@ -91,6 +91,23 @@ def test_client_exposes_rate_limit_metadata():
     assert rate.resource == "core"
 
 
+def test_graphql_derives_enterprise_endpoint_from_rest_root():
+    observed = {}
+
+    def handler(request):
+        observed["url"] = str(request.url)
+        return httpx.Response(200, json={"data": {}}, request=request)
+
+    client = Client(
+        "token",
+        api_url="https://github.example/api/v3/",
+        transport=transport(handler),
+    )
+    client.graphql("query { viewer { login } }")
+
+    assert observed["url"] == "https://github.example/api/graphql"
+
+
 def test_pages_follows_only_github_link_next():
     seen = []
 

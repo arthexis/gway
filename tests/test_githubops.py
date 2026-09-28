@@ -80,6 +80,15 @@ def test_commit_file_tree_ref_and_tags_map_to_rest_resources():
     ]
 
 
+def test_refs_preserve_empty_ref_segment_when_listing_all():
+    target = controller([])
+
+    assert target.refs("arthexis/gway") == []
+    assert target._client.calls == [
+        ("PAGES", "/repos/arthexis/gway/git/matching-refs/", None)
+    ]
+
+
 def test_repository_requires_owner_name_shape():
     target = controller({})
 
