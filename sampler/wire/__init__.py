@@ -477,7 +477,15 @@ def _listener_pids(host, port):
     pids = set()
     matched = []
     for line in result.stdout.splitlines():
-        if requested not in {"0.0.0.0", "::"} and requested not in line:
+        wildcard = any(
+            value in line
+            for value in (f"0.0.0.0:{int(port)}", f"*:{int(port)}", f"[::]:{int(port)}")
+        )
+        if (
+            requested not in {"0.0.0.0", "::"}
+            and requested not in line
+            and not wildcard
+        ):
             continue
         matched.append(line)
         pids.update(int(value) for value in _LISTENER_PID_RE.findall(line))
@@ -532,10 +540,12 @@ def _listener_owner(host, port, *, unit="gway-wire-enroll.service"):
         )
     pid = pids[0]
     argv = _process_cmdline(pid)
+    cgroup = _process_cgroup(pid)
     return {
         "pid": pid,
         "argv": argv,
-        "managed": unit in _process_cgroup(pid),
+        "managed": unit in cgroup,
+        "legacy": _LEGACY_ENROLLMENT_UNIT in cgroup,
         "wire_enrollment": _is_wire_enrollment_command(argv),
     }
 
@@ -926,6 +936,22 @@ class Controller:
                 "state": "managed",
                 "pid": owner["pid"],
                 "changed": False,
+            }
+        if owner.get("legacy"):
+            if not _stop_legacy_enrollment():
+                raise RuntimeError(
+                    f"unable to stop legacy enrollment service {_LEGACY_ENROLLMENT_UNIT}"
+                )
+            if not _disable_legacy_enrollment():
+                raise RuntimeError(
+                    f"unable to disable legacy enrollment service {_LEGACY_ENROLLMENT_UNIT}"
+                )
+            return {
+                "host": str(host),
+                "port": int(port),
+                "state": "legacy-reclaimed",
+                "pid": owner["pid"],
+                "changed": True,
             }
         if not owner["wire_enrollment"]:
             command = " ".join(owner["argv"]) or "unknown"
