@@ -472,7 +472,7 @@ class Gateway(Resolver):
         """Converge one local or Git artifact installation toward requested state.
 
         Args:
-            source: Local project path, Git source, GitHub shorthand, or known project identity.
+            source: Local product or extension path, Git source, GitHub shorthand, or known installation identity.
             ref: Branch, tag, or commit requested for Git sources.
             upgrade: Replace an existing installation when the requested source state changes.
             force: Discard drift in a dirty managed installation before reconciliation.
@@ -1006,10 +1006,10 @@ class Gateway(Resolver):
         return render(target, verbose=verbose)
 
     def _guide(self, *task: str, mutate=False):
-        """Return preferred explicit project guidance for a task.
+        """Return preferred explicit guidance for a task.
 
         Args:
-            task: Natural-language task description to match against project guidance.
+            task: Natural-language task description to match against explicit guidance.
         """
         del mutate
         if not task:
@@ -1028,11 +1028,11 @@ class Gateway(Resolver):
         )
 
     def _node(self, *parts: str, mutate=False):
-        """Inspect or dispatch the active project/node role.
+        """Inspect or dispatch the active node role.
 
         Bare `node` reports the active role family and available role-owned
         operations. `node <verb> [args...]` dispatches to the canonical
-        `node.<role>.<verb>` operation registered by the project.
+        `node.<role>.<verb>` operation registered for the active role.
 
         Args:
             parts: Role-local operation verb followed by its arguments.
