@@ -32,6 +32,24 @@ def resolve_recipe_stage(runtime, tokens, *, pipeline):
         stage, remaining = split_recipe_stage(tokens)
         return explicit, stage[1:], remaining
 
+    bare = recipe_path(runtime, source, allow_bare=True)
+    if bare is not None:
+        stack = getattr(runtime, "_recipe_stack", ()) or ()
+        if stack:
+            try:
+                if bare.expanduser().resolve() == Path(stack[-1]).expanduser().resolve():
+                    bare = None
+            except (OSError, RuntimeError):
+                pass
+        if bare is not None:
+            from ..dispatch import resolve_operation
+
+            try:
+                resolve_operation(runtime, tokens[:1], pipeline=pipeline)
+            except LookupError:
+                stage, remaining = split_recipe_stage(tokens)
+                return bare, stage[1:], remaining
+
     from ..sampler import resolve_tokens as resolve_sampler_tokens
 
     sampler = resolve_sampler_tokens(tokens)
@@ -45,9 +63,7 @@ def resolve_recipe_stage(runtime, tokens, *, pipeline):
             stage, remaining = split_recipe_stage(tokens)
             return path, stage[size:], remaining
 
-    bare = recipe_path(runtime, source, allow_bare=True)
-    if bare is None:
-        return None
+
 
     stack = getattr(runtime, "_recipe_stack", ()) or ()
     if stack:
