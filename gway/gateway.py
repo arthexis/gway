@@ -1063,12 +1063,41 @@ class Gateway(Resolver):
             available.append(record.name[len(prefix):].replace(".", " "))
 
         if not parts:
+            from . import builtin
             from .publication import ResultOnlyMapping
+
+            project = None
+            project_path = getattr(self, "_project_path", None)
+            if project_path is not None:
+                try:
+                    from .install.source import project_name
+
+                    project = {
+                        "name": project_name(project_path.parent),
+                        "root": str(project_path.parent.resolve()),
+                    }
+                except (OSError, ValueError):
+                    project = {
+                        "name": None,
+                        "root": str(project_path.parent.resolve()),
+                    }
+
+            identity = self.gway_identity
+            runtime = {
+                "version": builtin.version(),
+                "managed": identity is not None,
+                "source": getattr(identity, "source", None),
+                "requested_ref": getattr(identity, "requested_ref", None),
+                "resolved_revision": getattr(identity, "resolved_revision", None),
+                "scope": getattr(identity, "scope", None),
+            }
 
             return ResultOnlyMapping(
                 {
                     "role": role,
                     "family": family.replace(".", "/"),
+                    "project": project,
+                    "runtime": runtime,
                     "operations": sorted(available),
                 }
             )
