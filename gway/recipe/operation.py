@@ -14,11 +14,17 @@ def _operation_callable(runtime, recipe, signature, doc):
     def invoke(*args, **kwargs):
         bound = signature.bind(*args, **kwargs)
         bound.apply_defaults()
-        context = {
-            name: value
-            for name, value in bound.arguments.items()
-            if name != "mutate"
-        }
+        context = {}
+        for name, value in bound.arguments.items():
+            if name == "mutate":
+                continue
+            parameter = signature.parameters[name]
+            if parameter.kind is inspect.Parameter.VAR_KEYWORD:
+                context.update(value)
+            elif parameter.kind is inspect.Parameter.VAR_POSITIONAL:
+                context[name] = tuple(value)
+            else:
+                context[name] = value
         _, result = execute_recipe(runtime, recipe, context=context)
         return result
 
