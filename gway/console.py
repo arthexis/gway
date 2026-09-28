@@ -189,6 +189,7 @@ def _run_cli(parser, args, unknown, *, runtime=None):
                 else nullcontext()
             )
             with state_scope:
+                recipe_execution = False
                 if args.resume:
                     if unknown:
                         parser.error("--resume does not accept additional arguments")
@@ -196,12 +197,19 @@ def _run_cli(parser, args, unknown, *, runtime=None):
 
                     output = resume(args.resume)
                 elif args.recipe:
+                    recipe_execution = True
                     _, output = execute_recipe(
                         runtime,
                         args.recipe,
                         context=parse_recipe_context(unknown),
                     )
                 elif unknown:
+                    from .recipe.resolve import resolve_recipe_stage
+
+                    recipe_execution = (
+                        not getattr(args, "command_help", False)
+                        and resolve_recipe_stage(runtime, unknown, pipeline=None) is not None
+                    )
                     if getattr(args, "command_help", False):
                         output = runtime._command_help(*unknown, verbose=args.verbose)
                     else:
@@ -223,7 +231,12 @@ def _run_cli(parser, args, unknown, *, runtime=None):
 
     if output is not None and not args.silent:
         if args.json:
-            print(json.dumps(output, indent=2, default=str))
+            payload = (
+                {"result": output, "results": list(runtime.results.history)}
+                if recipe_execution
+                else output
+            )
+            print(json.dumps(payload, indent=2, default=str))
         else:
             print(output)
     return 0

@@ -267,3 +267,49 @@ def test_cli_logfile_stderr_is_explicit_opt_in(tmp_path):
     assert completed.returncode == 0
     assert completed.stdout == ""
     assert "INFO gway [gway] visible-on-stderr" in completed.stderr
+
+
+def test_cli_json_recipe_exposes_final_result_and_history(tmp_path):
+    recipe = tmp_path / "ci.rx"
+    recipe.write_text("resolve '[first|one]'\nresolve '[second|two]'\n", encoding="utf-8")
+
+    completed = subprocess.run(
+        [sys.executable, "-m", "gway", "ci", "--json"],
+        cwd=tmp_path,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert completed.returncode == 0, completed.stderr
+    payload = json.loads(completed.stdout)
+    assert payload == {"result": "two", "results": []}
+    # resolve is observational and deliberately unpublished; the recipe envelope
+    # reports chronological published results rather than every raw stage value.
+
+
+def test_cli_root_recipe_failure_propagates_nonzero_exit(tmp_path):
+    recipe = tmp_path / "ci.rx"
+    recipe.write_text("check false\n", encoding="utf-8")
+
+    completed = subprocess.run(
+        [sys.executable, "-m", "gway", "ci"],
+        cwd=tmp_path,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert completed.returncode != 0
+
+
+def test_cli_json_operation_keeps_existing_result_shape():
+    completed = subprocess.run(
+        [sys.executable, "-m", "gway", "resolve", "[site|MTY]", "--json"],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert completed.returncode == 0, completed.stderr
+    assert json.loads(completed.stdout) == "MTY"
