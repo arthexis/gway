@@ -81,3 +81,23 @@ def test_wire_watchtower_recipe_does_not_require_explicit_server_keys():
     )
     assert "--private-key" not in rendered
     assert "--server-public-key" not in rendered
+
+
+def test_wire_watchtower_reclaims_listener_before_service_start():
+    values = _commands("watchtower.rx")
+    flattened = [" ".join(command) for command in values]
+
+    reclaim_index = next(
+        index
+        for index, command in enumerate(flattened)
+        if command.startswith("wire server reclaim")
+    )
+    start_index = next(
+        index
+        for index, command in enumerate(flattened)
+        if command.startswith("service start")
+    )
+
+    assert reclaim_index < start_index
+    assert "--host [host]" in flattened[reclaim_index]
+    assert "--port [port]" in flattened[reclaim_index]
