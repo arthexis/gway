@@ -210,6 +210,24 @@ def test_topic_order_is_semantically_equivalent(gateway):
         assert gateway.resolve("[api_key]") == "canonical"
 
 
+@pytest.mark.parametrize(
+    "topics",
+    [
+        ("remote", "mcp", "arthexis"),
+        ("remote", "arthexis", "mcp"),
+        ("mcp", "remote", "arthexis"),
+        ("mcp", "arthexis", "remote"),
+        ("arthexis", "remote", "mcp"),
+        ("arthexis", "mcp", "remote"),
+    ],
+)
+def test_three_topic_order_is_semantically_equivalent(gateway, topics):
+    gateway.context["remote.mcp.arthexis.endpoint"] = "canonical"
+
+    with gateway.topics(*topics):
+        assert gateway.resolve("[endpoint]") == "canonical"
+
+
 def test_declared_topic_order_is_preferred_when_both_orders_exist(gateway):
     gateway.context["dns.godaddy.api_key"] = "declared"
     gateway.context["godaddy.dns.api_key"] = "permuted"
