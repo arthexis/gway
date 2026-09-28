@@ -202,7 +202,8 @@ def test_http_token_rejects_bad_verifier_and_expired_code(tmp_path):
         code_hash = hashlib.sha256(code.encode()).hexdigest()
         with sqlite3.connect(oauth.path) as database:
             database.execute(
-                "UPDATE oauth_authorization_codes SET expires_at = ? WHERE code_hash = ?",
+                "UPDATE oauth_authorization_codes SET expires_at = ? "
+                "WHERE code_hash = ?",
                 (datetime(2000, 1, 1, tzinfo=timezone.utc).isoformat(), code_hash),
             )
         status, payload = _token(
