@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from urllib.parse import urlsplit, urlunsplit
 
 import httpx
 
 
 DEFAULT_TIMEOUT = 30.0
-_SENSITIVE_HEADERS = {"authorization", "proxy-authorization", "cookie", "set-cookie"}
+_SENSITIVE_HEADERS = {\n    "authorization",\n    "proxy-authorization",\n    "cookie",\n    "set-cookie",\n    "x-api-key",\n    "x-auth-token",\n    "api-key",\n}
 
 
 class HTTPTransportError(RuntimeError):
@@ -45,13 +46,13 @@ class HTTPResponse:
         return {
             "status": self.status,
             "url": self.url,
-            "headers": dict(self.headers),
+            "headers": _safe_headers(self.headers),
             "result": body,
         }
 
 
 def _safe_headers(headers):
-    """Return request headers with credential-bearing values redacted."""
+    """Return headers without exposing values that commonly carry credentials."""
     return {
         str(name): (
             "<redacted>"
@@ -62,44 +63,11 @@ def _safe_headers(headers):
     }
 
 
-def request(
-    method,
-    url,
-    *,
-    headers=None,
-    params=None,
-    json=None,
-    data=None,
-    timeout=DEFAULT_TIMEOUT,
-    follow_redirects=False,
-    transport=None,
-):
-    """Execute one HTTP request and return a stable GWAY response."""
-    method = str(method).upper()
-    try:
-        with httpx.Client(
-            timeout=timeout,
-            follow_redirects=bool(follow_redirects),
-            transport=transport,
-        ) as client:
-            response = client.request(
-                method,
-                str(url),
-                headers=headers,
-                params=params,
-                json=json,
-                content=data,
-            )
-    except httpx.HTTPError as error:
-        safe = _safe_headers(headers)
-        detail = f"HTTP {method} request failed for {url}"
-        if safe:
-            detail += f" with headers {safe!r}"
-        raise HTTPTransportError(detail) from error
+def _safe_url(url):
+    """Return a URL safe for diagnostics by removing credentials and query data."""
+    parsed = urlsplit(str(url))
+    host = parsed.hostname or ""
+    if parsed.port is not None:
+        host = f"{host}:{parsed.port}"
+    return urlunsplit((parsed.scheme, host, parsed.path, "", ""))
 
-    return HTTPResponse(
-        status=response.status_code,
-        url=str(response.url),
-        headers={name.lower(): value for name, value in response.headers.items()},
-        content=response.content,
-    )
