@@ -6,4 +6,4 @@ default
 
 network redirect [interface] [destination] [port]
 --target [target]
---target-port [target_port|[port]]
+--target-port [target_port]
