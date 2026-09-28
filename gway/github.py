@@ -81,6 +81,12 @@ class Client:
         self._token = str(token)
         self.api_url = str(api_url).rstrip("/") + "/"
         self._origin = urlsplit(self.api_url)[:2]
+        api_parts = urlsplit(self.api_url)
+        if api_parts.path.rstrip("/").endswith("/api/v3"):
+            graphql_path = api_parts.path.rstrip("/")[:-len("/api/v3")] + "/api/graphql"
+            self.graphql_url = api_parts._replace(path=graphql_path, query="", fragment="").geturl()
+        else:
+            self.graphql_url = urljoin(self.api_url, "graphql")
         self._transport = transport
 
     def _headers(self, headers=None):
@@ -193,7 +199,7 @@ class Client:
         """Execute a GitHub GraphQL read query."""
         return self.request(
             "POST",
-            urljoin(self.api_url, "graphql"),
+            self.graphql_url,
             json={"query": query, "variables": variables or {}},
         )
 
