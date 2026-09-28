@@ -5,9 +5,12 @@ def repository_root():
     return Path(__file__).resolve().parents[2]
 
 
-def test_project_declares_no_runtime_dependencies():
+def test_project_runtime_dependencies_are_explicitly_allowlisted():
     text = (repository_root() / "pyproject.toml").read_text(encoding="utf-8")
-    assert "dependencies = []" in text
+    dependency_line = next(
+        line for line in text.splitlines() if line.startswith("dependencies = ")
+    )
+    assert dependency_line == 'dependencies = ["httpx>=0.27,<1"]'
 
 
 def test_core_package_has_no_requests_import():
