@@ -85,7 +85,6 @@ def test_request_redirect_policy_is_explicit():
     assert followed.text == "done"
 
 
-
 def test_request_error_redacts_url_credentials_query_and_custom_header_values():
     def fail(request):
         raise httpx.ConnectError("failed", request=request)
