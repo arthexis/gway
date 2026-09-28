@@ -80,16 +80,17 @@ Scopes are stored in the versioned SQLite security registry. For example:
 
 ```text
 gway security scope create logs-read
-gway security scope set logs-read log.sources log.read log.tail log.search
+gway security scope set logs-read log.sources log.read log.tail log.search security.whoami security.scope.current
 gway security scope show logs-read
 gway security scope list
+gway security scope rename logs-read logs
 ```
 
 The canonical read-only logging scope is:
 
 ```toml
 [scopes.logs-read]
-operations = ["log.sources", "log.read", "log.tail", "log.search"]
+operations = ["log.sources", "log.read", "log.tail", "log.search", "security.whoami", "security.scope.current"]
 environment = []
 ```
 
