@@ -1,4 +1,8 @@
+import pytest
+
 from gway import Gateway
+from gway.authorization import AuthorizationError
+from gway.security.scopes import ScopeRegistry
 
 
 EXPECTED_SECTIONS = {
@@ -65,6 +69,7 @@ role = "{role}"
     )
     monkeypatch.chdir(tmp_path)
     gateway = Gateway()
+    gateway.security_path = tmp_path / "security.sqlite"
     gateway.wrap(
         "wire.check",
         lambda *, mutate=False: {"ready": True},
@@ -244,3 +249,127 @@ def test_watch_keeps_authorized_but_unavailable_sections(tmp_path, monkeypatch):
     assert result["release"]["status"] == "unavailable"
     assert result["queue"]["status"] == "unavailable"
     assert result["health"]["status"] == "ok"
+
+
+def test_watch_scope_narrows_bound_caller_authority(tmp_path, monkeypatch):
+    gateway = _role_gateway(tmp_path, monkeypatch, "watchtower")
+    gateway._github_controller = FakeGitHub()
+    scopes = ScopeRegistry(gateway.security_path)
+    scopes.replace(
+        "basic",
+        operations={"node", "service.statuses"},
+        environment=(),
+    )
+
+    with gateway.authorized(
+        operations={
+            "watch",
+            "node",
+            "service.statuses",
+            "node.watchtower.deploy.status",
+            "node.watchtower.release.status",
+            "node.watchtower.queue.status",
+            "wire.check",
+            "log.search",
+        },
+        scopes={"basic"},
+    ):
+        original = gateway.authorization
+        result = gateway("watch --scope basic")
+        assert gateway.authorization is original
+
+    assert set(result) == {
+        "node",
+        "health",
+        "services",
+        "changed_at",
+        "cursor",
+    }
+    assert result["health"]["sections"] == {
+        "node": "ok",
+        "services": "ok",
+    }
+
+
+def test_watch_scope_cannot_add_grants_missing_from_caller(tmp_path, monkeypatch):
+    gateway = _role_gateway(tmp_path, monkeypatch, "watchtower")
+    gateway._github_controller = FakeGitHub()
+    scopes = ScopeRegistry(gateway.security_path)
+    scopes.replace(
+        "broader",
+        operations={
+            "node",
+            "service.statuses",
+            "node.watchtower.deploy.status",
+            "log.search",
+        },
+        environment=(),
+    )
+
+    with gateway.authorized(
+        operations={"watch", "node"},
+        scopes={"broader"},
+    ):
+        result = gateway("watch --scope broader")
+
+    assert set(result) == {
+        "node",
+        "health",
+        "changed_at",
+        "cursor",
+    }
+    assert result["node"]["status"] == "ok"
+    assert result["health"]["sections"] == {"node": "ok"}
+
+
+def test_watch_scope_with_wildcard_caller_reduces_to_named_scope(tmp_path, monkeypatch):
+    gateway = _role_gateway(tmp_path, monkeypatch, "watchtower")
+    gateway._github_controller = FakeGitHub()
+    ScopeRegistry(gateway.security_path).replace(
+        "basic",
+        operations={"node", "service.statuses"},
+        environment=(),
+    )
+
+    with gateway.authorized(
+        operations={"__all__"},
+        environment={"__all__"},
+        scopes={"basic"},
+    ):
+        result = gateway("watch --scope basic")
+
+    assert set(result) == {
+        "node",
+        "health",
+        "services",
+        "changed_at",
+        "cursor",
+    }
+
+
+def test_watch_scope_rejects_scope_not_visible_to_caller(tmp_path, monkeypatch):
+    gateway = _role_gateway(tmp_path, monkeypatch, "control")
+    ScopeRegistry(gateway.security_path).replace(
+        "private",
+        operations={"node"},
+        environment=(),
+    )
+
+    with gateway.authorized(
+        operations={"watch", "node"},
+        scopes={"other"},
+    ):
+        with pytest.raises(
+            AuthorizationError,
+            match="Security scope is not available",
+        ):
+            gateway("watch --scope private")
+
+
+def test_watch_scope_help_explains_narrowing_only(tmp_path, monkeypatch):
+    gateway = _role_gateway(tmp_path, monkeypatch, "control")
+
+    output = gateway("help watch --scope")
+
+    assert "Narrow watch authority" in output
+    assert "never add operation or environment grants" in output
