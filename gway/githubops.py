@@ -130,3 +130,88 @@ class Controller:
             f"{self._repo(repository)}/tags",
             params={"per_page": 100},
         )
+
+    def pulls(self, repository, state="open"):
+        """List pull requests."""
+        return self._all(f"{self._repo(repository)}/pulls", params={"state": state, "per_page": 100})
+
+    def pull(self, repository, number):
+        """Return one pull request."""
+        return self._github().request("GET", f"{self._repo(repository)}/pulls/{int(number)}").data
+
+    def reviews(self, repository, number):
+        """List reviews submitted on a pull request."""
+        return self._all(f"{self._repo(repository)}/pulls/{int(number)}/reviews", params={"per_page": 100})
+
+    def comments(self, repository, number):
+        """List issue or pull-request conversation comments."""
+        return self._all(f"{self._repo(repository)}/issues/{int(number)}/comments", params={"per_page": 100})
+
+    def issues(self, repository, state="open"):
+        """List issues and pull requests from the GitHub issues API."""
+        return self._all(f"{self._repo(repository)}/issues", params={"state": state, "per_page": 100})
+
+    def issue(self, repository, number):
+        """Return one issue or pull request issue record."""
+        return self._github().request("GET", f"{self._repo(repository)}/issues/{int(number)}").data
+
+    def workflows(self, repository):
+        """List GitHub Actions workflows."""
+        data = self._github().request("GET", f"{self._repo(repository)}/actions/workflows", params={"per_page": 100}).data
+        return data.get("workflows", []) if isinstance(data, dict) else data
+
+    def workflow(self, repository, workflow):
+        """Return one GitHub Actions workflow."""
+        return self._github().request("GET", f"{self._repo(repository)}/actions/workflows/{_segment(workflow)}").data
+
+    def runs(self, repository, workflow=None, branch=None, status=None):
+        """List GitHub Actions workflow runs."""
+        root = self._repo(repository)
+        path = f"{root}/actions/runs" if workflow is None else f"{root}/actions/workflows/{_segment(workflow)}/runs"
+        params = {"per_page": 100}
+        if branch is not None:
+            params["branch"] = branch
+        if status is not None:
+            params["status"] = status
+        data = self._github().request("GET", path, params=params).data
+        return data.get("workflow_runs", []) if isinstance(data, dict) else data
+
+    def run(self, repository, run):
+        """Return one GitHub Actions workflow run."""
+        return self._github().request("GET", f"{self._repo(repository)}/actions/runs/{int(run)}").data
+
+    def jobs(self, repository, run):
+        """List jobs belonging to a workflow run."""
+        data = self._github().request("GET", f"{self._repo(repository)}/actions/runs/{int(run)}/jobs", params={"per_page": 100}).data
+        return data.get("jobs", []) if isinstance(data, dict) else data
+
+    def checks(self, repository, ref):
+        """List check runs for a Git ref."""
+        data = self._github().request("GET", f"{self._repo(repository)}/commits/{_segment(ref)}/check-runs", params={"per_page": 100}).data
+        return data.get("check_runs", []) if isinstance(data, dict) else data
+
+    def releases(self, repository):
+        """List repository releases."""
+        return self._all(f"{self._repo(repository)}/releases", params={"per_page": 100})
+
+    def release(self, repository, release):
+        """Return one repository release by numeric ID."""
+        return self._github().request("GET", f"{self._repo(repository)}/releases/{int(release)}").data
+
+    def variables(self, repository):
+        """List GitHub Actions repository variables."""
+        data = self._github().request("GET", f"{self._repo(repository)}/actions/variables", params={"per_page": 100}).data
+        return data.get("variables", []) if isinstance(data, dict) else data
+
+    def variable(self, repository, name):
+        """Return one GitHub Actions repository variable."""
+        return self._github().request("GET", f"{self._repo(repository)}/actions/variables/{_segment(name)}").data
+
+    def secrets(self, repository):
+        """List secret metadata; GitHub never returns secret values."""
+        data = self._github().request("GET", f"{self._repo(repository)}/actions/secrets", params={"per_page": 100}).data
+        return data.get("secrets", []) if isinstance(data, dict) else data
+
+    def secret(self, repository, name):
+        """Return metadata for one Actions secret, never its value."""
+        return self._github().request("GET", f"{self._repo(repository)}/actions/secrets/{_segment(name)}").data
