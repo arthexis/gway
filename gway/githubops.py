@@ -620,9 +620,8 @@ class Controller:
 
     def job_logs(self, repository, job):
         """Return the downloadable log response for one Actions job."""
-        response = self._github().request(
-            "GET",
-            f"{self._repo(repository)}/actions/jobs/{int(job)}/logs",
+        response = self._github().download_redirect(
+            f"{self._repo(repository)}/actions/jobs/{int(job)}/logs"
         )
         return {
             "status": response.status,
