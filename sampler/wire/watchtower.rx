@@ -35,6 +35,10 @@ service install
 --config [config]
 --server-endpoint [server_endpoint]
 
+wire server reclaim
+--host [host]
+--port [port]
+
 service start
 --name wire-enroll
 --system
