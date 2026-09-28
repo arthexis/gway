@@ -364,7 +364,8 @@ class Controller:
 
     def set_variable(self, repository, name, value, mutate=True):
         """Create or update a GitHub Actions repository variable."""
-        del mutate
+        if not mutate:
+            raise PermissionError("GitHub variable mutation is disabled")
         path = f"{self._repo(repository)}/actions/variables/{_segment(name)}"
         try:
             self._github().request("GET", path)
@@ -386,7 +387,8 @@ class Controller:
 
     def delete_variable(self, repository, name, mutate=True):
         """Delete a GitHub Actions repository variable."""
-        del mutate
+        if not mutate:
+            raise PermissionError("GitHub variable mutation is disabled")
         self._github().request(
             "DELETE",
             f"{self._repo(repository)}/actions/variables/{_segment(name)}",
@@ -415,7 +417,8 @@ class Controller:
 
     def set_secret(self, repository, name, value, mutate=True):
         """Encrypt and set a GitHub Actions repository secret."""
-        del mutate
+        if not mutate:
+            raise PermissionError("GitHub secret mutation is disabled")
         key = self.secret_key(repository)
         encrypted = self._encrypt_secret(key["key"], value)
         self._github().request(
@@ -427,7 +430,8 @@ class Controller:
 
     def delete_secret(self, repository, name, mutate=True):
         """Delete a GitHub Actions repository secret."""
-        del mutate
+        if not mutate:
+            raise PermissionError("GitHub secret mutation is disabled")
         self._github().request(
             "DELETE",
             f"{self._repo(repository)}/actions/secrets/{_segment(name)}",
