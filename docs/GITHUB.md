@@ -4,17 +4,20 @@ GWAY exposes GitHub repository operations under the `github` topic. They use the
 shared HTTPX transport and accept either a fine-grained personal access token or a
 GitHub App installation access token through the configured GitHub client.
 
-GitHub operations are also classified as `source read` or `source write`.
-Inspection operations cover repository metadata, refs, files, pull requests, issues,
-reviews, Actions runs/jobs/checks/logs, workflows, releases, variables, and secret
-metadata. Mutation operations cover repository variables/secrets, issue and pull
-request collaboration, workflow/repository dispatch, releases, refs/branches, and
-repository files.
+GitHub operations classify mutation and administration independently. Ordinary
+inspection operations are `source read`; ordinary mutations are `source write`.
+Repository-policy and security inspection additionally carries the `admin` topic and
+is granted remotely through the separate `source-admin` scope. An admin inspection
+is therefore still non-mutating even though it requires higher privilege.
 
-Authorization remains operation-specific: exposing read operations does not imply
-write authority. Remote/MCP callers must be authorized for the concrete operation
-they invoke. Global no-mutate execution rejects GitHub mutations before network
-access.
+The initial admin inspection surface covers repository rulesets, branch protection,
+collaborator permission metadata, webhook metadata, and repository Actions policy.
+The scopes are additive rather than hierarchical: `source-admin` does not imply
+ordinary `source-write`, and ordinary source access does not imply admin access.
+
+Authorization remains operation-specific. Remote/MCP callers must be authorized for
+the concrete operation they invoke. Global no-mutate execution rejects GitHub
+mutations before network access, including future admin mutations.
 
 ## Mutation safety
 
@@ -52,7 +55,11 @@ remain rejected.
 
 ## Scope boundary
 
-The GitHub topic intentionally excludes repository and organization administration
-such as collaborators, ownership/visibility, branch protection/rulesets, Actions
-security policy, app permissions, webhooks, and authentication/token administration.
-Those require a separate administrative capability rather than `source write`.
+The initial `source-admin` surface is inspection-only. It covers repository-level
+policy/configuration needed for operational diagnosis without granting ordinary
+source mutation.
+
+Identity and ownership administration remain excluded: token creation/revocation,
+GitHub App permission management, organization administration, repository transfer,
+ownership changes, visibility changes, and authentication administration require a
+separate security design before they are exposed.
