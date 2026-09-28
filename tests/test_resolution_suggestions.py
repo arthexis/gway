@@ -71,7 +71,7 @@ def test_resolution_error_filters_suggestions_by_active_authorization(gateway):
 
 def test_resolution_error_uses_operation_vocabulary(gateway):
     with pytest.raises(OperationLookupError) as caught:
-        gateway("version")
+        gateway("definitely-missing-operation")
 
     message = str(caught.value)
     assert "operation" in message.casefold()
