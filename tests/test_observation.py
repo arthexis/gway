@@ -107,3 +107,81 @@ def test_observed_operation_remains_strict_when_called_directly():
 
     with pytest.raises(ConnectionError, match="offline"):
         gateway("fail")
+
+
+def test_observe_double_dash_preserves_nested_flags_and_section():
+    gateway = Gateway()
+    seen = {}
+
+    def inspect(target, *, detail=False, limit=0, mutate=False):
+        seen.update(
+            target=target,
+            detail=detail,
+            limit=limit,
+            mutate=mutate,
+        )
+        return {"target": target}
+
+    gateway.wrap("inspect", inspect)
+
+    result = gateway(
+        "observe --section probe -- inspect charger --detail --limit 3"
+    )
+
+    assert result["probe"]["status"] == "ok"
+    assert result["probe"]["result"] == {"target": "charger"}
+    assert seen == {
+        "target": "charger",
+        "detail": True,
+        "limit": 3,
+        "mutate": False,
+    }
+
+
+def test_observe_double_dash_preserves_nested_pipeline():
+    gateway = Gateway()
+    gateway.wrap("first", lambda *, mutate=False: "one")
+    gateway.wrap("second", lambda value, *, mutate=False: f"{value}:two")
+
+    result = gateway("observe -- first - second")
+
+    assert result["status"] == "ok"
+    assert result["result"] == "one:two"
+
+
+def test_observation_collect_omits_unauthorized_but_keeps_unavailable():
+    gateway = Gateway()
+    gateway.context.update(
+        {
+            "visible": {
+                "status": "ok",
+                "available": True,
+                "result": {"ready": True},
+                "error": None,
+            },
+            "hidden": {
+                "status": "unauthorized",
+                "available": False,
+                "result": None,
+                "error": {"type": "AuthorizationError", "message": "denied"},
+            },
+            "optional": {
+                "status": "unavailable",
+                "available": False,
+                "result": None,
+                "error": {"type": "LookupError", "message": "missing"},
+            },
+        }
+    )
+
+    result = gateway("observation collect visible hidden optional --cursor null")
+
+    assert "hidden" not in result
+    assert result["visible"]["status"] == "ok"
+    assert result["optional"]["status"] == "unavailable"
+    assert result["health"]["status"] == "ok"
+    assert result["health"]["sections"] == {
+        "visible": "ok",
+        "optional": "unavailable",
+    }
+    assert result["cursor"] is None
