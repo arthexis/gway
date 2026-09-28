@@ -237,3 +237,69 @@ def test_network_redirect_uses_standard_sudo_identity(monkeypatch, tmp_path):
     )
 
     assert calls[0][:2] == ["sudo", "/usr/sbin/nft"]
+
+
+
+def test_network_redirect_semantically_resolves_remove_as_rollback():
+    gateway = Gateway()
+
+    forward = gateway.ops.resolve("network.redirect")
+    inverse = gateway.ops.rollback_operation(forward)
+
+    assert inverse is gateway.ops.resolve("network.remove")
+
+
+def test_network_redirect_journal_rolls_back_through_semantic_inverse(
+    monkeypatch,
+    tmp_path,
+):
+    calls = []
+    exists = {"value": False}
+
+    def runner(command, **kwargs):
+        calls.append(command)
+        if command[-4:-2] == ["list", "table"] or command[1:3] == ["list", "table"]:
+            return Result(returncode=0 if exists["value"] else 1)
+        if "delete" in command and "table" in command:
+            exists["value"] = False
+            return Result()
+        if "-f" in command:
+            exists["value"] = True
+            return Result()
+        return Result()
+
+    gateway = Gateway(cache=str(tmp_path / "cache"))
+    controller = Controller(
+        gateway,
+        runner=runner,
+        which=lambda name: "/usr/sbin/nft" if name == "nft" else None,
+    )
+    gateway._network_controller = controller
+
+    # Re-register the test controller so semantic rollback invokes this fake backend.
+    from gway.ingestion.python import ingest_python
+    gateway.ops.unregister("network.redirect")
+    gateway.ops.unregister("network.remove")
+    gateway.ops.unregister("network.status")
+    gateway.ops.unregister("network.available")
+    ingest_python(gateway, controller, path=("network",))
+
+    monkeypatch.setattr(
+        "gway.network.uuid.uuid4",
+        lambda: type("UUID", (), {"hex": "abcdef1234567890"})(),
+    )
+
+    result = gateway.ops.resolve("network.redirect")(
+        "eth0",
+        "198.51.100.40",
+        9000,
+        target_port=9000,
+        rollback="capture",
+    )
+    assert result["active"] is True
+    assert exists["value"] is True
+
+    gateway.journal.rollback("capture")
+
+    assert exists["value"] is False
+    assert gateway.journal.open_names() == ()
