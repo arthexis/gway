@@ -109,7 +109,7 @@ def __main__(name: str = "world", *, loud=False, mutate=False):
 
 def test_directory_main_companion_projects_contract(tmp_path, monkeypatch):
     gateway, root = _root_gateway(tmp_path)
-    recipe = _write(root / "watch" / "__main__.rx", "version\n")
+    _write(root / "watch" / "__main__.rx", "version\n")
     _write(
         root / "watch" / "__main__.py",
         '''
