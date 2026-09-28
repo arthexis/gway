@@ -131,7 +131,7 @@ result-only mappings and do not promote their metadata into semantic context.
 After explicit and role-aware declarations, `guide` may fall back to metadata from
 operations currently registered in the live Gateway. This lexical fallback uses the
 canonical command spelling and compact operation summary, remains lower priority than
-project declarations, and is filtered by the caller's active authorization when one
+semantic declarations, and is filtered by the caller's active authorization when one
 exists. It does not execute the recommended operation.
 
 After live operations, `guide` can also recommend maintained sampler recipes by
