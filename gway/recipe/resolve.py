@@ -63,23 +63,4 @@ def resolve_recipe_stage(runtime, tokens, *, pipeline):
             stage, remaining = split_recipe_stage(tokens)
             return path, stage[size:], remaining
 
-
-
-    stack = getattr(runtime, "_recipe_stack", ()) or ()
-    if stack:
-        try:
-            if bare.expanduser().resolve() == Path(stack[-1]).expanduser().resolve():
-                bare = None
-        except (OSError, RuntimeError):
-            pass
-    if bare is None:
-        return None
-
-    from ..dispatch import resolve_operation
-
-    try:
-        resolve_operation(runtime, tokens, pipeline=pipeline)
-    except LookupError:
-        stage, remaining = split_recipe_stage(tokens)
-        return bare, stage[1:], remaining
     return None
