@@ -40,6 +40,26 @@ class Controller:
         """Return all named security scopes."""
         return self.registry.all(readonly=not mutate)
 
+    def current(self, *, mutate=False):
+        """Return the caller's current effective authority."""
+        del mutate
+        authority = self.gateway.authorization
+        if authority is None:
+            return {
+                "constrained": False,
+                "operations": None,
+                "environment": None,
+            }
+        return {
+            "constrained": True,
+            "operations": sorted(authority.operations),
+            "environment": (
+                []
+                if authority.environment is None
+                else sorted(authority.environment)
+            ),
+        }
+
     def delete(self, name):
         """Delete one named security scope."""
         return self.registry.remove(name)
