@@ -19,6 +19,8 @@ ADMIN_OPERATIONS = frozenset({
     "update_ruleset",
     "delete_ruleset",
     "branch_protection",
+    "update_branch_protection",
+    "delete_branch_protection",
     "collaborators",
     "collaborator_permission",
     "webhooks",
@@ -32,6 +34,8 @@ WRITE_OPERATIONS = frozenset({
     "create_ruleset",
     "update_ruleset",
     "delete_ruleset",
+    "update_branch_protection",
+    "delete_branch_protection",
     "set_variable",
     "delete_variable",
     "set_secret",
@@ -241,6 +245,96 @@ class Controller:
             "GET",
             f"{self._repo(repository)}/branches/{_segment(branch)}/protection",
         ).data
+
+    @staticmethod
+    def _branch_protection_policy(policy):
+        """Validate and copy one complete branch-protection policy."""
+        if not isinstance(policy, dict):
+            raise TypeError("GitHub branch protection policy must be a mapping")
+        required = {
+            "required_status_checks",
+            "enforce_admins",
+            "required_pull_request_reviews",
+            "restrictions",
+            "required_linear_history",
+            "allow_force_pushes",
+            "allow_deletions",
+            "block_creations",
+            "required_conversation_resolution",
+            "lock_branch",
+            "allow_fork_syncing",
+        }
+        missing = required - set(policy)
+        extra = set(policy) - required
+        if missing:
+            raise ValueError(
+                "GitHub branch protection policy is missing required fields: "
+                + ", ".join(sorted(missing))
+            )
+        if extra:
+            raise ValueError(
+                "GitHub branch protection policy contains unsupported fields: "
+                + ", ".join(sorted(extra))
+            )
+        result = dict(policy)
+        nullable_mappings = {
+            "required_status_checks",
+            "required_pull_request_reviews",
+            "restrictions",
+        }
+        for name in nullable_mappings:
+            value = result[name]
+            if value is not None and not isinstance(value, dict):
+                raise TypeError(
+                    f"GitHub branch protection {name} must be a mapping or null"
+                )
+            if isinstance(value, dict):
+                result[name] = dict(value)
+        if not isinstance(result["enforce_admins"], bool):
+            raise TypeError("GitHub branch protection enforce_admins must be boolean")
+        for name in (
+            "required_linear_history",
+            "allow_force_pushes",
+            "allow_deletions",
+            "block_creations",
+            "required_conversation_resolution",
+            "lock_branch",
+            "allow_fork_syncing",
+        ):
+            if not isinstance(result[name], bool):
+                raise TypeError(f"GitHub branch protection {name} must be boolean")
+        return result
+
+    def update_branch_protection(self, repository, branch, policy, mutate=True):
+        """Replace protection for one explicit branch using a complete policy."""
+        if not mutate:
+            raise PermissionError("GitHub branch protection mutation is disabled")
+        branch = str(branch)
+        if not branch:
+            raise ValueError("GitHub branch is required")
+        payload = self._branch_protection_policy(policy)
+        return self._github().request(
+            "PUT",
+            f"{self._repo(repository)}/branches/{_segment(branch)}/protection",
+            json=payload,
+        ).data
+
+    def delete_branch_protection(self, repository, branch, mutate=True):
+        """Delete protection for one explicit branch."""
+        if not mutate:
+            raise PermissionError("GitHub branch protection mutation is disabled")
+        branch = str(branch)
+        if not branch:
+            raise ValueError("GitHub branch is required")
+        self._github().request(
+            "DELETE",
+            f"{self._repo(repository)}/branches/{_segment(branch)}/protection",
+        )
+        return {
+            "repository": str(repository),
+            "branch": branch,
+            "deleted": True,
+        }
 
     def collaborators(self, repository, affiliation=None, permission=None):
         """List repository collaborators and visible permission metadata."""
