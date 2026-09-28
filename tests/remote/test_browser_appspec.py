@@ -136,7 +136,7 @@ def test_remote_connect_uses_mobile_dark_recipe_template(tmp_path):
     assert css_status == 200
     assert css_headers["content-type"] == "text/css"
     assert b"color-scheme: dark" in css
-    assert b"min-height: 56px" in css
+    assert b"min-height: 56px" in css\n    assert b"-webkit-text-size-adjust: 100%" in css\n    assert b"env(safe-area-inset-bottom)" in css\n    assert b"@media (max-width: 599px)" in css\n    assert b"overflow-wrap: anywhere" in css\n    assert b"min-height: 54px" in css
 
 
 def test_templated_consent_redirect_is_preserved_without_rendering(tmp_path):
