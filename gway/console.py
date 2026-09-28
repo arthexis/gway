@@ -2,7 +2,8 @@
 
 import argparse
 from contextlib import nullcontext
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence, Set
+from dataclasses import fields, is_dataclass
 import json
 import sys
 from .gateway import Gateway
@@ -20,6 +21,64 @@ def _coerce_mutation_policy(value):
     if lowered == "false":
         return False
     return value
+
+
+def _structured_value(value):
+    """Convert rich Python results into interface-neutral structured values."""
+    if is_dataclass(value) and not isinstance(value, type):
+        return {
+            field.name: _structured_value(getattr(value, field.name))
+            for field in fields(value)
+        }
+    if isinstance(value, Mapping):
+        return {
+            str(key): _structured_value(item)
+            for key, item in value.items()
+        }
+    if isinstance(value, Set) and not isinstance(value, (str, bytes, bytearray)):
+        return [_structured_value(item) for item in sorted(value, key=str)]
+    if isinstance(value, Sequence) and not isinstance(
+        value, (str, bytes, bytearray)
+    ):
+        return [_structured_value(item) for item in value]
+    return value
+
+
+def _human_lines(value, *, indent=0):
+    """Render one structured result for a human-oriented CLI surface."""
+    value = _structured_value(value)
+    prefix = " " * indent
+
+    if isinstance(value, Mapping):
+        if not value:
+            return [f"{prefix}(none)"]
+        lines = []
+        for key, item in value.items():
+            if isinstance(item, (Mapping, list)):
+                lines.append(f"{prefix}{key}:")
+                lines.extend(_human_lines(item, indent=indent + 2))
+            else:
+                lines.append(f"{prefix}{key}: {item}")
+        return lines
+
+    if isinstance(value, list):
+        if not value:
+            return [f"{prefix}(none)"]
+        lines = []
+        for item in value:
+            if isinstance(item, (Mapping, list)):
+                lines.append(f"{prefix}-")
+                lines.extend(_human_lines(item, indent=indent + 2))
+            else:
+                lines.append(f"{prefix}- {item}")
+        return lines
+
+    return [f"{prefix}{value}"]
+
+
+def _human_output(value):
+    """Return CLI text without introducing machine serialization syntax."""
+    return "\n".join(_human_lines(value))
 
 
 def _extract_mutation_policy(argv):
@@ -236,9 +295,9 @@ def _run_cli(parser, args, unknown, *, runtime=None):
                 if recipe_execution
                 else output
             )
-            print(json.dumps(payload, indent=2, default=str))
+            print(json.dumps(_structured_value(payload), indent=2, default=str))
         else:
-            print(output)
+            print(_human_output(output))
     return 0
 
 
