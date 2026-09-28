@@ -109,10 +109,10 @@ def request(
                 content=data,
             )
     except httpx.HTTPError as error:
-        safe = _safe_headers(headers)
+        names = sorted(str(name) for name in (headers or {}))
         detail = f"HTTP {method} request failed for {_safe_url(url)}"
-        if safe:
-            detail += f" with header names {sorted(safe)!r}"
+        if names:
+            detail += f" with header names {names!r}"
         raise HTTPTransportError(detail) from error
 
     return HTTPResponse(
