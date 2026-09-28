@@ -212,8 +212,15 @@ class Journal:
 class JournalManager:
     """Manage rollback journals within one execution/session namespace."""
 
-    def __init__(self, root: str | Path, *, session_id: str | None = None):
+    def __init__(
+        self,
+        root: str | Path,
+        *,
+        session_id: str | None = None,
+        rollback_executor=None,
+    ):
         self.root = Path(root).expanduser()
+        self.rollback_executor = rollback_executor
         self.session_id = session_id or uuid.uuid4().hex
         self.session_root = self.root / self.session_id
         self._journals: dict[str, Journal] = {}
@@ -482,19 +489,34 @@ class JournalManager:
         return entry
 
     def rollback_entry(self, name: str, sequence: int) -> JournalEntry:
-        """Restore one APPLIED logical mutation after verifying all of its paths."""
+        """Restore one APPLIED logical mutation through its registered semantics."""
         journal = self.require_open(name)
         entry = self._entry(journal, sequence)
         if entry.state is MutationState.MUTATED:
             raise JournalError(
                 f"Rollback journal {name!r} entry {sequence} cannot be rolled back "
-                "safely because its post-mutation fingerprint is unavailable"
+                "safely because its post-mutation state is unavailable"
             )
         if entry.state is not MutationState.APPLIED:
             raise JournalError(
                 f"Rollback journal {name!r} entry {sequence} is "
                 f"{entry.state.value}, not applied"
             )
+
+        if entry.kind == "operation":
+            if self.rollback_executor is None:
+                raise JournalError(
+                    f"Rollback journal {name!r} cannot resolve operation rollback"
+                )
+            operation = entry.data.get("operation")
+            if not isinstance(operation, str) or not operation:
+                raise JournalError(
+                    f"Rollback journal {name!r} entry {sequence} "
+                    "has no forward operation identity"
+                )
+            self.rollback_executor(operation, entry.data.get("result"))
+            return self.mark_rolled_back(name, sequence)
+
         if entry.kind != "filesystem":
             raise JournalError(
                 f"Rollback journal {name!r} entry {sequence} has unsupported "
