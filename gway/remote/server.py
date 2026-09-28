@@ -127,6 +127,9 @@ class RemoteApplication(RemoteDiscoveryApplication):
             operations={
                 "github.rulesets",
                 "github.ruleset",
+                "github.create_ruleset",
+                "github.update_ruleset",
+                "github.delete_ruleset",
                 "github.branch_protection",
                 "github.collaborators",
                 "github.collaborator_permission",
