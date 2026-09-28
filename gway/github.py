@@ -114,6 +114,47 @@ class Client:
         )
         return self._result(response)
 
+    def download_redirect(self, path):
+        """Fetch a GitHub download redirect without forwarding credentials."""
+        if str(path).startswith(("http://", "https://")):
+            raise ValueError("GitHub download path must remain on the configured API origin")
+        url = urljoin(self.api_url, str(path).lstrip("/"))
+        response = http_request(
+            "GET",
+            url,
+            headers=self._headers(),
+            follow_redirects=False,
+            transport=self._transport,
+        )
+        if response.status not in {301, 302, 303, 307, 308}:
+            return self._result(response)
+        location = response.headers.get("location")
+        if not location:
+            raise GitHubError(
+                response.status,
+                "download redirect is missing Location",
+                request_id=response.headers.get("x-github-request-id"),
+            )
+        redirected = http_request(
+            "GET",
+            location,
+            follow_redirects=True,
+            transport=self._transport,
+        )
+        if redirected.status >= 400:
+            raise GitHubError(
+                redirected.status,
+                "download request failed",
+                request_id=response.headers.get("x-github-request-id"),
+            )
+        return GitHubResponse(
+            data=redirected.content,
+            status=redirected.status,
+            headers=redirected.headers,
+            next_url=None,
+            rate_limit=RateLimit(),
+        )
+
     def _result(self, response: HTTPResponse):
         request_id = response.headers.get("x-github-request-id")
         if response.status >= 400:
