@@ -949,8 +949,7 @@ class Gateway(Resolver):
         lines = [f"{info['group']} operations:", ""]
         if not visible:
             lines.append("  (no authorized operations)")
-            return "
-".join(lines)
+            return "\n".join(lines)
         width = max(len(item["name"]) for item in visible)
         for item in visible:
             suffix = " >" if item["group"] else ""
@@ -961,8 +960,7 @@ class Gateway(Resolver):
             info["default"].replace(" ", ".")
         ):
             lines.extend(["", f"Bare '{info['group']}' runs its group default."])
-        return "
-".join(lines)
+        return "\n".join(lines)
 
     def _command_help(self, *tokens: str, verbose=False):
         """Return help for the callable prefix of one CLI command."""
@@ -996,8 +994,7 @@ class Gateway(Resolver):
             width = max((len(name) for name, _ in catalog), default=0)
             for name, summary in catalog:
                 lines.append(f"  {name:<{width}}  {summary}".rstrip())
-            return "
-".join(lines)
+            return "\n".join(lines)
         name = " ".join(operation)
         if self.ops.is_namespace(name):
             return self._namespace_help(name)
