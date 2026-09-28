@@ -251,3 +251,78 @@ def test_observation_collect_rejects_unknown_section():
 
     with pytest.raises(ValueError, match="Unknown observation section"):
         gateway("observation collect node wire --only mystery")
+
+
+def test_observation_collect_errors_keeps_failures_and_nonempty_error_logs():
+    gateway = Gateway()
+    gateway.context.update(
+        {
+            "node": {
+                "status": "ok",
+                "available": True,
+                "result": {"role": "control"},
+                "error": None,
+            },
+            "wire": {
+                "status": "error",
+                "available": True,
+                "result": None,
+                "error": {"type": "ConnectionError", "message": "offline"},
+            },
+            "errors": {
+                "status": "ok",
+                "available": True,
+                "result": [{"message": "CRITICAL failure"}],
+                "error": None,
+            },
+            "deploy": {
+                "status": "unavailable",
+                "available": False,
+                "result": None,
+                "error": {"type": "LookupError", "message": "missing"},
+            },
+        }
+    )
+
+    result = gateway(
+        "observation collect node wire errors deploy --errors true"
+    )
+
+    assert set(result) == {
+        "wire",
+        "errors",
+        "health",
+        "changed_at",
+        "cursor",
+    }
+    assert result["health"]["status"] == "degraded"
+    assert result["health"]["sections"] == {
+        "wire": "error",
+        "errors": "ok",
+    }
+
+
+def test_observation_collect_errors_omits_empty_error_log_section():
+    gateway = Gateway()
+    gateway.context["errors"] = {
+        "status": "ok",
+        "available": True,
+        "result": [],
+        "error": None,
+    }
+
+    result = gateway("observation collect errors --errors true")
+
+    assert set(result) == {"health", "changed_at", "cursor"}
+    assert result["health"]["status"] == "ok"
+    assert result["health"]["sections"] == {}
+
+
+def test_observation_validate_rejects_changed_until_cursor_support():
+    gateway = Gateway()
+
+    with pytest.raises(
+        NotImplementedError,
+        match="requires cursor/change tracking",
+    ):
+        gateway("observation validate --changed true")
