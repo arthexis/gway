@@ -116,13 +116,13 @@ def search_descriptor(descriptor, query, *, context=2):
     }
 
 
-def inspect_source(gateway, *operation, search=None, context=2, mutate=False):
+def inspect_source(gateway, *operation, search=None, context=2, all=False, mutate=False):
     """Return source metadata for the operation normal dispatch would execute."""
     del mutate
     if not operation:
         raise TypeError("source requires an operation")
 
-    from .dispatch import resolve_operation
+    from .dispatch import resolution_candidates, resolve_operation
     from .tokens import tokenize
 
     resolution = resolve_operation(gateway, tokenize(" ".join(map(str, operation))))
@@ -137,6 +137,20 @@ def inspect_source(gateway, *operation, search=None, context=2, mutate=False):
             + " ".join(map(str, resolution.arguments))
         )
     descriptor = describe_resolved_source(resolution)
+    if all:
+        if search is not None:
+            raise TypeError("source --all cannot be combined with --search")
+        candidates = resolution_candidates(gateway, resolution)
+        selected = describe_resolved_source(candidates[0]).result()
+        shadowed = [
+            describe_resolved_source(candidate).result()
+            for candidate in candidates[1:]
+        ]
+        return {
+            "operation": resolution.candidate.replace(".", " "),
+            "selected": selected,
+            "shadowed": shadowed,
+        }
     if search is not None:
         return search_descriptor(descriptor, search, context=context)
     return descriptor.result()
