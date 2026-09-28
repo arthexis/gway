@@ -377,3 +377,22 @@ def test_scope_then_token_commands_share_gateway_security_path(gateway, tmp_path
     assert bearer.startswith("gwt_")
     assert ScopeRegistry(path).require("logs").name == "logs"
     assert TokenRegistry(path).require("reader").scopes == frozenset({"logs"})
+
+
+def test_token_combines_disjoint_read_scopes(tmp_path):
+    path = tmp_path / "security.sqlite"
+    scopes = ScopeRegistry(path)
+    scopes.replace("logs-read", operations={"log.read", "help"})
+    scopes.replace("operator-read", operations={"service.status", "products"})
+    tokens = TokenRegistry(path)
+
+    issued = tokens.create(
+        "operator",
+        scopes={"logs-read", "operator-read"},
+    )
+    identity = tokens.authenticate(issued.bearer)
+
+    assert identity.token.scopes == frozenset({"logs-read", "operator-read"})
+    assert identity.authority.operations == frozenset(
+        {"log.read", "help", "service.status", "products"}
+    )
