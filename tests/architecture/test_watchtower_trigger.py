@@ -31,6 +31,9 @@ def test_automatic_watchtower_candidate_flow_classifies_main_pushes() -> None:
     assert 'print("false" if version_only else "true")' in workflow
     assert "if: needs.classify.outputs.deploy == 'true'" in workflow
     assert "event_type='gway-candidate'" in workflow
+    assert 'grep -Fxq deploy <<<"$labels"' in workflow
+    assert "force_deploy: ${{ steps.change.outputs.force_deploy }}" in workflow
+    assert 'client_payload[force_deploy]="$FORCE_DEPLOY"' in workflow
 
 
 def test_cross_repo_trigger_uses_only_explicit_secret() -> None:
