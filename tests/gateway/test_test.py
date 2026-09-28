@@ -119,8 +119,11 @@ def test_test_run_translates_gway_options_to_pytest(tmp_path, monkeypatch):
             keyword="mutation",
             failed=True,
             verbose=True,
+            workers=3,
         )
         == 5
     )
-    assert seen["command"][-4:] == ["-k", "mutation", "--lf", "-v"]
+    assert seen["command"][-8:] == [
+        "-n", "3", "--dist", "loadgroup", "-k", "mutation", "--lf", "-v"
+    ]
     assert seen["kwargs"] == {"check": False}
