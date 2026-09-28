@@ -247,44 +247,14 @@ class Gateway(Resolver):
         ingest_python(self, self._http_controller, path=("http",))
 
         from .githubops import Controller as GitHubController
+        from .githubops import WRITE_OPERATIONS as github_writes
 
         self._github_controller = GitHubController(self)
         ingest_python(self, self._github_controller, path=("github",))
-        github_writes = {
-            "github.set_variable",
-            "github.delete_variable",
-            "github.set_secret",
-            "github.delete_secret",
-            "github.create_issue",
-            "github.update_issue",
-            "github.close_issue",
-            "github.reopen_issue",
-            "github.comment_issue",
-            "github.create_pull",
-            "github.update_pull",
-            "github.close_pull",
-            "github.reopen_pull",
-            "github.reply_review_comment",
-            "github.add_labels",
-            "github.remove_label",
-            "github.ready_pull",
-            "github.draft_pull",
-            "github.merge_pull",
-            "github.dispatch_workflow",
-            "github.dispatch_repository",
-            "github.create_release",
-            "github.update_release",
-            "github.create_ref",
-            "github.create_branch",
-            "github.delete_ref",
-            "github.delete_branch",
-            "github.create_file",
-            "github.update_file",
-            "github.delete_file",
-        }
         for record in self.ops.records():
             if record.name.startswith("github."):
-                access = "write" if record.name in github_writes else "read"
+                operation = record.name.removeprefix("github.")
+                access = "write" if operation in github_writes else "read"
                 metadata = dict(getattr(record.callable, "__gway_metadata__", {}) or {})
                 metadata["topics"] = tuple(
                     dict.fromkeys(
