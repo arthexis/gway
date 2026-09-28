@@ -22,3 +22,28 @@ def test_exact_operation_still_shadows_sampler_recipe():
     runtime.exact = runtime.wrap("wire.watchtower", lambda: "operation")
     tokens = tokenize("wire watchtower")
     assert resolve_recipe_stage(runtime, tokens, pipeline=None) is None
+
+
+def test_project_root_recipe_resolves_as_bare_command(gateway, tmp_path, monkeypatch):
+    recipe = tmp_path / "ci.rx"
+    recipe.write_text("echo project-ci\\n", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+
+    tokens = tokenize("ci")
+    resolved = resolve_recipe_stage(gateway, tokens, pipeline=None)
+
+    assert resolved is not None
+    path, arguments, remaining = resolved
+    assert path == recipe
+    assert arguments == []
+    assert remaining == []
+
+
+def test_gway_ci_recipe_uses_generic_recipe_and_test_contracts():
+    from pathlib import Path
+
+    recipe = Path("ci.rx").read_text(encoding="utf-8")
+
+    assert "recipe check sampler" in recipe
+    assert "test run - check --is 0" in recipe
+    assert "github" not in recipe.lower()
