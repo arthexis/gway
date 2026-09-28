@@ -30,3 +30,7 @@ Matrices, forge status/labels, artifacts, auto-merge, deployment, Watchtower rec
 `gway ci` and `gway ci --json` work from a Gway checkout, execute the project-defined recipe, propagate process success/failure correctly, expose stable machine-readable results, and one GitHub Actions job invokes the same entry point.
 
 **GitHub invokes Gway's CI; Gway does not implement GitHub CI.**
+
+## Structured results
+
+JSON is a generic recipe-execution envelope rather than a CI-specific format. A recipe invoked with `--json` returns its final `result` and chronological `results` history. Consequently `gway ci --json` is machine-readable while ordinary non-recipe JSON commands retain their existing output shape.
