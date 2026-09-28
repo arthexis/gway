@@ -80,7 +80,7 @@ jobs:
             gh pr ready "$PR_NUMBER" --repo "$REPOSITORY"
           fi
 
-      - name: Remove approval when work resumes
+      - name: Reconcile mutually exclusive work-state labels
         if: steps.pr.outputs.skip != 'true' && github.event_name == 'pull_request_target' && github.event.action == 'labeled'
         env:
           GH_TOKEN: ${{ github.token }}
@@ -91,7 +91,7 @@ jobs:
           set -euo pipefail
 
           label="$(jq -r '.label.name // empty | ascii_downcase' "$GITHUB_EVENT_PATH")"
-          if [[ "$label" != "in-progress" ]]; then
+          if [[ "$label" != "in-progress" && "$label" != "approved" ]]; then
             exit 0
           fi
 
@@ -99,8 +99,12 @@ jobs:
           approved="$(
             jq -r '[.labels[].name | ascii_downcase] | any(. == "approved")' <<< "$pr_json"
           )"
-          if [[ "$approved" == "true" ]]; then
-            echo "PR #$PR_NUMBER resumed work; removing Approved label."
+          in_progress="$(
+            jq -r '[.labels[].name | ascii_downcase] | any(. == "in-progress")' <<< "$pr_json"
+          )"
+
+          if [[ "$approved" == "true" && "$in_progress" == "true" ]]; then
+            echo "PR #$PR_NUMBER cannot be both Approved and in-progress; removing Approved."
             gh pr edit "$PR_NUMBER" --repo "$REPOSITORY" --remove-label approved
           fi
 
