@@ -388,3 +388,102 @@ def test_authorize_defaults_missing_scope_to_mcp_resource_scope(tmp_path):
         server.shutdown()
         server.server_close()
         thread.join(timeout=2)
+
+
+
+def test_cimd_client_id_rejects_non_https_and_url_credentials(tmp_path):
+    oauth = OAuthRegistry(tmp_path / "security.sqlite")
+    resolver = OAuthClientResolver(oauth)
+
+    for client_id in (
+        "http://client.example/client.json",
+        "https://user:secret@client.example/client.json",
+        "https://client.example/",
+        "https://client.example/client.json?query=yes",
+        "https://client.example/client.json#fragment",
+    ):
+        with pytest.raises(ValueError, match="HTTPS document URL"):
+            resolver.resolve(client_id)
+
+
+def test_cimd_public_host_check_rejects_any_non_global_address(monkeypatch):
+    monkeypatch.setattr(
+        "gway.remote.oauth.socket.getaddrinfo",
+        lambda *args, **kwargs: [
+            (2, 1, 6, "", ("203.0.113.10", 443)),
+            (2, 1, 6, "", ("127.0.0.1", 443)),
+        ],
+    )
+
+    with pytest.raises(ValueError, match="public addresses"):
+        OAuthClientResolver._require_public_host("client.example", 443)
+
+
+def test_cimd_fetch_caps_document_before_json_parsing(monkeypatch):
+    class Response:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def read(self, size):
+            assert size == 65537
+            return b"x" * 65537
+
+    class Opener:
+        def open(self, request, timeout):
+            assert timeout == 5
+            return Response()
+
+    monkeypatch.setattr(
+        OAuthClientResolver,
+        "_require_public_host",
+        staticmethod(lambda hostname, port: None),
+    )
+    monkeypatch.setattr("gway.remote.oauth.build_opener", lambda *args: Opener())
+
+    with pytest.raises(ValueError, match="too large"):
+        OAuthClientResolver._fetch_cimd(
+            "https://client.example/oauth/client.json"
+        )
+
+
+def test_cimd_fetch_installs_no_redirect_handler(monkeypatch):
+    observed = {}
+
+    class Response:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def read(self, size):
+            return b'{"client_id":"https://client.example/oauth/client.json"}'
+
+    class Opener:
+        def open(self, request, timeout):
+            return Response()
+
+    def build(*handlers):
+        observed["handlers"] = handlers
+        return Opener()
+
+    monkeypatch.setattr(
+        OAuthClientResolver,
+        "_require_public_host",
+        staticmethod(lambda hostname, port: None),
+    )
+    monkeypatch.setattr("gway.remote.oauth.build_opener", build)
+
+    OAuthClientResolver._fetch_cimd(
+        "https://client.example/oauth/client.json"
+    )
+
+    assert len(observed["handlers"]) == 1
+    assert (
+        observed["handlers"][0].__name__
+        if isinstance(observed["handlers"][0], type)
+        else type(observed["handlers"][0]).__name__
+    ) == "_NoRedirect"
