@@ -19,7 +19,7 @@ on:
 permissions:
   contents: write
   pull-requests: write
-  issues: read
+  issues: write
   checks: read
   actions: write
 
@@ -58,6 +58,30 @@ jobs:
           echo "number=$pr_number" >> "$GITHUB_OUTPUT"
           echo "skip=false" >> "$GITHUB_OUTPUT"
 
+      - name: Remove approval when work resumes
+        if: steps.pr.outputs.skip != 'true' && github.event_name == 'pull_request_target' && github.event.action == 'labeled'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          PR_NUMBER: ${{ steps.pr.outputs.number }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          label="$(jq -r '.label.name // empty | ascii_downcase' "$GITHUB_EVENT_PATH")"
+          if [[ "$label" != "in-progress" ]]; then
+            exit 0
+          fi
+
+          pr_json="$(gh api "repos/$REPOSITORY/pulls/$PR_NUMBER")"
+          approved="$(
+            jq -r '[.labels[].name | ascii_downcase] | any(. == "approved")' <<< "$pr_json"
+          )"
+          if [[ "$approved" == "true" ]]; then
+            echo "PR #$PR_NUMBER resumed work; removing Approved label."
+            gh pr edit "$PR_NUMBER" --repo "$REPOSITORY" --remove-label approved
+          fi
+
       - name: Disarm when approval is removed or PR is on-hold
         if: steps.pr.outputs.skip != 'true'
         env:
@@ -75,9 +99,12 @@ jobs:
           on_hold="$(
             jq -r '[.labels[].name | ascii_downcase] | any(. == "on-hold")' <<< "$pr_json"
           )"
+          in_progress="$(
+            jq -r '[.labels[].name | ascii_downcase] | any(. == "in-progress")' <<< "$pr_json"
+          )"
 
-          if [[ "$approved" != "true" || "$on_hold" == "true" ]]; then
-            echo "Disabling auto-merge for PR #$PR_NUMBER (approved=$approved, on_hold=$on_hold)."
+          if [[ "$approved" != "true" || "$on_hold" == "true" || "$in_progress" == "true" ]]; then
+            echo "Disabling auto-merge for PR #$PR_NUMBER (approved=$approved, on_hold=$on_hold, in_progress=$in_progress)."
             gh pr merge "$PR_NUMBER" --repo "$REPOSITORY" --disable-auto || true
           fi
 
@@ -127,6 +154,15 @@ jobs:
             exit 0
           fi
 
+          in_progress="$(
+            jq -r '[.labels[].name | ascii_downcase] | any(. == "in-progress")' <<< "$pr_json"
+          )"
+          if [[ "$in_progress" == "true" ]]; then
+            echo "PR #$PR_NUMBER is in progress; approval must be granted again after work is complete."
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
           approved="$(
             jq -r '[.labels[].name | ascii_downcase] | any(. == "approved")' <<< "$pr_json"
           )"
@@ -156,7 +192,7 @@ jobs:
           fi
 
           echo "Approval, freshness, and CI gates are satisfied for PR #$PR_NUMBER."
-          echo "The in-progress label does not block an Approved PR."
+          echo "The PR is not marked in-progress."
           echo "Review-thread resolution is enforced by the protected branch ruleset."
           echo "head_sha=$head_sha" >> "$GITHUB_OUTPUT"
           echo "ready=true" >> "$GITHUB_OUTPUT"
