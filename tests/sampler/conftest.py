@@ -1,6 +1,6 @@
 import pytest
 
-from gway.recipe import load_recipe
+from gway.recipe import execute_recipe, load_recipe
 from gway.sampler import root as sampler_root
 from gway.tokens import token_value
 
@@ -23,3 +23,12 @@ def recipe_commands(sampler_path):
         ]
 
     return render
+
+
+@pytest.fixture
+def run_recipe(sampler_path):
+    def run(runtime, relative, **context):
+        _, result = execute_recipe(runtime, sampler_path(relative), context=context)
+        return result
+
+    return run
