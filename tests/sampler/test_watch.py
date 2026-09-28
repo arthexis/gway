@@ -373,3 +373,82 @@ def test_watch_scope_help_explains_narrowing_only(tmp_path, monkeypatch):
 
     assert "Narrow watch authority" in output
     assert "never add operation or environment grants" in output
+
+
+def test_watch_only_reduces_visible_sections_and_health(tmp_path, monkeypatch):
+    gateway = _role_gateway(tmp_path, monkeypatch, "control")
+
+    result = gateway("watch --only node,services")
+
+    assert set(result) == {
+        "node",
+        "services",
+        "health",
+        "changed_at",
+        "cursor",
+    }
+    assert result["health"]["sections"] == {
+        "node": "ok",
+        "services": "ok",
+    }
+
+
+def test_watch_except_removes_sections_and_recomputes_health(tmp_path, monkeypatch):
+    gateway = _role_gateway(tmp_path, monkeypatch, "control")
+
+    def fail(*, mutate=False):
+        raise ConnectionError("wire offline")
+
+    gateway.wrap("wire.check", fail, op="check", sub="wire")
+
+    unfiltered = gateway("watch")
+    filtered = gateway("watch --except wire")
+
+    assert unfiltered["health"]["status"] == "degraded"
+    assert "wire" not in filtered
+    assert filtered["health"]["status"] == "ok"
+    assert "wire" not in filtered["health"]["sections"]
+
+
+def test_watch_filters_cannot_restore_unauthorized_sections(tmp_path, monkeypatch):
+    gateway = _role_gateway(tmp_path, monkeypatch, "watchtower")
+    gateway._github_controller = FakeGitHub()
+
+    with gateway.authorized(
+        operations={"watch", "node"},
+    ):
+        result = gateway("watch --only node,services,deploy")
+
+    assert set(result) == {
+        "node",
+        "health",
+        "changed_at",
+        "cursor",
+    }
+    assert result["health"]["sections"] == {"node": "ok"}
+
+
+def test_watch_rejects_only_and_except_together(tmp_path, monkeypatch):
+    gateway = _role_gateway(tmp_path, monkeypatch, "control")
+
+    with pytest.raises(ValueError, match="only one of --only or --except"):
+        gateway("watch --only node --except wire")
+
+
+def test_watch_rejects_unknown_filter_section(tmp_path, monkeypatch):
+    gateway = _role_gateway(tmp_path, monkeypatch, "control")
+
+    with pytest.raises(ValueError, match="Unknown observation section"):
+        gateway("watch --only mystery")
+
+
+def test_watch_filter_help_documents_section_reduction(tmp_path, monkeypatch):
+    gateway = _role_gateway(tmp_path, monkeypatch, "control")
+
+    only = gateway("help watch --only")
+    except_ = gateway("help watch --except")
+
+    assert "Include selected watch sections" in only
+    assert "comma-separated section list" in only
+    assert "Exclude selected watch sections" in except_
+    assert "cannot be used together" in except_
