@@ -70,6 +70,20 @@ def test_github_admin_reads_are_separate_from_mutation(gateway):
         assert "write" not in topics
 
 
+def test_github_ruleset_writes_are_admin_mutations(gateway):
+    for name in {
+        "github.create_ruleset",
+        "github.update_ruleset",
+        "github.delete_ruleset",
+    }:
+        operation = gateway.ops.resolve(name)
+        assert operation is not None
+        assert operation.mutates is True
+        topics = set(operation.__gway_metadata__["topics"])
+        assert {"github", "source", "write", "admin"} <= topics
+        assert "read" not in topics
+
+
 def test_github_reads_respect_authorization(gateway):
     from gway.authorization import AuthorizationError
 
@@ -101,6 +115,9 @@ def test_every_github_operation_has_exactly_one_access_topic(gateway):
             assert record.name.removeprefix("github.") in {
                 "rulesets",
                 "ruleset",
+                "create_ruleset",
+                "update_ruleset",
+                "delete_ruleset",
                 "branch_protection",
                 "collaborators",
                 "collaborator_permission",

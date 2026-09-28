@@ -8,9 +8,11 @@ class FakeClient:
         self.responses = list(responses)
         self.page_data = list(pages)
         self.calls = []
+        self.payloads = []
 
     def request(self, method, path, *, params=None, json=None, headers=None):
         self.calls.append((method, path, params))
+        self.payloads.append(json)
         return SimpleNamespace(data=self.responses.pop(0))
 
     def pages(self, path, *, params=None):
@@ -109,3 +111,94 @@ def test_webhook_and_actions_policy_reads_map_to_admin_endpoints():
             None,
         ),
     ]
+
+
+def complete_ruleset_policy():
+    return {
+        "name": "Protect main",
+        "target": "branch",
+        "enforcement": "active",
+        "bypass_actors": [],
+        "conditions": {
+            "ref_name": {
+                "include": ["refs/heads/main"],
+                "exclude": [],
+            }
+        },
+        "rules": [
+            {
+                "type": "deletion",
+            },
+            {
+                "type": "non_fast_forward",
+            },
+        ],
+    }
+
+
+def test_ruleset_mutations_require_complete_explicit_policy():
+    client = FakeClient(
+        responses=[
+            {"id": 11, "name": "Protect main"},
+            {"id": 11, "name": "Protect main"},
+            None,
+        ]
+    )
+    target = Controller(None, client=client)
+    policy = complete_ruleset_policy()
+
+    created = target.create_ruleset("arthexis/gway", policy)
+    updated = target.update_ruleset("arthexis/gway", 11, policy)
+    deleted = target.delete_ruleset("arthexis/gway", 11)
+
+    assert created["id"] == 11
+    assert updated["id"] == 11
+    assert deleted == {
+        "repository": "arthexis/gway",
+        "ruleset": 11,
+        "deleted": True,
+    }
+    assert client.calls == [
+        ("POST", "/repos/arthexis/gway/rulesets", None),
+        ("PUT", "/repos/arthexis/gway/rulesets/11", None),
+        ("DELETE", "/repos/arthexis/gway/rulesets/11", None),
+    ]
+    assert client.payloads == [policy, policy, None]
+
+
+def test_ruleset_policy_rejects_partial_or_implicit_patch_shape():
+    target = Controller(None, client=FakeClient())
+
+    try:
+        target.create_ruleset(
+            "arthexis/gway",
+            {
+                "name": "Protect main",
+                "target": "branch",
+                "enforcement": "active",
+            },
+        )
+    except ValueError as error:
+        assert "missing required fields" in str(error)
+    else:
+        raise AssertionError("partial ruleset policy unexpectedly accepted")
+
+
+def test_ruleset_mutations_respect_no_mutate_before_network_access():
+    client = FakeClient()
+    target = Controller(None, client=client)
+    policy = complete_ruleset_policy()
+
+    for call in (
+        lambda: target.create_ruleset("arthexis/gway", policy, mutate=False),
+        lambda: target.update_ruleset("arthexis/gway", 11, policy, mutate=False),
+        lambda: target.delete_ruleset("arthexis/gway", 11, mutate=False),
+    ):
+        try:
+            call()
+        except PermissionError as error:
+            assert "ruleset mutation is disabled" in str(error)
+        else:
+            raise AssertionError("ruleset mutation unexpectedly allowed")
+
+    assert client.calls == []
