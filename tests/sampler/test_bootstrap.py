@@ -5,7 +5,17 @@ def test_gway_bootstrap_installs_only_released_package(sampler_path):
     assert "uv/install.sh" in script
     assert 'tool install --upgrade gway' in script
     assert "git+https://github.com/arthexis/gway" not in script
-    assert '"$GWAY" version' in script
+
+
+def test_gway_bootstrap_persists_tool_path_and_smoke_checks_cli(sampler_path):
+    script = sampler_path("bootstrap/gway.sh").read_text(encoding="utf-8")
+
+    assert 'export PATH="$HOME/.local/bin:$PATH"' in script
+    assert 'tool update-shell' in script
+    assert '"$GWAY" --help >/dev/null' in script
+    assert '"$GWAY" version' not in script
+    assert "cannot\n# mutate" not in script
+    assert "already-running parent shell" in script
 
 
 def test_watchtower_bootstrap_recipe_owns_dns_tls_and_static_site(recipe_commands):
