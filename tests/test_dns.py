@@ -90,7 +90,11 @@ def test_dns_create_surfaces_provider_error_without_secret(monkeypatch):
         return type(
             "Response",
             (),
-            {"status": 403, "content": b'{"message":"denied"}', "text": '{"message":"denied"}'},
+            {
+                "status": 403,
+                "content": b'{"message":"denied"}',
+                "text": '{"message":"denied"}',
+            },
         )()
 
     monkeypatch.setattr("gway.dns.http_request", request_)
