@@ -59,12 +59,16 @@ class _Registry:
     def __init__(self):
         self.records = {}
         self.aliases = {}
+        self.history = {}
 
     def register(self, name, operation, *, op=None, sub=None):
         if not callable(operation):
             raise TypeError(f"{name!r} is not callable")
         if op is None:
             op, sub = split_operation(name)
+        previous = self.records.get(name)
+        if previous is not None and previous.callable is not operation:
+            self.history.setdefault(name, []).append(previous)
         self.records[name] = OperationRecord(name, op, sub, operation)
         self.aliases[name] = name
         return operation
@@ -126,6 +130,15 @@ class _Registry:
             return matches[0].callable
         return default
 
+    def candidates(self, name):
+        """Return selected then shadowed records for one canonical identity."""
+        canonical = self.aliases.get(name, name)
+        selected = self.records.get(canonical)
+        if selected is None:
+            return ()
+        shadowed = reversed(self.history.get(canonical, ()))
+        return (selected, *shadowed)
+
     def unregister(self, name):
         canonical = self.aliases.get(name, name)
         record = self.records.pop(canonical)
@@ -169,6 +182,10 @@ class Operations(Mapping):
 
     def resolve_pair(self, op, sub, default=None):
         return self._registry.resolve_pair(op, sub, default)
+
+    def candidates(self, name):
+        """Return selected then shadowed registrations in resolver precedence."""
+        return self._registry.candidates(name)
 
     def canonical_name(self, operation, default=None):
         """Return the canonical registry identity for one operation callable."""
