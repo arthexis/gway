@@ -185,7 +185,7 @@ def run(
     failed=False,
     verbose=False,
     durations=20,
-    workers=4,
+    workers: int = 4,
 ):
     """Run tests through pytest and return its exit status.
 
