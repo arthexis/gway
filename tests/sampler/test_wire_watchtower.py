@@ -420,3 +420,37 @@ def test_wire_server_reclaim_is_mutating():
     module.register(gateway)
 
     assert gateway.ops.resolve("wire.server.reclaim").mutates is True
+
+
+def test_reclaim_enrollment_listener_disables_legacy_service(monkeypatch):
+    gateway = Gateway()
+    module = sampler.load("wire")
+    controller = module.register(gateway)
+    monkeypatch.setattr(
+        module,
+        "_listener_owner",
+        lambda *args, **kwargs: {
+            "pid": 77,
+            "argv": ("python", "-m", "gway", "wire", "server", "serve"),
+            "managed": False,
+            "legacy": True,
+            "wire_enrollment": True,
+        },
+    )
+    actions = []
+    monkeypatch.setattr(
+        module,
+        "_stop_legacy_enrollment",
+        lambda: actions.append("stop") or True,
+    )
+    monkeypatch.setattr(
+        module,
+        "_disable_legacy_enrollment",
+        lambda: actions.append("disable") or True,
+    )
+
+    result = controller.reclaim_enrollment_listener()
+
+    assert result["state"] == "legacy-reclaimed"
+    assert result["changed"] is True
+    assert actions == ["stop", "disable"]
