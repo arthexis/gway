@@ -127,3 +127,19 @@ def test_test_run_translates_gway_options_to_pytest(tmp_path, monkeypatch):
         "-n", "3", "--dist", "loadgroup", "-k", "mutation", "--lf", "-v"
     ]
     assert seen["kwargs"] == {"check": False}
+
+
+def test_test_run_workers_zero_keeps_pytest_serial(tmp_path, monkeypatch):
+    root = tmp_path / "tests"
+    root.mkdir()
+    seen = {}
+
+    def fake_run(command, **kwargs):
+        seen["command"] = command
+        return SimpleNamespace(returncode=0)
+
+    monkeypatch.setattr(gway_test._subprocess, "run", fake_run)
+
+    assert gway_test.run(root=root, workers=0) == 0
+    assert "-n" not in seen["command"]
+    assert "--dist" not in seen["command"]
