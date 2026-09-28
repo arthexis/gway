@@ -1,6 +1,7 @@
 """Structured observation boundaries for read-only composition."""
 
 import base64
+import binascii
 import hashlib
 import json
 from datetime import datetime, timezone
@@ -75,7 +76,13 @@ def _decode_cursor(value):
         encoded = str(value).encode("ascii")
         padding = b"=" * (-len(encoded) % 4)
         document = json.loads(base64.urlsafe_b64decode(encoded + padding))
-    except (UnicodeEncodeError, ValueError, TypeError, json.JSONDecodeError) as exc:
+    except (
+        UnicodeEncodeError,
+        ValueError,
+        TypeError,
+        json.JSONDecodeError,
+        binascii.Error,
+    ) as exc:
         raise ValueError("Invalid observation cursor") from exc
     if document.get("v") != _CURSOR_VERSION:
         raise ValueError("Unsupported observation cursor version")
