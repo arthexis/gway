@@ -853,16 +853,54 @@ class Gateway(Resolver):
             "operations": children,
         }
 
+    def _operation_visible(self, name):
+        """Return whether one canonical operation is visible to the caller."""
+        authority = self.authorization
+        if authority is None or "__all__" in authority.operations:
+            return True
+        return name in authority.operations or name in {
+            "security.whoami",
+            "security.scope.current",
+        }
+
+    def _operation_catalog(self):
+        """Return visible canonical operations in stable lexical order."""
+        from .documentation import describe
+
+        items = []
+        for record in sorted(self.ops.records(), key=lambda item: item.name):
+            if not self._operation_visible(record.name):
+                continue
+            items.append((record.name, describe(record.callable).summary or ""))
+        return items
+
     def _namespace_help(self, name):
         info = self.namespace(*str(name).split())
-        lines = [f"{info['group']} operations:", ""]
-        width = max(len(item["name"]) for item in info["operations"])
+        visible = []
         for item in info["operations"]:
+            command = item["command"].replace(" ", ".")
+            if item["group"]:
+                if not any(
+                    operation == command or operation.startswith(f"{command}.")
+                    for operation, _ in self._operation_catalog()
+                ):
+                    continue
+            elif not self._operation_visible(command):
+                continue
+            visible.append(item)
+        lines = [f"{info['group']} operations:", ""]
+        if not visible:
+            lines.append("  (no authorized operations)")
+            return "\n".join(lines)
+        width = max(len(item["name"]) for item in visible)
+        for item in visible:
             suffix = " >" if item["group"] else ""
             lines.append(
                 f"  {item['name']:<{width}}{suffix}  {item['summary']}".rstrip()
             )
-        if info["default"] is not None:
+        if info["default"] is not None and self._operation_visible(
+            info["default"].replace(" ", ".")
+        ):
             lines.extend(["", f"Bare '{info['group']}' runs its group default."])
         return "\n".join(lines)
 
@@ -893,7 +931,12 @@ class Gateway(Resolver):
         from .tokens import tokenize
 
         if not operation:
-            raise TypeError("help requires an operation name")
+            catalog = self._operation_catalog()
+            lines = ["Available operations:", ""]
+            width = max((len(name) for name, _ in catalog), default=0)
+            for name, summary in catalog:
+                lines.append(f"  {name:<{width}}  {summary}".rstrip())
+            return "\n".join(lines)
         name = " ".join(operation)
         if self.ops.is_namespace(name):
             return self._namespace_help(name)
