@@ -1,5 +1,3 @@
-import pytest
-
 from gway.github import GitHubError
 from gway.githubops import Controller
 
