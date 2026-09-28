@@ -255,6 +255,11 @@ class Gateway(Resolver):
             "github.delete_variable",
             "github.set_secret",
             "github.delete_secret",
+            "github.create_issue",
+            "github.update_issue",
+            "github.close_issue",
+            "github.reopen_issue",
+            "github.comment_issue",
         }
         for record in self.ops.records():
             if record.name.startswith("github."):
