@@ -390,7 +390,6 @@ def test_authorize_defaults_missing_scope_to_mcp_resource_scope(tmp_path):
         thread.join(timeout=2)
 
 
-
 def test_cimd_client_id_rejects_non_https_and_url_credentials(tmp_path):
     oauth = OAuthRegistry(tmp_path / "security.sqlite")
     resolver = OAuthClientResolver(oauth)
