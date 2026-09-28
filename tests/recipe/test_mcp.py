@@ -549,9 +549,7 @@ def test_mcp_http_query_uses_bearer_scope_and_forces_no_mutation(
     assert tools == ["gway", "query"]
     assert result is None
     assert "does not support non-mutating execution" in error
-    assert seen == [("observe", False)]
-
-def _issued_oauth_token(tmp_path, monkeypatch, *, resource=MCP_RESOURCE):
+    # second-command mode repeats the first request concurrently so both clients\n    # exercise the same live server; neither query invocation may mutate state.\n    assert seen == [("observe", False), ("observe", False)]\n\ndef _issued_oauth_token(tmp_path, monkeypatch, *, resource=MCP_RESOURCE):
     path = tmp_path / "security.sqlite"
     scopes = ScopeRegistry(path)
     tokens = TokenRegistry(path)
