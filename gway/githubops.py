@@ -52,7 +52,7 @@ class Controller:
         repo = self.repository(repository)
         branch = repo.get("default_branch") if isinstance(repo, dict) else None
         return {
-            "repository": repo.get("full_name") if isinstance(repo, dict) else repository,
+            "repository": (\n                repo.get("full_name") if isinstance(repo, dict) else repository\n            ),
             "default_branch": branch,
             "private": repo.get("private") if isinstance(repo, dict) else None,
             "archived": repo.get("archived") if isinstance(repo, dict) else None,
@@ -133,31 +133,31 @@ class Controller:
 
     def pulls(self, repository, state="open"):
         """List pull requests."""
-        return self._all(f"{self._repo(repository)}/pulls", params={"state": state, "per_page": 100})
+        return self._all(\n            f"{self._repo(repository)}/pulls",\n            params={"state": state, "per_page": 100},\n        )
 
     def pull(self, repository, number):
         """Return one pull request."""
-        return self._github().request("GET", f"{self._repo(repository)}/pulls/{int(number)}").data
+        return self._github().request(\n            "GET", f"{self._repo(repository)}/pulls/{int(number)}"\n        ).data
 
     def issues(self, repository, state="open"):
         """List issue records, including pull requests as GitHub returns them."""
-        return self._all(f"{self._repo(repository)}/issues", params={"state": state, "per_page": 100})
+        return self._all(\n            f"{self._repo(repository)}/issues",\n            params={"state": state, "per_page": 100},\n        )
 
     def issue(self, repository, number):
         """Return one issue record."""
-        return self._github().request("GET", f"{self._repo(repository)}/issues/{int(number)}").data
+        return self._github().request(\n            "GET", f"{self._repo(repository)}/issues/{int(number)}"\n        ).data
 
     def comments(self, repository, number):
         """List conversation comments for an issue or pull request."""
-        return self._all(f"{self._repo(repository)}/issues/{int(number)}/comments", params={"per_page": 100})
+        return self._all(\n            f"{self._repo(repository)}/issues/{int(number)}/comments",\n            params={"per_page": 100},\n        )
 
     def reviews(self, repository, number):
         """List submitted pull-request reviews."""
-        return self._all(f"{self._repo(repository)}/pulls/{int(number)}/reviews", params={"per_page": 100})
+        return self._all(\n            f"{self._repo(repository)}/pulls/{int(number)}/reviews",\n            params={"per_page": 100},\n        )
 
     def review_comments(self, repository, number):
         """List inline pull-request review comments."""
-        return self._all(f"{self._repo(repository)}/pulls/{int(number)}/comments", params={"per_page": 100})
+        return self._all(\n            f"{self._repo(repository)}/pulls/{int(number)}/comments",\n            params={"per_page": 100},\n        )
 
     def review_threads(self, repository, number, unresolved=False):
         """List pull-request review threads, optionally only unresolved threads."""
