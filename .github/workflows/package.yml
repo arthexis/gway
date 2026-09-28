@@ -2,6 +2,7 @@ name: python / Package
 
 on:
   pull_request:
+    types: [opened, synchronize, reopened, labeled, unlabeled]
   workflow_dispatch:
 
 permissions:
@@ -11,15 +12,25 @@ jobs:
   package:
     name: python / Package
     runs-on: ubuntu-latest
+    env:
+      VERSION_PR: ${{ github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'version') }}
+      BASE_SHA: ${{ github.event.pull_request.base.sha || '' }}
+      HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
     steps:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
+      - name: Validate version-only PR
+        if: env.VERSION_PR == 'true'
+        run: python3 .github/scripts/validate_version_only_pr.py "$BASE_SHA" "$HEAD_SHA"
+
       - uses: actions/setup-python@v7
+        if: env.VERSION_PR != 'true'
         with:
           python-version: '3.13'
           cache: pip
       - name: Build distributions
+        if: env.VERSION_PR != 'true'
         run: |
           python -m pip install --upgrade pip build twine
           python -m build
@@ -27,6 +38,7 @@ jobs:
           test -n "$(find dist -maxdepth 1 -type f -name '*.whl' -print -quit)"
           test -n "$(find dist -maxdepth 1 -type f -name '*.tar.gz' -print -quit)"
       - name: Validate wheel in clean environment
+        if: env.VERSION_PR != 'true'
         run: |
           python -m venv /tmp/clean-install
           /tmp/clean-install/bin/python -m pip install --upgrade pip
@@ -75,6 +87,7 @@ jobs:
           /tmp/clean-install/bin/python -m gway help install >/dev/null
 
       - name: Rebuild wheel from sdist
+        if: env.VERSION_PR != 'true'
         run: |
           rm -rf /tmp/sdist-build
           mkdir -p /tmp/sdist-build
