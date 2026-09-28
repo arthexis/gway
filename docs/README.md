@@ -8,6 +8,7 @@ This directory documents the behavior implemented on the active branch.
 - [Platform boundary](PLATFORM.md) — what GWAY owns versus application/domain repositories, composition boundaries, and documentation ownership.
 - [Recipes](RECIPES.md) — the authoritative implemented recipe language: execution, context, companion Python files, nested recipes, check, --unless, repeat, rollback journals, reload/process handoff, execution boundaries, and transaction safety.
 - [Logging](LOGGING.md) — logical sources, journal/rotating-file backends, read/tail/search semantics, platform defaults, and the ordinary GWAY operation contract used by MCP.
+- [Source inspection](SOURCE.md) — resolved operation source, scoped and corpus search, semantic topic filtering, shadow diagnostics, and authorization boundaries.
 - [MCP](MCP.md) — generic `gway(command)` transport, canonical authorization, scopes/tokens, HTTP deployment, service supervision, and logging examples.
 - [Glossary](GLOSSARY.md) — canonical definitions for GWAY terminology.
 
