@@ -131,7 +131,7 @@ jobs:
             jq -r '[.labels[].name | ascii_downcase] | any(. == "approved")' <<< "$pr_json"
           )"
           on_hold="$(
-            jq -r '[.labels[].name | ascii_downcase] | any(. == "on-hold")' <<< "$pr_json"
+            jq -r '[.labels[].name | ascii_downcase] | any(. == "on-hold" or . == "on hold")' <<< "$pr_json"
           )"
           in_progress="$(
             jq -r '[.labels[].name | ascii_downcase] | any(. == "in-progress")' <<< "$pr_json"
@@ -180,7 +180,7 @@ jobs:
           fi
 
           on_hold="$(
-            jq -r '[.labels[].name | ascii_downcase] | any(. == "on-hold")' <<< "$pr_json"
+            jq -r '[.labels[].name | ascii_downcase] | any(. == "on-hold" or . == "on hold")' <<< "$pr_json"
           )"
           if [[ "$on_hold" == "true" ]]; then
             echo "PR #$PR_NUMBER is on-hold; auto-merge is disabled."
