@@ -264,6 +264,9 @@ class Gateway(Resolver):
             "github.update_pull",
             "github.close_pull",
             "github.reopen_pull",
+            "github.reply_review_comment",
+            "github.add_labels",
+            "github.remove_label",
         }
         for record in self.ops.records():
             if record.name.startswith("github."):
