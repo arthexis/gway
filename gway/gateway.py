@@ -264,9 +264,12 @@ class Gateway(Resolver):
                 record.callable.__gway_metadata__ = metadata
 
         from .dns import Controller as DNSController
+        from .network import Controller as NetworkController
 
         self._dns_controller = DNSController(self)
         ingest_python(self, self._dns_controller, path=("dns",))
+        self._network_controller = NetworkController(self)
+        ingest_python(self, self._network_controller, path=("network",))
 
         self._souschef_controller = SousChefController(self)
         ingest_python(self, self._souschef_controller, path=("sous", "chef"))
