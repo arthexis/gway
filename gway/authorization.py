@@ -13,9 +13,22 @@ class Authorization:
 
     operations: frozenset[str]
     environment: frozenset[str] | None = None
+    kind: str | None = None
+    principal: str | None = None
+    client_id: str | None = None
+    scopes: frozenset[str] = frozenset()
 
     @classmethod
-    def create(cls, operations=(), environment=None):
+    def create(
+        cls,
+        operations=(),
+        environment=None,
+        *,
+        kind=None,
+        principal=None,
+        client_id=None,
+        scopes=(),
+    ):
         return cls(
             operations=frozenset(str(name) for name in operations),
             environment=(
@@ -23,6 +36,10 @@ class Authorization:
                 if environment is None
                 else frozenset(str(name) for name in environment)
             ),
+            kind=None if kind is None else str(kind),
+            principal=None if principal is None else str(principal),
+            client_id=None if client_id is None else str(client_id),
+            scopes=frozenset(str(name) for name in scopes),
         )
 
     def authorize_operation(self, name):
