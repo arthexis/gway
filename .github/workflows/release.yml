@@ -94,6 +94,7 @@ jobs:
         env:
           DEPLOYED_SHA: ${{ inputs.deployed_sha }}
           GH_TOKEN: ${{ github.token }}
+          WATCHTOWER_RUN: ${{ inputs.watchtower_run }}
         run: |
           set -Eeuo pipefail
           python - <<'PY'
@@ -119,9 +120,24 @@ jobs:
               for pull in pulls
           )
           if not requested:
+              manifest_url = (
+                  "https://raw.githubusercontent.com/arthexis/arthexis/"
+                  "watchtower-state/.watchtower/accepted.json"
+              )
+              with urllib.request.urlopen(manifest_url) as response:
+                  manifest = json.load(response)
+              requested = (
+                  manifest.get("release_intent") == "manual"
+                  and manifest.get("run_url") == os.environ["WATCHTOWER_RUN"]
+                  and os.environ["DEPLOYED_SHA"] in {
+                      manifest.get("arthexis_sha"), manifest.get("gway_sha")
+                  }
+                  and manifest.get("stages") == ["arthexis", "remote"]
+              )
+          if not requested:
               raise SystemExit(
-                  "Release blocked: deployed SHA is not the merge commit of a PR "
-                  "labeled 'release'."
+                  "Release blocked: no PR release label or certified manual "
+                  "Watchtower release intent."
               )
           print("release_intent=verified")
           PY
