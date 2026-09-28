@@ -101,21 +101,25 @@ def run(runtime, recipe_name, **context):
     return result
 
 
-def _module_name(route):
-    return "_gway_sampler_" + "_".join(route.relative_to(root()).parts)
+def _module_name(route, *, root_path=None, namespace="sampler"):
+    base = root() if root_path is None else Path(root_path).resolve()
+    relative = route.relative_to(base)
+    prefix = "_gway_" + str(namespace).replace("-", "_").replace(":", "_")
+    return prefix + "_" + "_".join(relative.parts)
 
 
-def load(name):
-    """Load one sampler Python package lazily without registering its operations."""
+def load(name, *, root_path=None, namespace="sampler"):
+    """Load one sampler-style Python package lazily without registering operations."""
     relative = Path(str(name))
     if relative.is_absolute() or ".." in relative.parts:
         raise ValueError("Sampler module name must be a safe relative path")
-    route = (root() / relative).resolve()
+    base = root() if root_path is None else Path(root_path).resolve()
+    route = (base / relative).resolve()
     package = route / "__init__.py"
     if not package.is_file():
         raise FileNotFoundError(f"Sampler module not found: {name}")
 
-    module_name = _module_name(route)
+    module_name = _module_name(route, root_path=base, namespace=namespace)
     existing = sys.modules.get(module_name)
     if existing is not None:
         return existing
@@ -147,9 +151,9 @@ def _semantic_values(tokens):
     )
 
 
-def _fallback_routes():
-    """Return sampler capability packages in deterministic semantic-search order."""
-    sampler_root = root()
+def _fallback_routes(root_path=None):
+    """Return capability packages in deterministic semantic-search order."""
+    sampler_root = root() if root_path is None else Path(root_path).resolve()
     if not sampler_root.is_dir():
         return ()
 
@@ -171,10 +175,10 @@ def _route_score(route, values):
     return (leaf, overlap, -len(normalized))
 
 
-def fallback_routes(tokens):
-    """Yield sampler capability routes ordered for one unresolved semantic command."""
+def fallback_routes(tokens, *, root_path=None):
+    """Yield capability routes ordered for one unresolved semantic command."""
     values = _semantic_values(tokens)
-    routes = _fallback_routes()
+    routes = _fallback_routes(root_path)
     return tuple(
         sorted(
             routes,
@@ -188,22 +192,24 @@ def fallback_routes(tokens):
     )
 
 
-def expand(runtime, tokens):
-    """Load exactly one next sampler fallback route after ordinary resolution misses."""
+def expand_root(runtime, tokens, root_path, *, route_name="root"):
+    """Load exactly one next capability package from an explicit operation root."""
     values = _semantic_values(tokens)
     if not values:
         return False
 
-    loaded = getattr(runtime, "_sampler_routes", None)
+    base = Path(root_path).expanduser().resolve()
+    loaded = getattr(runtime, "_operation_route_loaded", None)
     if loaded is None:
         loaded = set()
-        runtime._sampler_routes = loaded
+        runtime._operation_route_loaded = loaded
 
     candidates = []
-    for relative in fallback_routes(tokens):
-        route = (root() / relative).resolve()
-        if route not in loaded:
-            candidates.append((relative, route))
+    for relative in fallback_routes(tokens, root_path=base):
+        route = (base / relative).resolve()
+        key = (str(route_name), route)
+        if key not in loaded:
+            candidates.append((relative, route, key))
 
     if not candidates:
         return False
@@ -211,19 +217,33 @@ def expand(runtime, tokens):
     best_score = _route_score(candidates[0][0], values)
     equally_relevant = [
         relative
-        for relative, _ in candidates
+        for relative, _, _ in candidates
         if _route_score(relative, values) == best_score
     ]
     if (best_score[0] or best_score[1]) and len(equally_relevant) > 1:
         names = ", ".join(str(route) for route in equally_relevant)
         raise LookupError(
-            f"Ambiguous sampler fallback for {' '.join(values)!r}: {names}"
+            f"Ambiguous operation-route fallback for {' '.join(values)!r}: {names}"
         )
 
-    relative, route = candidates[0]
-    module = load(str(relative))
+    relative, route, key = candidates[0]
+    module = load(str(relative), root_path=base, namespace=route_name)
     register = getattr(module, "register", None)
     if callable(register):
         register(runtime)
-    loaded.add(route)
+    loaded.add(key)
     return True
+
+
+def expand(runtime, tokens):
+    """Load exactly one next sampler fallback route after ordinary resolution misses."""
+    expanded = expand_root(runtime, tokens, root(), route_name="sampler")
+    if expanded:
+        loaded = getattr(runtime, "_sampler_routes", None)
+        if loaded is None:
+            loaded = set()
+            runtime._sampler_routes = loaded
+        for route_name, route in getattr(runtime, "_operation_route_loaded", set()):
+            if route_name == "sampler":
+                loaded.add(route)
+    return expanded
