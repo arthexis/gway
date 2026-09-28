@@ -274,6 +274,10 @@ class Gateway(Resolver):
             "github.dispatch_repository",
             "github.create_release",
             "github.update_release",
+            "github.create_ref",
+            "github.create_branch",
+            "github.delete_ref",
+            "github.delete_branch",
         }
         for record in self.ops.records():
             if record.name.startswith("github."):
