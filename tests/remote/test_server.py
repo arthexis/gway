@@ -271,6 +271,8 @@ def test_remote_runtime_converges_source_admin_scope(tmp_path):
             "github.webhook",
             "github.actions_permissions",
             "github.actions_workflow_permissions",
+            "github.set_actions_permissions",
+            "github.set_actions_workflow_permissions",
         }
     )
     assert admin.environment == frozenset()
