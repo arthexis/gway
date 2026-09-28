@@ -11,7 +11,7 @@ from gway.security.oauth import OAuthRegistry
 from gway.security.scopes import ScopeRegistry
 from gway.security.tokens import TokenRegistry
 
-pytestmark = pytest.mark.xdist_group("process-integration")
+pytestmark = pytest.mark.xdist_group("mcp-integration")
 
 
 
