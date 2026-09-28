@@ -104,8 +104,16 @@ jobs:
           )"
 
           if [[ "$approved" == "true" && "$in_progress" == "true" ]]; then
-            echo "PR #$PR_NUMBER cannot be both Approved and in-progress; removing Approved."
-            gh pr edit "$PR_NUMBER" --repo "$REPOSITORY" --remove-label approved
+            case "$label" in
+              approved)
+                echo "PR #$PR_NUMBER was newly approved; removing in-progress."
+                gh pr edit "$PR_NUMBER" --repo "$REPOSITORY" --remove-label in-progress
+                ;;
+              in-progress)
+                echo "PR #$PR_NUMBER was newly marked in-progress; removing Approved."
+                gh pr edit "$PR_NUMBER" --repo "$REPOSITORY" --remove-label approved
+                ;;
+            esac
           fi
 
       - name: Disarm when approval is removed or PR is on-hold
