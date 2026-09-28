@@ -1,15 +1,15 @@
 # Inspect the current node through bounded read-only observations.
 #
-# Returns stable node, health, services, deployment, release, queue, Wire,
-# and recent-error sections. Unsupported role-specific observations degrade
-# independently instead of aborting the whole snapshot.
+# Returns node, health, services, deployment, release, queue, Wire,
+# and recent-error sections permitted by the caller's effective authority.
+# Unsupported authorized capabilities degrade independently instead of
+# aborting the whole snapshot.
 
-observe node --section node
-observe service statuses --section services
-observe node deploy status --section deploy
-observe node release status --section release
-observe node queue status --section queue
-observe wire check --section wire
-observe 'log search "ERROR|CRITICAL" --all --limit 20' --section errors
-observation status node services deploy release queue wire errors
-pipe --node --health --services --deploy --release --queue --wire --errors --changed-at null --cursor null
+observe --section node -- node
+observe --section services -- service statuses
+observe --section deploy -- node deploy status
+observe --section release -- node release status
+observe --section queue -- node queue status
+observe --section wire -- wire check
+observe --section errors -- log search "ERROR|CRITICAL" --all --limit 20
+observation collect node services deploy release queue wire errors --changed-at null --cursor null
