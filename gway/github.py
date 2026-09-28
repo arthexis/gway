@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlsplit
 
 from gway.http import HTTPResponse, request as http_request
 
@@ -80,6 +80,7 @@ class Client:
             raise ValueError("GitHub token is required")
         self._token = str(token)
         self.api_url = str(api_url).rstrip("/") + "/"
+        self._origin = urlsplit(self.api_url)[:2]
         self._transport = transport
 
     def _headers(self, headers=None):
@@ -89,14 +90,19 @@ class Client:
             "X-GitHub-Api-Version": API_VERSION,
             "User-Agent": "gway-github/1",
         }
-        result.update(headers or {})
+        custom = dict(headers or {})
+        custom.pop("Authorization", None)
+        result.update(custom)
         return result
 
     def request(self, method, path, *, params=None, json=None, headers=None):
         """Perform one GitHub REST request."""
-        url = path if str(path).startswith(("http://", "https://")) else urljoin(
-            self.api_url, str(path).lstrip("/")
-        )
+        if str(path).startswith(("http://", "https://")):
+            url = str(path)
+            if urlsplit(url)[:2] != self._origin:
+                raise ValueError("GitHub request URL must remain on the configured API origin")
+        else:
+            url = urljoin(self.api_url, str(path).lstrip("/"))
         response = http_request(
             method,
             url,
@@ -146,7 +152,7 @@ class Client:
         """Execute a GitHub GraphQL read query."""
         return self.request(
             "POST",
-            GRAPHQL_URL,
+            urljoin(self.api_url, "graphql"),
             json={"query": query, "variables": variables or {}},
         )
 
