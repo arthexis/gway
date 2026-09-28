@@ -75,6 +75,8 @@ def test_github_ruleset_writes_are_admin_mutations(gateway):
         "github.create_ruleset",
         "github.update_ruleset",
         "github.delete_ruleset",
+        "github.update_branch_protection",
+        "github.delete_branch_protection",
     }:
         operation = gateway.ops.resolve(name)
         assert operation is not None
@@ -119,6 +121,8 @@ def test_every_github_operation_has_exactly_one_access_topic(gateway):
                 "update_ruleset",
                 "delete_ruleset",
                 "branch_protection",
+                "update_branch_protection",
+                "delete_branch_protection",
                 "collaborators",
                 "collaborator_permission",
                 "webhooks",
