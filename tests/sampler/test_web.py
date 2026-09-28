@@ -113,8 +113,8 @@ def test_sampler_package_resolves_default_and_children(sampler_path, gateway):
     )
 
 
-def test_sampler_templates_resolve_from_recipe_directory(sampler_path, 
-    gateway, tmp_path, monkeypatch
+def test_sampler_templates_resolve_from_recipe_directory(
+    sampler_path, gateway, tmp_path, monkeypatch
 ):
     root = sampler_path("web/expose")
     elsewhere = tmp_path / "elsewhere"
