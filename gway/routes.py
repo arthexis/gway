@@ -29,13 +29,20 @@ class OperationRoutes:
     def __init__(self):
         self._routes = []
 
-    def register(self, name, expand):
-        """Append one fallback route and return its immutable route record."""
-        if any(route.name == str(name).strip() for route in self._routes):
+    def register(self, name, expand, *, before=None):
+        """Register one fallback route in deterministic resolution order."""
+        normalized = str(name).strip()
+        if any(route.name == normalized for route in self._routes):
             raise ValueError(f"Operation route already registered: {name}")
         route = OperationRoute(name=name, expand=expand)
-        self._routes.append(route)
-        return route
+        if before is None:
+            self._routes.append(route)
+            return route
+        for index, existing in enumerate(self._routes):
+            if existing.name == before:
+                self._routes.insert(index, route)
+                return route
+        raise ValueError(f"Unknown operation route: {before}")
 
     def expand(self, runtime, tokens):
         """Try routes in registration order until one expands the runtime."""
