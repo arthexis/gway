@@ -185,3 +185,69 @@ def test_observation_collect_omits_unauthorized_but_keeps_unavailable():
         "optional": "unavailable",
     }
     assert result["cursor"] is None
+
+
+def test_observation_collect_only_filters_visible_sections_and_health():
+    gateway = Gateway()
+    gateway.context.update(
+        {
+            "node": {
+                "status": "ok",
+                "available": True,
+                "result": {"role": "control"},
+                "error": None,
+            },
+            "wire": {
+                "status": "error",
+                "available": True,
+                "result": None,
+                "error": {"type": "ConnectionError", "message": "offline"},
+            },
+        }
+    )
+
+    result = gateway("observation collect node wire --only node")
+
+    assert set(result) == {"node", "health", "changed_at", "cursor"}
+    assert result["health"]["status"] == "ok"
+    assert result["health"]["sections"] == {"node": "ok"}
+
+
+def test_observation_collect_except_filters_sections_before_health():
+    gateway = Gateway()
+    gateway.context.update(
+        {
+            "node": {
+                "status": "ok",
+                "available": True,
+                "result": {},
+                "error": None,
+            },
+            "wire": {
+                "status": "error",
+                "available": True,
+                "result": None,
+                "error": {"type": "ConnectionError", "message": "offline"},
+            },
+        }
+    )
+
+    result = gateway("observation collect node wire --except wire")
+
+    assert "wire" not in result
+    assert result["health"]["status"] == "ok"
+    assert result["health"]["sections"] == {"node": "ok"}
+
+
+def test_observation_collect_rejects_only_and_except_together():
+    gateway = Gateway()
+
+    with pytest.raises(ValueError, match="only one of --only or --except"):
+        gateway("observation collect node wire --only node --except wire")
+
+
+def test_observation_collect_rejects_unknown_section():
+    gateway = Gateway()
+
+    with pytest.raises(ValueError, match="Unknown observation section"):
+        gateway("observation collect node wire --only mystery")
