@@ -219,3 +219,68 @@ class Controller:
         if unresolved:
             threads = [thread for thread in threads if not thread["isResolved"]]
         return threads
+
+    def runs(self, repository, workflow=None, branch=None, status=None):
+        """List GitHub Actions runs, optionally filtered by workflow or branch."""
+        root = self._repo(repository)
+        path = f"{root}/actions/runs"
+        if workflow is not None:
+            path = f"{root}/actions/workflows/{_segment(workflow)}/runs"
+        params = {"per_page": 100}
+        if branch is not None:
+            params["branch"] = branch
+        if status is not None:
+            params["status"] = status
+        data = self._github().request("GET", path, params=params).data
+        return data.get("workflow_runs", []) if isinstance(data, dict) else data
+
+    def run(self, repository, run):
+        """Return one GitHub Actions workflow run."""
+        return self._github().request(
+            "GET",
+            f"{self._repo(repository)}/actions/runs/{int(run)}",
+        ).data
+
+    def jobs(self, repository, run):
+        """List jobs belonging to a GitHub Actions workflow run."""
+        data = self._github().request(
+            "GET",
+            f"{self._repo(repository)}/actions/runs/{int(run)}/jobs",
+            params={"per_page": 100},
+        ).data
+        return data.get("jobs", []) if isinstance(data, dict) else data
+
+    def job(self, repository, job):
+        """Return one GitHub Actions job."""
+        return self._github().request(
+            "GET",
+            f"{self._repo(repository)}/actions/jobs/{int(job)}",
+        ).data
+
+    def checks(self, repository, ref):
+        """List check runs for a commit or Git ref."""
+        data = self._github().request(
+            "GET",
+            f"{self._repo(repository)}/commits/{_segment(ref)}/check-runs",
+            params={"per_page": 100},
+        ).data
+        return data.get("check_runs", []) if isinstance(data, dict) else data
+
+    def check(self, repository, check):
+        """Return one check run."""
+        return self._github().request(
+            "GET",
+            f"{self._repo(repository)}/check-runs/{int(check)}",
+        ).data
+
+    def job_logs(self, repository, job):
+        """Return the downloadable log response for one Actions job."""
+        response = self._github().request(
+            "GET",
+            f"{self._repo(repository)}/actions/jobs/{int(job)}/logs",
+        )
+        return {
+            "status": response.status,
+            "content": response.data,
+            "content_type": response.headers.get("content-type"),
+        }
