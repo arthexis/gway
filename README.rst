@@ -14,6 +14,17 @@ applications follow the business.**
 Quick start
 -----------
 
+For a one-line released installation, use the public bootstrap:
+
+.. code-block:: bash
+
+   curl -fsSL https://install.arthexis.com/gway | sh
+
+On the first installation, the bootstrap persists ``~/.local/bin`` for future
+shells, but the already-open parent shell cannot inherit that PATH change; run
+``source ~/.local/bin/env`` once (or open a new shell) before invoking ``gway``
+directly in that session.
+
 Install GWAY with Python 3.13 or newer:
 
 .. code-block:: bash
