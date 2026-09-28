@@ -49,6 +49,12 @@ class Gateway(Resolver):
             setattr(self, level_name, level)
         self.ops, self.subs = registry_views()
 
+        from .routes import OperationRoutes
+        from .sampler import expand as expand_sampler
+
+        self.operation_routes = OperationRoutes()
+        self.operation_routes.register("sampler", expand_sampler)
+
         from .launchable import Launchables
 
         self.launchables = Launchables()
