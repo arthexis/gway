@@ -110,7 +110,7 @@ def _extract_mutation_policy(argv):
 
 
 _COMMAND_HELP_VALUE_OPTIONS = {
-    "-L", "--log-level", "--logfile", "-r", "--recipe",
+    "-L", "--log-level", "--logfile", "-r", "--recipe", "-R", "--root",
     "--resume",
 }
 _COMMAND_HELP_MODE_OPTIONS = {"-r", "--recipe", "--resume"}
@@ -176,6 +176,13 @@ def cli_main():
     parser.add_argument("-L", "--log-level")
     parser.add_argument("--logfile")
     parser.add_argument("-r", "--recipe")
+    parser.add_argument(
+        "-R",
+        "--root",
+        action="append",
+        default=[],
+        help="add a local operation root for this invocation; repeat for precedence",
+    )
     parser.add_argument("-t", "--timed", action="store_true")
     parser.add_argument("-v", "--verbose", action="store_true")
     parser.add_argument("-z", "--silent", action="store_true")
@@ -208,6 +215,11 @@ def cli_main():
         verbose=args.verbose,
         silent=args.silent,
     )
+    try:
+        for root in args.root:
+            runtime.add_operation_root(root)
+    except ValueError as exception:
+        parser.error(str(exception))
 
     from . import log as gway_log
 
