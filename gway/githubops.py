@@ -19,12 +19,16 @@ ADMIN_OPERATIONS = frozenset({
     "update_ruleset",
     "delete_ruleset",
     "branch_protection",
+    "update_branch_protection",
+    "delete_branch_protection",
     "collaborators",
     "collaborator_permission",
     "webhooks",
     "webhook",
     "actions_permissions",
     "actions_workflow_permissions",
+    "set_actions_permissions",
+    "set_actions_workflow_permissions",
 })
 
 
@@ -32,6 +36,10 @@ WRITE_OPERATIONS = frozenset({
     "create_ruleset",
     "update_ruleset",
     "delete_ruleset",
+    "update_branch_protection",
+    "delete_branch_protection",
+    "set_actions_permissions",
+    "set_actions_workflow_permissions",
     "set_variable",
     "delete_variable",
     "set_secret",
@@ -242,6 +250,162 @@ class Controller:
             f"{self._repo(repository)}/branches/{_segment(branch)}/protection",
         ).data
 
+    @staticmethod
+    def _branch_protection_policy(policy):
+        """Validate and copy one complete branch-protection policy."""
+        if not isinstance(policy, dict):
+            raise TypeError("GitHub branch protection policy must be a mapping")
+        required = {
+            "required_status_checks",
+            "enforce_admins",
+            "required_pull_request_reviews",
+            "restrictions",
+            "required_linear_history",
+            "allow_force_pushes",
+            "allow_deletions",
+            "block_creations",
+            "required_conversation_resolution",
+            "lock_branch",
+            "allow_fork_syncing",
+        }
+        missing = required - set(policy)
+        extra = set(policy) - required
+        if missing:
+            raise ValueError(
+                "GitHub branch protection policy is missing required fields: "
+                + ", ".join(sorted(missing))
+            )
+        if extra:
+            raise ValueError(
+                "GitHub branch protection policy contains unsupported fields: "
+                + ", ".join(sorted(extra))
+            )
+        result = dict(policy)
+        nested_policies = {
+            "required_status_checks": {"strict", "contexts"},
+            "required_pull_request_reviews": {
+                "dismiss_stale_reviews",
+                "require_code_owner_reviews",
+                "required_approving_review_count",
+                "require_last_push_approval",
+            },
+            "restrictions": {"users", "teams", "apps"},
+        }
+        for name, fields in nested_policies.items():
+            value = result[name]
+            if value is None:
+                continue
+            if not isinstance(value, dict):
+                raise TypeError(
+                    f"GitHub branch protection {name} must be a mapping or null"
+                )
+            missing_nested = fields - set(value)
+            extra_nested = set(value) - fields
+            if missing_nested:
+                raise ValueError(
+                    f"GitHub branch protection {name} is missing required fields: "
+                    + ", ".join(sorted(missing_nested))
+                )
+            if extra_nested:
+                raise ValueError(
+                    f"GitHub branch protection {name} contains unsupported fields: "
+                    + ", ".join(sorted(extra_nested))
+                )
+            result[name] = dict(value)
+
+        status_checks = result["required_status_checks"]
+        if status_checks is not None:
+            if not isinstance(status_checks["strict"], bool):
+                raise TypeError(
+                    "GitHub branch protection required_status_checks strict "
+                    "must be boolean"
+                )
+            if not isinstance(status_checks["contexts"], list) or not all(
+                isinstance(context, str) for context in status_checks["contexts"]
+            ):
+                raise TypeError(
+                    "GitHub branch protection required_status_checks contexts "
+                    "must be a list of strings"
+                )
+            status_checks["contexts"] = list(status_checks["contexts"])
+
+        reviews = result["required_pull_request_reviews"]
+        if reviews is not None:
+            for name in (
+                "dismiss_stale_reviews",
+                "require_code_owner_reviews",
+                "require_last_push_approval",
+            ):
+                if not isinstance(reviews[name], bool):
+                    raise TypeError(
+                        "GitHub branch protection required_pull_request_reviews "
+                        f"{name} must be boolean"
+                    )
+            count = reviews["required_approving_review_count"]
+            if not isinstance(count, int) or isinstance(count, bool):
+                raise TypeError(
+                    "GitHub branch protection required_pull_request_reviews "
+                    "required_approving_review_count must be an integer"
+                )
+
+        restrictions = result["restrictions"]
+        if restrictions is not None:
+            for name in ("users", "teams", "apps"):
+                value = restrictions[name]
+                if not isinstance(value, list) or not all(
+                    isinstance(item, str) for item in value
+                ):
+                    raise TypeError(
+                        f"GitHub branch protection restrictions {name} "
+                        "must be a list of strings"
+                    )
+                restrictions[name] = list(value)
+        if not isinstance(result["enforce_admins"], bool):
+            raise TypeError("GitHub branch protection enforce_admins must be boolean")
+        for name in (
+            "required_linear_history",
+            "allow_force_pushes",
+            "allow_deletions",
+            "block_creations",
+            "required_conversation_resolution",
+            "lock_branch",
+            "allow_fork_syncing",
+        ):
+            if not isinstance(result[name], bool):
+                raise TypeError(f"GitHub branch protection {name} must be boolean")
+        return result
+
+    def update_branch_protection(self, repository, branch, policy, mutate=True):
+        """Replace protection for one explicit branch using a complete policy."""
+        if not mutate:
+            raise PermissionError("GitHub branch protection mutation is disabled")
+        branch = str(branch)
+        if not branch:
+            raise ValueError("GitHub branch is required")
+        payload = self._branch_protection_policy(policy)
+        return self._github().request(
+            "PUT",
+            f"{self._repo(repository)}/branches/{_segment(branch)}/protection",
+            json=payload,
+        ).data
+
+    def delete_branch_protection(self, repository, branch, mutate=True):
+        """Delete protection for one explicit branch."""
+        if not mutate:
+            raise PermissionError("GitHub branch protection mutation is disabled")
+        branch = str(branch)
+        if not branch:
+            raise ValueError("GitHub branch is required")
+        self._github().request(
+            "DELETE",
+            f"{self._repo(repository)}/branches/{_segment(branch)}/protection",
+        )
+        return {
+            "repository": str(repository),
+            "branch": branch,
+            "deleted": True,
+        }
+
     def collaborators(self, repository, affiliation=None, permission=None):
         """List repository collaborators and visible permission metadata."""
         params = {"per_page": 100}
@@ -288,6 +452,81 @@ class Controller:
             "GET",
             f"{self._repo(repository)}/actions/permissions/workflow",
         ).data
+
+    def set_actions_permissions(
+        self,
+        repository,
+        enabled: bool,
+        allowed_actions,
+        sha_pinning_required: bool,
+        mutate=True,
+    ):
+        """Replace repository GitHub Actions enablement and allow policy."""
+        if not mutate:
+            raise PermissionError("GitHub Actions policy mutation is disabled")
+        if not isinstance(enabled, bool):
+            raise TypeError("GitHub Actions enabled must be boolean")
+        allowed_actions = str(allowed_actions)
+        if allowed_actions not in {"all", "local_only", "selected"}:
+            raise ValueError(
+                "GitHub Actions allowed_actions must be all, local_only, or selected"
+            )
+        if not isinstance(sha_pinning_required, bool):
+            raise TypeError("GitHub Actions sha_pinning_required must be boolean")
+        self._github().request(
+            "PUT",
+            f"{self._repo(repository)}/actions/permissions",
+            json={
+                "enabled": enabled,
+                "allowed_actions": allowed_actions,
+                "sha_pinning_required": sha_pinning_required,
+            },
+        )
+        return {
+            "repository": str(repository),
+            "enabled": enabled,
+            "allowed_actions": allowed_actions,
+            "sha_pinning_required": sha_pinning_required,
+            "updated": True,
+        }
+
+    def set_actions_workflow_permissions(
+        self,
+        repository,
+        default_workflow_permissions,
+        can_approve_pull_request_reviews: bool,
+        mutate=True,
+    ):
+        """Replace repository default GITHUB_TOKEN and PR approval policy."""
+        if not mutate:
+            raise PermissionError(
+                "GitHub Actions workflow permission mutation is disabled"
+            )
+        default_workflow_permissions = str(default_workflow_permissions)
+        if default_workflow_permissions not in {"read", "write"}:
+            raise ValueError(
+                "default_workflow_permissions must be read or write"
+            )
+        if not isinstance(can_approve_pull_request_reviews, bool):
+            raise TypeError(
+                "can_approve_pull_request_reviews must be boolean"
+            )
+        self._github().request(
+            "PUT",
+            f"{self._repo(repository)}/actions/permissions/workflow",
+            json={
+                "default_workflow_permissions": default_workflow_permissions,
+                "can_approve_pull_request_reviews": (
+                    can_approve_pull_request_reviews
+                ),
+            },
+        )
+        return {
+            "repository": str(repository),
+            "default_workflow_permissions": default_workflow_permissions,
+            "can_approve_pull_request_reviews": can_approve_pull_request_reviews,
+            "updated": True,
+        }
 
     def commits(self, repository, branch=None, path=None):
         """List repository commits, optionally filtered by branch or path."""

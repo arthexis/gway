@@ -263,12 +263,16 @@ def test_remote_runtime_converges_source_admin_scope(tmp_path):
             "github.update_ruleset",
             "github.delete_ruleset",
             "github.branch_protection",
+            "github.update_branch_protection",
+            "github.delete_branch_protection",
             "github.collaborators",
             "github.collaborator_permission",
             "github.webhooks",
             "github.webhook",
             "github.actions_permissions",
             "github.actions_workflow_permissions",
+            "github.set_actions_permissions",
+            "github.set_actions_workflow_permissions",
         }
     )
     assert admin.environment == frozenset()
