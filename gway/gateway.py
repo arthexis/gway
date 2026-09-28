@@ -106,7 +106,21 @@ class Gateway(Resolver):
         self.products = self.wrap("products", self._products)
         self.extensions = self.wrap("extensions", self._extensions)
 
-        from .source import inspect_source
+        from .source import inspect_source, search_source_corpus
+
+        self.search_source = self.wrap(
+            "search.source",
+            lambda query, kind=None, topic=(), context=0, mutate=False: search_source_corpus(
+                self,
+                query,
+                kind=kind,
+                topic=topic,
+                context=context,
+                mutate=mutate,
+            ),
+            op="search",
+            sub="source",
+        )
 
         self.source = self.wrap(
             "source",
