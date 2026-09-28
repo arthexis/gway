@@ -479,7 +479,7 @@ def _mcp_http_recipe(recipe_factory, root):
     return recipe
 
 
-def test_mcp_http_real_client_uses_bearer_scope(
+def test_mcp_http_bearer_scope_allows_and_denies_operations(
     gateway, recipe_factory, required_runtime, tmp_path, monkeypatch
 ):
     _, _, issued = _issued_token(
@@ -489,24 +489,24 @@ def test_mcp_http_real_client_uses_bearer_scope(
     )
 
     gateway.allowed = gateway.wrap("allowed", lambda: "ok")
+    gateway.denied = gateway.wrap("denied", lambda: "no")
     recipe = _mcp_http_recipe(recipe_factory, tmp_path / "mcphttp")
     recipe.write_text(
-        f"require fastmcp\nserver probe http {issued.bearer!r} allowed\n",
+        "require fastmcp\n"
+        f"server probe http {issued.bearer!r} allowed "
+        f"{issued.bearer!r} denied\n",
         encoding="utf-8",
     )
     gateway.ingest(recipe.parent)
 
     with gateway.authorized(operations={"mcphttp.server"}):
-        tools, result, error = gateway("mcphttp server")
+        allowed, denied = gateway("mcphttp server")
 
-    assert tools == ["gway", "query"]
-    assert result == "ok"
-    assert error is None
-
-
-
-
-
+    assert allowed == (["gway", "query"], "ok", None)
+    assert denied[0] == ["gway", "query"]
+    assert denied[1] is None
+    assert "Operation is not authorized: denied" in denied[2]
+    assert "Invalid bearer token" not in denied[2]
 
 
 def test_mcp_http_query_uses_bearer_scope_and_forces_no_mutation(
@@ -728,33 +728,6 @@ def test_mcp_http_authentication_challenge_points_to_protected_resource_metadata
         "https://remote.example.test/.well-known/oauth-protected-resource/mcp"
         '"' in challenge
     )
-
-
-def test_mcp_http_scope_denial_is_tool_error_not_authentication_failure(
-    gateway, recipe_factory, required_runtime, tmp_path, monkeypatch
-):
-    path = tmp_path / "security.sqlite"
-    scopes = ScopeRegistry(path)
-    tokens = TokenRegistry(path)
-    scopes.replace("reader", operations={"allowed"})
-    issued = tokens.create("http-client", scopes={"reader"})
-    monkeypatch.setattr(companion_runtime, "TokenRegistry", lambda path=None: tokens)
-
-    gateway.denied = gateway.wrap("denied", lambda: "no")
-    recipe = _mcp_http_recipe(recipe_factory, tmp_path / "mcphttpdenied")
-    recipe.write_text(
-        f"require fastmcp\nserver probe http {issued.bearer!r} denied\n",
-        encoding="utf-8",
-    )
-    gateway.ingest(recipe.parent)
-
-    with gateway.authorized(operations={"mcphttpdenied.server"}):
-        tools, result, error = gateway("mcphttpdenied server")
-
-    assert tools == ["gway", "query"]
-    assert result is None
-    assert "Operation is not authorized: denied" in error
-    assert "Invalid bearer token" not in error
 
 
 @pytest.mark.parametrize("credential", ["__missing__", "gwt_missing_wrong"])
