@@ -713,39 +713,32 @@ def test_mcp_http_authentication_challenge_points_to_protected_resource_metadata
     )
 
 
-@pytest.mark.parametrize("credential", ["__missing__", "gwt_missing_wrong"])
 def test_mcp_http_rejects_missing_and_invalid_bearer(
     gateway,
     recipe_factory,
     required_runtime,
     tmp_path,
     monkeypatch,
-    credential,
 ):
     tokens = TokenRegistry(tmp_path / "security.sqlite")
     monkeypatch.setattr(companion_runtime, "TokenRegistry", lambda path=None: tokens)
 
-    recipe = _mcp_http_recipe(
-        recipe_factory,
-        tmp_path / (
-            "mcphttpmissing" if credential == "__missing__" else "mcphttpinvalid"
-        ),
-    )
-    value = repr(credential)
+    recipe = _mcp_http_recipe(recipe_factory, tmp_path / "mcphttpinvalid")
     recipe.write_text(
-        f"require fastmcp\nserver probe http {value} clear\n",
+        "require fastmcp\n"
+        "server probe http __missing__ clear gwt_missing_wrong clear\n",
         encoding="utf-8",
     )
     gateway.ingest(recipe.parent)
 
-    operation = recipe.parent.name.replace("-", "_") + ".server"
-    with gateway.authorized(operations={operation}):
-        tools, result, error = gateway(operation.replace(".", " "))
+    with gateway.authorized(operations={"mcphttpinvalid.server"}):
+        missing, invalid = gateway("mcphttpinvalid server")
 
-    assert tools == []
-    assert result is None
-    assert error is not None
-    assert "Server returned an error response" in error
+    for tools, result, error in (missing, invalid):
+        assert tools == []
+        assert result is None
+        assert error is not None
+        assert "Server returned an error response" in error
 
 
 def test_mcp_http_rejects_disabled_bearer(
