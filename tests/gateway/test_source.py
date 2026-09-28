@@ -1,4 +1,5 @@
 from gway.gateway import Gateway
+import pytest
 
 
 def test_source_inspects_resolved_python_operation(gateway):
@@ -158,3 +159,38 @@ def test_search_source_topic_does_not_match_source_text(gateway):
     results = gateway("search source Return --topic remote")
 
     assert not any(item["operation"] == "env" for item in results)
+
+
+def test_source_authorization_requires_source_and_target_visibility(gateway):
+    from gway.authorization import AuthorizationError
+
+    with gateway.authorized(operations={"source", "env"}):
+        assert gateway("source env")["operation"] == "env"
+
+    with gateway.authorized(operations={"source"}):
+        with pytest.raises(AuthorizationError):
+            gateway("source env")
+
+
+def test_source_authorization_requires_source_capability(gateway):
+    from gway.authorization import AuthorizationError
+
+    with gateway.authorized(operations={"env"}):
+        with pytest.raises(AuthorizationError):
+            gateway("source env")
+
+
+def test_search_source_excludes_hidden_operations(gateway):
+    with gateway.authorized(operations={"search.source", "env"}):
+        results = gateway("search source Return")
+
+    assert any(item["operation"] == "env" for item in results)
+    assert all(item["operation"].replace(" ", ".") in {"search.source", "env"} for item in results)
+
+
+def test_search_source_requires_source_search_capability(gateway):
+    from gway.authorization import AuthorizationError
+
+    with gateway.authorized(operations={"env"}):
+        with pytest.raises(AuthorizationError):
+            gateway("search source Return")
