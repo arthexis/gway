@@ -26,7 +26,16 @@ jobs:
       - name: Run project CI through Gway
         env:
           PYTHONFAULTHANDLER: '1'
-        run: timeout -s ABRT 300s python -m gway ci
+          WORKFLOW_PR: ${{ contains(github.event.pull_request.labels.*.name, 'workflow') }}
+          INTEGRATION_PR: ${{ github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'integration') }}
+        run: |
+          if [[ "$INTEGRATION_PR" == "true" ]]; then
+            timeout -s ABRT 300s python -m gway ci
+          elif [[ "$WORKFLOW_PR" == "true" ]]; then
+            timeout -s ABRT 300s python -m gway test run architecture
+          else
+            timeout -s ABRT 300s python -m gway test run --keyword "not architecture"
+          fi
 
   forward-compatibility:
     name: Compatibility (Python 3.13)
