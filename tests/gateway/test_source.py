@@ -116,3 +116,45 @@ def test_source_search_finds_recipe_match(gateway, tmp_path):
             "after": ["env LAST"],
         }
     ]
+
+
+def test_search_source_finds_registered_python_operations(gateway):
+    results = gateway("search source Return --kind python")
+
+    assert any(item["operation"] == "env" for item in results)
+    assert all(item["kind"] == "python" for item in results)
+    assert all("source" not in item for item in results)
+
+
+def test_search_source_kind_filter_excludes_python(gateway):
+    results = gateway("search source Return --kind recipe")
+
+    assert not any(item["operation"] == "env" for item in results)
+
+
+def test_search_source_filters_explicit_topics_as_intersection(gateway):
+    operation = gateway.ops.resolve("env")
+    operation.__gway_metadata__ = {"topics": ("remote", "log")}
+
+    from gway.source import search_source_corpus
+
+    forward = search_source_corpus(
+        gateway, "Return", topic=("remote", "log")
+    )
+    reverse = search_source_corpus(
+        gateway, "Return", topic=("log", "remote")
+    )
+
+    assert [item["operation"] for item in forward] == [
+        item["operation"] for item in reverse
+    ]
+    assert any(item["operation"] == "env" for item in forward)
+
+
+def test_search_source_topic_does_not_match_source_text(gateway):
+    operation = gateway.ops.resolve("env")
+    operation.__gway_metadata__ = {"topics": ()}
+
+    results = gateway("search source Return --topic remote")
+
+    assert not any(item["operation"] == "env" for item in results)
