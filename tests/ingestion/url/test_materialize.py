@@ -68,7 +68,7 @@ def test_url_refresh_preserves_content_addressed_versions(
     monkeypatch.setattr(
         url_ingestor,
         "http_request",
-        lambda method, url, **kwargs: type(
+        lambda _method, url, **_kwargs: type(
             "Response",
             (),
             {"status": 200, "content": next(payloads), "url": url},
@@ -100,7 +100,7 @@ def test_untrusted_remote_source_is_materialized_but_not_executed(
     monkeypatch.setattr(
         url_ingestor,
         "http_request",
-        lambda method, url, **kwargs: type(
+        lambda _method, url, **_kwargs: type(
             "Response",
             (),
             {"status": 200, "content": b"print('remote')\n", "url": url},
@@ -125,7 +125,7 @@ def test_trusted_remote_source_delegates_to_path_ingestion(
     monkeypatch.setattr(
         url_ingestor,
         "http_request",
-        lambda method, url, **kwargs: type(
+        lambda _method, url, **_kwargs: type(
             "Response",
             (),
             {"status": 200, "content": b"print('remote')\n", "url": url},
