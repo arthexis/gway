@@ -16,6 +16,8 @@ def test_gway_bootstrap_persists_tool_path_and_smoke_checks_cli(sampler_path):
     assert 'elif test -x "$TOOL_BIN/gway"; then' in script
     assert 'GWAY="$TOOL_BIN/gway"' in script
     assert '"$GWAY" --help >/dev/null' in script
+    assert '"$UV" tool update-shell >/dev/null 2>&1 || true' not in script
+    assert "could not persist tool PATH for future shells" in script
     assert '"$GWAY" version' not in script
     assert "already-running parent shell" in script or "cannot mutate its parent" in script
 
