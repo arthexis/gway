@@ -282,3 +282,164 @@ def test_first_explicit_root_precedes_later_root_for_recipe_operation(tmp_path):
     operation = resolve_operation(gateway, tokenize("status")).callable
 
     assert operation.__gway_metadata__["root"] == first.resolve()
+
+
+def test_leading_recipe_comments_become_help_without_companion(tmp_path):
+    gateway, root = _root_gateway(tmp_path)
+    _write(
+        root / "inspect.rx",
+        """# Inspect the current node.
+#
+# Returns a bounded observation snapshot.
+
+version
+# Internal implementation note.
+""",
+    )
+
+    output = gateway("help inspect --verbose")
+
+    assert "Inspect the current node." in output
+    assert "Returns a bounded observation snapshot." in output
+    assert "Internal implementation note." not in output
+
+
+def test_companion_main_docstring_overrides_leading_recipe_help(tmp_path):
+    gateway, root = _root_gateway(tmp_path)
+    _write(root / "inspect.rx", "# Recipe comment help.\nversion\n")
+    _write(
+        root / "inspect.py",
+        '''
+def __main__(*, mutate=False):
+    """Companion main help."""
+''',
+    )
+
+    output = gateway("help inspect")
+
+    assert "Companion main help." in output
+    assert "Recipe comment help." not in output
+
+
+def test_static_dunder_help_augments_and_overrides_recipe_help(tmp_path):
+    gateway, root = _root_gateway(tmp_path)
+    _write(root / "watch.rx", "# Native watch help.\nversion\n")
+    _write(
+        root / "watch.py",
+        '''
+def __main__(since=None, *, mutate=False):
+    """Main watch documentation.
+
+    Args:
+        since: Mechanical since description.
+    """
+
+def __help__(topic=None):
+    return {
+        "summary": "Observe this node.",
+        "description": "Build a stable bounded node snapshot.",
+        "examples": ["gway watch", "gway watch --since 1h"],
+        "notes": ["Read-only by contract."],
+        "--since": {
+            "summary": "Recent observations",
+            "description": "Limit time-aware observations to a recent window.",
+            "examples": ["gway watch --since 30m"],
+        },
+        "services stale": {
+            "description": "Explain stale managed service observations."
+        },
+    }
+''',
+    )
+
+    compact = gateway("help watch")
+    verbose = gateway("help watch --verbose")
+    since = gateway("help watch --since")
+    conceptual = gateway("help watch services stale")
+
+    assert "Observe this node." in compact
+    assert "Build a stable bounded node snapshot." in verbose
+    assert "Examples:" in verbose
+    assert "gway watch --since 1h" in verbose
+    assert "Notes:" in verbose
+    assert "Recent observations" in since
+    assert "Limit time-aware observations" in since
+    assert "gway watch --since 30m" in since
+    assert "Explain stale managed service observations." in conceptual
+
+
+def test_dunder_help_can_use_explicit_topics_mapping_and_none_general_entry(tmp_path):
+    gateway, root = _root_gateway(tmp_path)
+    _write(root / "probe.rx", "version\n")
+    _write(
+        root / "probe.py",
+        '''
+def __main__(target=None, *, mutate=False):
+    pass
+
+def __help__(topic=None):
+    return {
+        None: {
+            "summary": "Probe something.",
+            "description": "General probe documentation.",
+        },
+        "topics": {
+            "target": "Select the target to probe.",
+            "behavior details": {
+                "summary": "Behavior",
+                "description": "Detailed behavior documentation.",
+            },
+        },
+    }
+''',
+    )
+
+    assert "Probe something." in gateway("help probe")
+    assert "Select the target to probe." in gateway("help probe target")
+    assert "Detailed behavior documentation." in gateway(
+        "help probe behavior details"
+    )
+
+
+def test_dunder_help_is_special_metadata_not_a_callable_operation(tmp_path):
+    gateway, root = _root_gateway(tmp_path)
+    _write(root / "watch.rx", "version\n")
+    _write(
+        root / "watch.py",
+        '''
+def __main__(*, mutate=False):
+    pass
+
+def __help__():
+    return {"summary": "Watch help."}
+''',
+    )
+
+    resolve_operation(gateway, tokenize("watch"))
+
+    assert gateway.ops.resolve("watch") is not None
+    assert gateway.ops.resolve("watch.__help__") is None
+    assert gateway.ops.resolve("__help__") is None
+
+
+def test_specific_parameter_help_falls_back_to_signature_and_docstring(tmp_path):
+    gateway, root = _root_gateway(tmp_path)
+    _write(root / "greet.rx", "version\n")
+    _write(
+        root / "greet.py",
+        '''
+def __main__(name: str, *, punctuation="!", mutate=False):
+    """Return a greeting.
+
+    Args:
+        name: Person to greet.
+        punctuation: Ending punctuation.
+    """
+''',
+    )
+
+    output = gateway("help greet --punctuation")
+
+    assert output.startswith("punctuation")
+    assert "Ending punctuation." in output
+    assert "Default: '!'" in output
