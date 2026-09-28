@@ -16,7 +16,7 @@ jobs:
   regression:
     name: Tests (Python 3.10)
     env:
-      VERSION_PR: ${{ github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'version') }}
+      VERSION_PR: ${{ github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'version-only') }}
       BASE_SHA: ${{ github.event.pull_request.base.sha || '' }}
       HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
     runs-on: ubuntu-latest
@@ -57,7 +57,7 @@ jobs:
   forward-compatibility:
     name: Compatibility (Python 3.13)
     env:
-      VERSION_PR: ${{ github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'version') }}
+      VERSION_PR: ${{ github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'version-only') }}
       BASE_SHA: ${{ github.event.pull_request.base.sha || '' }}
       HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
     runs-on: ubuntu-latest
