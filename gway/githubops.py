@@ -127,6 +127,58 @@ class Controller:
             suffix = "/" + quote(str(namespace).removeprefix("refs/"), safe="/")
         return self._all(f"{self._repo(repository)}/git/matching-refs{suffix}")
 
+    def create_ref(self, repository, ref, sha, mutate=True):
+        """Create a Git reference at an explicit commit SHA."""
+        if not mutate:
+            raise PermissionError("GitHub reference mutation is disabled")
+        ref = str(ref)
+        sha = str(sha)
+        if not ref:
+            raise ValueError("Git reference is required")
+        if not sha:
+            raise ValueError("Git reference SHA is required")
+        full_ref = ref if ref.startswith("refs/") else f"refs/{ref}"
+        return self._github().request(
+            "POST",
+            f"{self._repo(repository)}/git/refs",
+            json={"ref": full_ref, "sha": sha},
+        ).data
+
+    def create_branch(self, repository, branch, sha, mutate=True):
+        """Create a branch at an explicit commit SHA."""
+        branch = str(branch).removeprefix("refs/heads/")
+        if not branch:
+            raise ValueError("Git branch is required")
+        return self.create_ref(
+            repository, f"refs/heads/{branch}", sha, mutate=mutate
+        )
+
+    def delete_ref(self, repository, ref, mutate=True):
+        """Delete an explicit Git reference."""
+        if not mutate:
+            raise PermissionError("GitHub reference mutation is disabled")
+        ref = str(ref).removeprefix("refs/")
+        if not ref:
+            raise ValueError("Git reference is required")
+        self._github().request(
+            "DELETE",
+            f"{self._repo(repository)}/git/refs/{quote(ref, safe='/')}",
+        )
+        return {
+            "repository": str(repository),
+            "ref": f"refs/{ref}",
+            "deleted": True,
+        }
+
+    def delete_branch(self, repository, branch, mutate=True):
+        """Delete a branch reference."""
+        branch = str(branch).removeprefix("refs/heads/")
+        if not branch:
+            raise ValueError("Git branch is required")
+        return self.delete_ref(
+            repository, f"refs/heads/{branch}", mutate=mutate
+        )
+
     def tags(self, repository):
         """List repository tags."""
         return self._all(
