@@ -3,9 +3,9 @@
 from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import unquote, urldefrag, urlsplit
-from urllib.request import Request, urlopen
 
 from gway.cache import digest
+from gway.http import request as http_request
 
 
 @dataclass(frozen=True)
@@ -60,10 +60,18 @@ def materialize(gateway, source, *, refresh=False):
                     final_url=metadata.get("final_url"),
                 )
 
-    request = Request(url, headers={"User-Agent": "gway-url-ingestion/1"})
-    with urlopen(request) as response:
-        payload = response.read()
-        final_url = getattr(response, "geturl", lambda: url)() or url
+    response = http_request(
+        "GET",
+        url,
+        headers={"User-Agent": "gway-url-ingestion/1"},
+        follow_redirects=True,
+    )
+    if response.status >= 400:
+        raise RuntimeError(
+            f"URL ingestion failed with HTTP {response.status}: {url}"
+        )
+    payload = response.content
+    final_url = response.url or url
 
     content_hash = digest(payload)
     filename = _filename(final_url)
