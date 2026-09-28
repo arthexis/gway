@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate that a PR labeled version only advances Gway project.version."""
+"""Validate that a PR labeled version-only only advances Gway project.version."""
 
 from __future__ import annotations
 
