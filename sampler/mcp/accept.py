@@ -8,34 +8,34 @@ import json
 import secrets
 import threading
 from urllib.parse import parse_qs, urlencode, urlsplit
-from urllib.request import Request, urlopen
 import webbrowser
 
 from fastmcp import Client
 from fastmcp.client.auth import BearerAuth
+
+from gway.http import request as http_request
 
 
 _CALLBACK = "http://127.0.0.1:8765/callback"
 
 
 def _json(url):
-    with urlopen(url, timeout=10) as response:
-        if response.status != 200:
-            raise RuntimeError(f"{url} returned {response.status}")
-        return json.loads(response.read().decode("utf-8"))
+    response = http_request("GET", url, timeout=10, follow_redirects=True)
+    if response.status != 200:
+        raise RuntimeError(f"{url} returned {response.status}")
+    return response.json()
 
 
 def _form(url, values):
-    data = urlencode(values).encode("utf-8")
-    request = Request(
+    response = http_request(
+        "POST",
         url,
-        data=data,
         headers={"Content-Type": "application/x-www-form-urlencoded"},
-        method="POST",
+        data=urlencode(values).encode("utf-8"),
+        timeout=10,
+        follow_redirects=True,
     )
-    with urlopen(request, timeout=10) as response:
-        payload = response.read()
-        return response.status, json.loads(payload.decode("utf-8") or "{}")
+    return response.status, json.loads(response.text or "{}")
 
 
 def _pkce(verifier):
@@ -192,17 +192,16 @@ def run(resource):
     refreshed_access = refreshed["access_token"]
     _call(resource, refreshed_access, "log sources")
 
-    revoke_data = urlencode({"token": refreshed_access}).encode("utf-8")
-    request = Request(
+    response = http_request(
+        "POST",
         auth["revocation_endpoint"],
-        data=revoke_data,
         headers={"Content-Type": "application/x-www-form-urlencoded"},
-        method="POST",
+        data=urlencode({"token": refreshed_access}).encode("utf-8"),
+        timeout=10,
+        follow_redirects=True,
     )
-    with urlopen(request, timeout=10) as response:
-        if response.status != 200:
-            raise RuntimeError("OAuth revocation failed")
-        response.read()
+    if response.status != 200:
+        raise RuntimeError("OAuth revocation failed")
 
     revoked = False
     try:
