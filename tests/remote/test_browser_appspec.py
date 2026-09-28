@@ -1,3 +1,4 @@
+import pytest
 from gway import Gateway
 from gway.remote.account import RemoteAccountApplication
 from gway.remote.metadata import RemoteOAuthMetadata
@@ -8,14 +9,18 @@ from gway.sampler import load as load_sampler
 AppSpec = load_sampler("web/app").AppSpec
 
 
-def test_remote_browser_topology_is_recipe_composed(tmp_path):
+@pytest.fixture
+def remote_application(tmp_path):
     runtime = Gateway(cache=tmp_path / "cache")
     metadata = RemoteOAuthMetadata.from_origin(
         "http://127.0.0.1:9000",
         allow_insecure_loopback=True,
     )
+    return RemoteApplication(metadata, runtime=runtime)
 
-    application = RemoteApplication(metadata, runtime=runtime)
+
+def test_remote_browser_topology_is_recipe_composed(remote_application):
+    application = remote_application
 
     assert [
         (route.route, route.method, route.handler)
@@ -80,12 +85,12 @@ def test_remote_browser_dispatch_does_not_leak_gateway_result_history(tmp_path):
         allow_insecure_loopback=True,
     )
     application = RemoteApplication(metadata, runtime=runtime)
-    initial_history = list(runtime.results.history)
+    initial_history = list(application.runtime.results.history)
 
     assert application.response("GET", "/privacy")[0] == 200
     assert application.response("GET", "/privacy")[0] == 200
 
-    assert runtime.results.history == initial_history
+    assert application.runtime.results.history == initial_history
 
 
 def test_runtime_backed_browser_does_not_fall_back_to_legacy_routes(tmp_path):
@@ -135,13 +140,16 @@ def test_remote_connect_uses_mobile_dark_recipe_template(tmp_path):
     css_status, css_headers, css = application.response("GET", "/remote.css")
     assert css_status == 200
     assert css_headers["content-type"] == "text/css"
-    assert b"color-scheme: dark" in css
-    assert b"min-height: 56px" in css
-    assert b"-webkit-text-size-adjust: 100%" in css
-    assert b"env(safe-area-inset-bottom)" in css
-    assert b"@media (max-width: 599px)" in css
-    assert b"overflow-wrap: anywhere" in css
-    assert b"min-height: 54px" in css
+    for contract in (
+        b"color-scheme: dark",
+        b"min-height: 56px",
+        b"-webkit-text-size-adjust: 100%",
+        b"env(safe-area-inset-bottom)",
+        b"@media (max-width: 599px)",
+        b"overflow-wrap: anywhere",
+        b"min-height: 54px",
+    ):
+        assert contract in css
 
 
 def test_templated_consent_redirect_is_preserved_without_rendering(tmp_path):
@@ -171,7 +179,6 @@ def test_remote_css_is_declared_for_public_https_proxy():
 
     assert "location = /remote.css {" in template
     assert "proxy_pass http://[auth_host|127.0.0.1]:[auth_port|8001];" in template
-
 
 
 def test_remote_result_page_reuses_mobile_dark_shell():
