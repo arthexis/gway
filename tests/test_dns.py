@@ -111,7 +111,7 @@ def test_dns_ready_checks_public_a_record(monkeypatch):
 
     monkeypatch.setattr(
         "gway.dns.socket.getaddrinfo",
-        lambda *args, **kwargs: [
+        lambda *_args, **_kwargs: [
             (2, 1, 6, "", ("192.0.2.10", 0)),
             (2, 1, 6, "", ("192.0.2.11", 0)),
         ],
