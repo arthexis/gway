@@ -78,7 +78,6 @@ def test_http_post_decodes_json_body(gateway, monkeypatch):
     assert observed["json"] == {"name": "Ada"}
 
 
-
 def test_http_operations_are_discoverable_with_documentation(gateway):
     operation = gateway.ops.resolve("http.get")
     documentation = describe(operation)
