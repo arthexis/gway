@@ -9,6 +9,7 @@ from gway.http import HTTPResponse, request as http_request
 
 
 API_URL = "https://api.github.com/"
+GRAPHQL_URL = "https://api.github.com/graphql"
 API_VERSION = "2022-11-28"
 ACCEPT = "application/vnd.github+json"
 
@@ -139,6 +140,14 @@ class Client:
                 reset=_integer(response.headers.get("x-ratelimit-reset")),
                 resource=response.headers.get("x-ratelimit-resource"),
             ),
+        )
+
+    def graphql(self, query, variables=None):
+        """Execute a GitHub GraphQL read query."""
+        return self.request(
+            "POST",
+            GRAPHQL_URL,
+            json={"query": query, "variables": variables or {}},
         )
 
     def pages(self, path, *, params=None):
