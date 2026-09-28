@@ -123,6 +123,21 @@ class RemoteApplication(RemoteDiscoveryApplication):
             environment=(),
         )
         self.account.oauth.scopes.replace(
+            "source-admin",
+            operations={
+                "github.rulesets",
+                "github.ruleset",
+                "github.branch_protection",
+                "github.collaborators",
+                "github.collaborator_permission",
+                "github.webhooks",
+                "github.webhook",
+                "github.actions_permissions",
+                "github.actions_workflow_permissions",
+            },
+            environment=(),
+        )
+        self.account.oauth.scopes.replace(
             "operator-read",
             operations={
                 "products",
