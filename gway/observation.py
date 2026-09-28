@@ -88,7 +88,14 @@ class Controller:
         return envelope
 
 
-    def collect(self, *section, mutate=False, **values):
+    def collect(
+        self,
+        *section,
+        changed_at=None,
+        cursor=None,
+        mutate=False,
+        **values,
+    ):
         """Collect visible observation sections and synthesize their health summary.
 
         Unauthorized observation envelopes are omitted from the returned mapping.
@@ -126,6 +133,8 @@ class Controller:
             "degraded": degraded,
         }
         result.update(values)
+        result["changed_at"] = changed_at
+        result["cursor"] = cursor
         return result
 
     def status(self, *section, mutate=False):
