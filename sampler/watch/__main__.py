@@ -1,4 +1,4 @@
-def __main__(scope=None, only=None, except_=None, *, mutate=False):
+def __main__(scope=None, only=None, except_=None, since=None, errors=False, changed=False, *, mutate=False):
     """Inspect the current node through bounded read-only observations."""
 
 
@@ -14,13 +14,17 @@ def __help__(topic=None):
             "gway watch --scope operations-basic",
             "gway watch --only node,services",
             "gway watch --except errors,wire",
+            "gway watch --since \"10 minutes ago\"",
+            "gway watch --errors",
             "gway --json watch",
         ],
         "notes": [
             "The base watch snapshot is read-only.",
             "--scope can only reduce the caller's existing authority.",
             "--only and --except reduce the visible section set after authorization.",
-            "Incremental observation is added in the next chunk.",
+            "--since currently constrains time-aware observations such as recent errors.",
+            "--errors keeps only problematic observations and non-empty recent-error logs.",
+            "--changed is reserved and requires cursor tracking from the next chunk.",
         ],
         "--scope": {
             "summary": "Narrow watch authority",
@@ -46,6 +50,31 @@ def __help__(topic=None):
             ),
             "examples": ["gway watch --except errors,wire"],
             "notes": ["--only and --except cannot be used together."],
+        },
+        "--since": {
+            "summary": "Bound time-aware observations",
+            "description": (
+                "Pass a lower time bound to watch observations that support one. "
+                "The base watch currently applies this to recent ERROR/CRITICAL logs."
+            ),
+            "examples": ["gway watch --since \"10 minutes ago\""],
+        },
+        "--errors": {
+            "summary": "Show only problematic observations",
+            "description": (
+                "Keep sections whose observation status is error or blocked, plus the "
+                "recent errors section when it contains records. Optional unavailable "
+                "capabilities are not treated as errors."
+            ),
+            "examples": ["gway watch --errors"],
+        },
+        "--changed": {
+            "summary": "Show only changed observations",
+            "description": (
+                "Reserved incremental filter. It requires a comparison cursor, which "
+                "is implemented in the next chunk."
+            ),
+            "examples": ["gway watch --changed"],
         },
         "node": {
             "description": "Generic node role, project, and running Gway identity."
