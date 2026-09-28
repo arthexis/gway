@@ -67,3 +67,12 @@ def test_resolution_error_filters_suggestions_by_active_authorization(gateway):
             gateway("delet secret")
 
     assert "delete secret" not in caught.value.suggestions
+
+
+def test_resolution_error_uses_operation_vocabulary(gateway):
+    with pytest.raises(OperationLookupError) as caught:
+        gateway("definitely-missing-operation")
+
+    message = str(caught.value)
+    assert "operation" in message.casefold()
+    assert "project" not in message.casefold()

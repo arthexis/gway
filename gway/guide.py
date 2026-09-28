@@ -1,4 +1,4 @@
-"""Task-oriented guidance derived from explicit project declarations."""
+"""Task-oriented guidance derived from explicit semantic declarations."""
 
 from dataclasses import dataclass
 
@@ -44,7 +44,7 @@ def _score(query, candidate):
 
 
 def explicit_matches(task, rules, *, role=None, limit=5, cutoff=0.5):
-    """Rank explicit project guidance against one requested task and node role."""
+    """Rank explicit semantic guidance against one requested task and node role."""
     matches = []
     active_role = str(role).strip().casefold() if role is not None else None
     for index, rule in enumerate(rules or ()):
@@ -83,7 +83,7 @@ def explicit_matches(task, rules, *, role=None, limit=5, cutoff=0.5):
 
 
 def operation_matches(task, records, *, authorization=None, limit=5, cutoff=0.34):
-    """Rank live registered operation metadata below explicit project guidance."""
+    """Rank live registered operation metadata below explicit semantic guidance."""
     from .documentation import describe
 
     matches = []

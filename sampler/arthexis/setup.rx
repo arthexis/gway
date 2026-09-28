@@ -6,13 +6,13 @@ default
 
 install arthexis/arthexis
 
-# Expand the installed Django project and prepare its database.
+# Expand the installed Django product and prepare its database.
 arthexis migrate
 --noinput
 
 arthexis seed
 
-# Service commands are inferred by Gway from Arthexis project conventions.
+# Service commands are inferred by Gway from Arthexis product conventions.
 service install -- arthexis web
 
 service install -- arthexis worker

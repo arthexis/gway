@@ -1,10 +1,10 @@
-# Project-owned CI
+# Product-owned CI
 
-Gway CI is a project convention, not a GitHub-specific subsystem.
+Gway CI is a product convention, not a GitHub-specific subsystem.
 
 ## Question
 
-Can Gway provide a project-defined CI contract that runs identically on a developer machine and an automated runner, without embedding GitHub Actions concepts or introducing a separate CI configuration language?
+Can Gway provide a product-defined CI contract that runs identically on a developer machine and an automated runner, without embedding GitHub Actions concepts or introducing a separate CI configuration language?
 
 ## Answer
 

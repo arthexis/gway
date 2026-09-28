@@ -16,7 +16,11 @@ else
     fi
 fi
 
-"$UV" tool install --upgrade gway
+# Gway's active release line is 0.x. An obsolete 1.0.1 release exists on the
+# package index and compares newer under PEP 440, so an unconstrained upgrade
+# can install the wrong lineage. Reconcile the managed tool back to the
+# certified 0.x release line even when another Gway is already installed.
+"$UV" tool install --force --upgrade "gway<1"
 
 # Persist uv's configured tool executable directory for future shells before
 # exposing it to this child process. A piped shell cannot mutate its parent.

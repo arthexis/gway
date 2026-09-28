@@ -3,8 +3,9 @@ def test_gway_bootstrap_installs_only_released_package(sampler_path):
 
     assert script.startswith("#!/bin/sh\n# GWAY_BOOTSTRAP_V1\n")
     assert "uv/install.sh" in script
-    assert 'tool install --upgrade gway' in script
+    assert 'tool install --force --upgrade "gway<1"' in script
     assert "git+https://github.com/arthexis/gway" not in script
+    assert "tool install --upgrade gway" not in script
 
 
 def test_gway_bootstrap_persists_tool_path_and_smoke_checks_cli(sampler_path):
