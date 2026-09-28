@@ -106,6 +106,10 @@ class Gateway(Resolver):
         self.products = self.wrap("products", self._products)
         self.extensions = self.wrap("extensions", self._extensions)
 
+        from .source import inspect_source
+
+        self.source = self.wrap("source", lambda *operation, mutate=False: inspect_source(self, *operation, mutate=mutate))
+
         from .filesystem import Filesystem
         from .rendering import Renderer
 
