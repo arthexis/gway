@@ -273,6 +273,42 @@ class Controller:
             json={"body": str(body)},
         ).data
 
+    def reply_review_comment(
+        self, repository, number, comment, body, mutate=True
+    ):
+        """Reply to an inline pull-request review comment."""
+        if not mutate:
+            raise PermissionError("GitHub pull request mutation is disabled")
+        return self._github().request(
+            "POST",
+            f"{self._repo(repository)}/pulls/{int(number)}/comments/{int(comment)}/replies",
+            json={"body": str(body)},
+        ).data
+
+    def add_labels(self, repository, number, *labels, mutate=True):
+        """Add labels to an issue or pull request."""
+        if not mutate:
+            raise PermissionError("GitHub label mutation is disabled")
+        values = [str(label) for label in labels if str(label)]
+        if not values:
+            raise ValueError("at least one label is required")
+        return self._github().request(
+            "POST",
+            f"{self._repo(repository)}/issues/{int(number)}/labels",
+            json={"labels": values},
+        ).data
+
+    def remove_label(self, repository, number, label, mutate=True):
+        """Remove one label from an issue or pull request."""
+        if not mutate:
+            raise PermissionError("GitHub label mutation is disabled")
+        if not str(label):
+            raise ValueError("label is required")
+        return self._github().request(
+            "DELETE",
+            f"{self._repo(repository)}/issues/{int(number)}/labels/{_segment(label)}",
+        ).data
+
     def reviews(self, repository, number):
         """List submitted pull-request reviews."""
         return self._all(
