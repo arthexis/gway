@@ -475,10 +475,17 @@ def _listener_pids(host, port):
         )
     requested = str(host).strip()
     pids = set()
+    matched = []
     for line in result.stdout.splitlines():
         if requested not in {"0.0.0.0", "::"} and requested not in line:
             continue
+        matched.append(line)
         pids.update(int(value) for value in _LISTENER_PID_RE.findall(line))
+    if matched and not pids:
+        raise RuntimeError(
+            f"enrollment endpoint {host}:{port} is occupied but its listener "
+            "process could not be identified"
+        )
     return tuple(sorted(pids))
 
 
@@ -927,7 +934,16 @@ class Controller:
                 f"is not a Gway Wire enrollment process: {command}"
             )
 
-        os.kill(owner["pid"], signal.SIGTERM)
+        try:
+            os.kill(owner["pid"], signal.SIGTERM)
+        except ProcessLookupError:
+            return {
+                "host": str(host),
+                "port": int(port),
+                "state": "reclaimed",
+                "pid": owner["pid"],
+                "changed": True,
+            }
         deadline = time.monotonic() + float(timeout)
         while time.monotonic() < deadline:
             current = _listener_owner(host, port, unit=unit)
