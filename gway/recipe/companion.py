@@ -570,6 +570,10 @@ def _service_parent_request(runtime, stream, request):
                 with runtime.authorized(
                     operations=identity.authority.operations,
                     environment=identity.authority.environment,
+                    kind=identity.kind,
+                    principal=identity.principal,
+                    client_id=identity.client_id,
+                    scopes=identity.scopes,
                 ):
                     with runtime.external_authority():
                         if "mutate" in params:
