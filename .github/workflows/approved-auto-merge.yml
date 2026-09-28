@@ -58,6 +58,28 @@ jobs:
           echo "number=$pr_number" >> "$GITHUB_OUTPUT"
           echo "skip=false" >> "$GITHUB_OUTPUT"
 
+      - name: Mark approved PR ready for review
+        if: steps.pr.outputs.skip != 'true' && github.event_name == 'pull_request_target' && github.event.action == 'labeled'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          PR_NUMBER: ${{ steps.pr.outputs.number }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          label="$(jq -r '.label.name // empty | ascii_downcase' "$GITHUB_EVENT_PATH")"
+          if [[ "$label" != "approved" ]]; then
+            exit 0
+          fi
+
+          pr_json="$(gh api "repos/$REPOSITORY/pulls/$PR_NUMBER")"
+          draft="$(jq -r '.draft' <<< "$pr_json")"
+          if [[ "$draft" == "true" ]]; then
+            echo "PR #$PR_NUMBER was approved while draft; marking ready for review."
+            gh pr ready "$PR_NUMBER" --repo "$REPOSITORY"
+          fi
+
       - name: Remove approval when work resumes
         if: steps.pr.outputs.skip != 'true' && github.event_name == 'pull_request_target' && github.event.action == 'labeled'
         env:
