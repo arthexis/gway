@@ -101,6 +101,9 @@ def test_every_github_operation_has_exactly_one_access_topic(gateway):
             assert record.name.removeprefix("github.") in {
                 "rulesets",
                 "ruleset",
+                "create_ruleset",
+                "update_ruleset",
+                "delete_ruleset",
                 "branch_protection",
                 "collaborators",
                 "collaborator_permission",
