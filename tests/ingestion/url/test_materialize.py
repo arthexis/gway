@@ -26,7 +26,7 @@ def test_url_materialization_is_cached_by_url_and_content(
     gateway.cache = Cache(tmp_path / "cache")
     calls = []
 
-    def fake_request(method, url, **kwargs):
+    def fake_request(_method, url, **_kwargs):
         calls.append(url)
         return type(
             "Response",
