@@ -184,6 +184,7 @@ def run(
     keyword=None,
     failed=False,
     verbose=False,
+    durations=20,
 ):
     """Run tests through pytest and return its exit status.
 
@@ -193,8 +194,11 @@ def run(
         keyword: Pytest -k expression used to filter collected tests.
         failed: Re-run only tests remembered by pytest as last failures.
         verbose: Ask pytest for its verbose test-reporting mode.
+        durations: Number of slowest test durations for pytest to report.
     """
     command = _pytest_args(package, root)
+    if durations is not None:
+        command.extend(["--durations", str(durations)])
     if keyword:
         command.extend(["-k", keyword])
     if failed:
