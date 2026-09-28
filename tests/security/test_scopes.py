@@ -111,6 +111,43 @@ def test_scope_update_grants_requires_existing_scope(tmp_path):
         registry.update_grants("missing", add_operations={"help"})
 
 
+def test_scope_rename_preserves_grants_and_token_bindings(tmp_path):
+    from gway.security.tokens import TokenRegistry
+
+    path = tmp_path / "security.sqlite"
+    registry = ScopeRegistry(path)
+    tokens = TokenRegistry(path)
+    registry.replace(
+        "logs-read",
+        operations={"log.read", "security.whoami", "security.scope.current"},
+        environment={"SITE"},
+    )
+    issued = tokens.create("client", scopes={"logs-read"})
+
+    renamed = registry.rename("logs-read", "logs")
+
+    assert renamed == Scope(
+        "logs",
+        frozenset({"log.read", "security.whoami", "security.scope.current"}),
+        frozenset({"SITE"}),
+    )
+    assert tokens.require("client").scopes == frozenset({"logs"})
+    identity = tokens.authenticate(issued.bearer)
+    assert identity.token.scopes == frozenset({"logs"})
+    assert identity.authority.operations == renamed.operations
+
+
+def test_scope_rename_rejects_missing_or_existing_target(tmp_path):
+    registry = ScopeRegistry(tmp_path / "security.sqlite")
+    registry.create("one")
+    registry.create("two")
+
+    with pytest.raises(ValueError, match="already exists"):
+        registry.rename("one", "two")
+    with pytest.raises(LookupError, match="Unknown security scope"):
+        registry.rename("missing", "three")
+
+
 def test_scope_remove_cascades_grants(tmp_path):
     path = tmp_path / "security.sqlite"
     registry = ScopeRegistry(path)
@@ -248,8 +285,10 @@ def test_security_scope_gway_command_surface(gateway, tmp_path):
     )
 
     assert gateway("security scope show logs") == removed
-    assert gateway("security scope list") == [removed]
-    assert gateway("security scope delete logs") is True
+    renamed = gateway("security scope rename logs logs-read")
+    assert renamed.name == "logs-read"
+    assert gateway("security scope list") == [renamed]
+    assert gateway("security scope delete logs-read") is True
     assert gateway("security scope list") == []
 
 

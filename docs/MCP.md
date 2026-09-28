@@ -80,18 +80,71 @@ Scopes are stored in the versioned SQLite security registry. For example:
 
 ```text
 gway security scope create logs-read
-gway security scope set logs-read log.sources log.read log.tail log.search
+gway security scope set logs-read help guide version log.sources log.read log.tail log.search security.whoami security.scope.current
 gway security scope show logs-read
 gway security scope list
+gway security scope rename logs-read logs
 ```
 
 The canonical read-only logging scope is:
 
 ```toml
 [scopes.logs-read]
-operations = ["log.sources", "log.read", "log.tail", "log.search"]
+operations = ["help", "guide", "version", "log.sources", "log.read", "log.tail", "log.search", "security.whoami", "security.scope.current"]
 environment = []
 ```
+
+A broader observational operator scope is also maintained:
+
+```toml
+[scopes.operator-read]
+operations = ["products", "extensions", "service.list", "service.status", "sous.chef.list", "sous.chef.inspect"]
+environment = []
+```
+
+Default read-only scopes are intentionally composable and non-overlapping.
+An operator bearer should bind both scopes rather than duplicating grants:
+
+```text
+gway security token create operator logs-read operator-read
+```
+
+The token resolves the union of both named scopes at authentication time. The
+`operator-read` scope intentionally excludes environment reads, service lifecycle
+changes, Sous Chef execution, installation changes, and security/token/OAuth
+administration.
+
+Arthexis deployments also receive two disjoint application-domain scopes.
+`arthexis-read` grants fleet/status commands plus explicit read-only ORM
+selection surfaces for OCPP, energy, cards, nodes, and events. `arthexis-write`
+grants only named domain mutations currently exposed by Arthexis:
+
+```toml
+[scopes.arthexis-write]
+operations = [
+  "ocpp.charger.reset",
+  "ocpp.charger.start",
+  "ocpp.charger.stop",
+  "arthexis.event",
+  "arthexis.ocpp_cutover",
+  "arthexis.ocpp_policy",
+  "arthexis.ocpp_recovery",
+]
+environment = []
+```
+
+The read scope intentionally excludes generic ORM create/update/delete methods.
+The write scope intentionally does not repeat any read operation. A normal
+remote Arthexis operator can therefore compose:
+
+```text
+gway security token create arthexis-operator \
+  logs-read operator-read arthexis-read
+```
+
+and add `arthexis-write` only when domain mutation is required. Neither
+Arthexis scope grants G-Way token/scope/OAuth administration, environment
+mutation, installation, deployment, or service lifecycle authority.
 
 G-Way Remote also maintains an explicit full-access scope:
 

@@ -169,3 +169,39 @@ def test_help_supports_non_mutating_execution(gateway):
     output = gateway.execute("help log read", mutate=False)
 
     assert output.startswith("log read(")
+
+
+def test_bare_help_lists_all_local_operations(gateway):
+    output = gateway("help")
+
+    assert "Available operations:" in output
+    assert "log.read" in output
+    assert "security.token.list" in output
+
+
+def test_bare_help_lists_only_authorized_operations(gateway):
+    with gateway.authorized(operations={"help", "log.read"}):
+        output = gateway("help")
+
+    assert "help" in output
+    assert "log.read" in output
+    assert "security.whoami" in output
+    assert "security.scope.current" in output
+    assert "security.token.list" not in output
+    assert "log.error" not in output
+
+
+def test_namespace_help_filters_unauthorized_children(gateway):
+    with gateway.authorized(operations={"help", "log.read"}):
+        output = gateway("help log")
+
+    assert "read" in output
+    assert "error" not in output
+
+
+def test_targeted_help_rejects_unauthorized_operation(gateway):
+    with gateway.authorized(operations={"help", "log.read"}):
+        import pytest
+
+        with pytest.raises(LookupError, match="not available to current scope"):
+            gateway("help security token list")

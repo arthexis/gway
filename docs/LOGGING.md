@@ -184,9 +184,16 @@ log sources
 log read
 log tail
 log search
+help
+guide
+version
+security whoami
+security scope current
 ```
 
-An MCP authorization scope should grant those ordinary operation identities.
+The discovery and introspection operations let a constrained remote operator
+understand the commands available to its own scope without probing unrelated
+security state. An MCP authorization scope should grant those ordinary operation identities.
 The generic MCP `gway(command)` bridge then invokes the same commands used
 locally, for example:
 

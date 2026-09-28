@@ -27,12 +27,13 @@ class Controller:
             )
         return matches[0]
 
-    def list(self, project=None):
+    def list(self, project=None, *, mutate=False):
         """List discovered Sous Chef jobs.
 
         Args:
             project: Optional owning project used to filter jobs.
         """
+        del mutate
         jobs = getattr(self.gateway, "_souschef_jobs", {}).values()
         if project is not None:
             jobs = (job for job in jobs if job.project == project)
@@ -47,8 +48,9 @@ class Controller:
             for job in sorted(jobs, key=lambda item: item.identity)
         ]
 
-    def inspect(self, job, project=None):
+    def inspect(self, job, project=None, *, mutate=False):
         """Return one normalized Sous Chef job definition."""
+        del mutate
         current = self._job(job, project)
         return {
             "project": current.project,

@@ -346,8 +346,10 @@ class Controller:
         system=False,
         name=None,
         timeout: float = None,
+        mutate=False,
     ):
         """Return service status for an operation/recipe invocation."""
+        del mutate
         timeout = self._timeout(timeout)
         definition = self._definition(target, name=name)
         backend, definition = self._installed_target(
