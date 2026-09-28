@@ -110,13 +110,15 @@ class Gateway(Resolver):
 
         self.search_source = self.wrap(
             "search.source",
-            lambda query, kind=None, topic=(), context=0, mutate=False: search_source_corpus(
-                self,
-                query,
-                kind=kind,
-                topic=topic,
-                context=context,
-                mutate=mutate,
+            lambda query, kind=None, topic=(), context=0, mutate=False: (
+                search_source_corpus(
+                    self,
+                    query,
+                    kind=kind,
+                    topic=topic,
+                    context=context,
+                    mutate=mutate,
+                )
             ),
             op="search",
             sub="source",
@@ -124,13 +126,15 @@ class Gateway(Resolver):
 
         self.source = self.wrap(
             "source",
-            lambda *operation, search=None, context=2, all=False, mutate=False: inspect_source(
-                self,
-                *operation,
-                search=search,
-                context=context,
-                all=all,
-                mutate=mutate,
+            lambda *operation, search=None, context=2, all=False, mutate=False: (
+                inspect_source(
+                    self,
+                    *operation,
+                    search=search,
+                    context=context,
+                    all=all,
+                    mutate=mutate,
+                )
             ),
         )
 
