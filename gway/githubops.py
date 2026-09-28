@@ -243,3 +243,43 @@ class Controller:
     def review_comments(self, repository, number):
         """List inline pull-request review comments."""
         return self._all(f"{self._repo(repository)}/pulls/{int(number)}/comments", params={"per_page": 100})
+
+    def review_threads(self, repository, number, unresolved=False):
+        """List pull-request review threads, optionally only unresolved threads."""
+        owner, name = str(repository).strip("/").split("/", 1)
+        query = """
+        query($owner: String!, $name: String!, $number: Int!, $after: String) {
+          repository(owner: $owner, name: $name) {
+            pullRequest(number: $number) {
+              reviewThreads(first: 100, after: $after) {
+                nodes {
+                  id
+                  isResolved
+                  isOutdated
+                  path
+                  line
+                  comments(first: 100) {
+                    nodes { id body url author { login } createdAt }
+                  }
+                }
+                pageInfo { hasNextPage endCursor }
+              }
+            }
+          }
+        }
+        """
+        variables = {"owner": owner, "name": name, "number": int(number), "after": None}
+        threads = []
+        while True:
+            payload = self._github().graphql(query, variables).data
+            if payload.get("errors"):
+                raise RuntimeError(f"GitHub GraphQL error: {payload['errors']}")
+            connection = payload["data"]["repository"]["pullRequest"]["reviewThreads"]
+            threads.extend(connection["nodes"])
+            page = connection["pageInfo"]
+            if not page["hasNextPage"]:
+                break
+            variables["after"] = page["endCursor"]
+        if unresolved:
+            threads = [thread for thread in threads if not thread["isResolved"]]
+        return threads
