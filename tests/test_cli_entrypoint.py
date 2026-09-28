@@ -283,7 +283,9 @@ def test_cli_json_recipe_exposes_final_result_and_history(tmp_path):
 
     assert completed.returncode == 0, completed.stderr
     payload = json.loads(completed.stdout)
-    assert payload == {"result": "two", "results": ["one", "two"]}
+    assert payload == {"result": "two", "results": []}
+    # resolve is observational and deliberately unpublished; the recipe envelope
+    # reports chronological published results rather than every raw stage value.
 
 
 def test_cli_root_recipe_failure_propagates_nonzero_exit(tmp_path):
