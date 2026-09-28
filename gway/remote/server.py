@@ -139,6 +139,8 @@ class RemoteApplication(RemoteDiscoveryApplication):
                 "github.webhook",
                 "github.actions_permissions",
                 "github.actions_workflow_permissions",
+                "github.set_actions_permissions",
+                "github.set_actions_workflow_permissions",
             },
             environment=(),
         )
