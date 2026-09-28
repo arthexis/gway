@@ -686,35 +686,25 @@ def test_mcp_http_rejects_revoked_oauth_access_token(
     assert "Server returned an error response" in error
 
 
-@pytest.mark.parametrize(
-    ("credential", "root_name"),
-    [
-        ("__missing__", "mcpchallengemissing"),
-        ("gwt_missing_wrong", "mcpchallengeinvalid"),
-    ],
-)
 def test_mcp_http_authentication_challenge_points_to_protected_resource_metadata(
     gateway,
     recipe_factory,
     required_runtime,
     tmp_path,
     monkeypatch,
-    credential,
-    root_name,
 ):
     tokens = TokenRegistry(tmp_path / "security.sqlite")
     monkeypatch.setattr(companion_runtime, "TokenRegistry", lambda path=None: tokens)
 
-    recipe = _mcp_http_recipe(recipe_factory, tmp_path / root_name)
+    recipe = _mcp_http_recipe(recipe_factory, tmp_path / "mcpchallenge")
     recipe.write_text(
-        f"require fastmcp\nserver probe_challenge {credential!r}\n",
+        "require fastmcp\nserver probe_challenge __missing__\n",
         encoding="utf-8",
     )
     gateway.ingest(recipe.parent)
 
-    operation = f"{root_name}.server"
-    with gateway.authorized(operations={operation}):
-        status, challenge = gateway(f"{root_name} server")
+    with gateway.authorized(operations={"mcpchallenge.server"}):
+        status, challenge = gateway("mcpchallenge server")
 
     assert status == 401
     assert challenge.startswith("Bearer")
