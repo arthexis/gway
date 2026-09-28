@@ -313,3 +313,95 @@ def test_cli_json_operation_keeps_existing_result_shape():
 
     assert completed.returncode == 0, completed.stderr
     assert json.loads(completed.stdout) == "MTY"
+
+
+def test_cli_structured_results_are_human_readable_without_json(tmp_path):
+    env = os.environ.copy()
+    env["GWAY_DATA_DIR"] = str(tmp_path)
+
+    setup = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "gway",
+            "security",
+            "scope",
+            "set",
+            "logs",
+            "log.read",
+            "--environment",
+            "LOG_LEVEL",
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+    assert setup.returncode == 0, setup.stderr
+
+    completed = subprocess.run(
+        [sys.executable, "-m", "gway", "security", "token", "scopes"],
+        check=False,
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+
+    assert completed.returncode == 0, completed.stderr
+    assert "name: logs" in completed.stdout
+    assert "operations:" in completed.stdout
+    assert "- log.read" in completed.stdout
+    assert "environment:" in completed.stdout
+    assert "- LOG_LEVEL" in completed.stdout
+    assert '{"' not in completed.stdout
+    assert "Scope(" not in completed.stdout
+
+
+def test_cli_json_structured_results_remain_machine_readable(tmp_path):
+    env = os.environ.copy()
+    env["GWAY_DATA_DIR"] = str(tmp_path)
+
+    setup = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "gway",
+            "security",
+            "scope",
+            "set",
+            "logs",
+            "log.read",
+            "--environment",
+            "LOG_LEVEL",
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+    assert setup.returncode == 0, setup.stderr
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "gway",
+            "security",
+            "token",
+            "scopes",
+            "--json",
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+
+    assert completed.returncode == 0, completed.stderr
+    assert json.loads(completed.stdout) == [
+        {
+            "name": "logs",
+            "operations": ["log.read"],
+            "environment": ["LOG_LEVEL"],
+        }
+    ]
