@@ -101,7 +101,8 @@ def test_watch_zero_argument_snapshot_has_stable_sections(tmp_path, monkeypatch)
     assert result["wire"]["status"] == "ok"
     assert result["errors"]["status"] == "ok"
     assert result["changed_at"] is None
-    assert result["cursor"] is None
+    assert isinstance(result["cursor"], str)
+    assert result["cursor"]
     assert result["health"]["status"] == "ok"
     assert result["health"]["sections"]["deploy"] == "unavailable"
     assert gateway.ops.resolve("watch").mutates is False
@@ -557,7 +558,7 @@ def test_watch_errors_composes_after_only_filter(tmp_path, monkeypatch):
     }
 
 
-def test_watch_changed_fails_before_observation_work(tmp_path, monkeypatch):
+def test_watch_changed_requires_cursor_before_observation_work(tmp_path, monkeypatch):
     gateway = _role_gateway(tmp_path, monkeypatch, "control")
     calls = []
 
@@ -568,10 +569,7 @@ def test_watch_changed_fails_before_observation_work(tmp_path, monkeypatch):
         sub="wire",
     )
 
-    with pytest.raises(
-        NotImplementedError,
-        match="requires cursor/change tracking",
-    ):
+    with pytest.raises(ValueError, match="requires --cursor"):
         gateway("watch --changed")
 
     assert calls == []
@@ -589,4 +587,117 @@ def test_watch_time_error_change_help(tmp_path, monkeypatch):
     assert "Show only problematic observations" in errors
     assert "Optional unavailable capabilities are not treated as errors" in errors
     assert "Show only changed observations" in changed
-    assert "requires a comparison cursor" in changed
+    assert "prior opaque cursor" in changed
+    cursor = gateway("help watch --cursor")
+    assert "Opaque versioned watch cursor" in cursor
+
+
+def test_watch_cursor_is_stateless_and_unchanged_snapshot_returns_no_sections(
+    tmp_path,
+    monkeypatch,
+):
+    gateway = _role_gateway(tmp_path, monkeypatch, "control")
+
+    first = gateway("watch")
+    second = gateway(f"watch --changed --cursor {first['cursor']}")
+
+    assert set(second) == {"health", "changed_at", "cursor"}
+    assert second["health"]["status"] == "ok"
+    assert second["health"]["sections"] == {}
+    assert second["changed_at"] is None
+    assert isinstance(second["cursor"], str)
+    assert second["cursor"]
+
+
+def test_watch_changed_returns_only_modified_visible_section(tmp_path, monkeypatch):
+    gateway = _role_gateway(tmp_path, monkeypatch, "control")
+    state = {"ready": True}
+
+    gateway.wrap(
+        "wire.check",
+        lambda *, mutate=False: {"ready": state["ready"]},
+        op="check",
+        sub="wire",
+    )
+
+    first = gateway("watch")
+    state["ready"] = False
+    second = gateway(f"watch --changed --cursor {first['cursor']}")
+
+    assert set(second) == {
+        "wire",
+        "health",
+        "changed_at",
+        "cursor",
+    }
+    assert second["wire"]["result"] == {"ready": False}
+    assert second["health"]["sections"] == {"wire": "ok"}
+    assert second["changed_at"] is not None
+
+
+def test_watch_changed_does_not_report_sections_lost_to_authority(
+    tmp_path,
+    monkeypatch,
+):
+    gateway = _role_gateway(tmp_path, monkeypatch, "watchtower")
+    gateway._github_controller = FakeGitHub()
+
+    with gateway.authorized(
+        operations={
+            "watch",
+            "node",
+            "service.statuses",
+            "node.watchtower.deploy.status",
+        }
+    ):
+        first = gateway("watch")
+
+    with gateway.authorized(
+        operations={"watch", "node"},
+    ):
+        second = gateway(f"watch --changed --cursor {first['cursor']}")
+
+    assert "deploy" not in second
+    assert "services" not in second
+
+
+def test_watch_rejects_invalid_cursor_before_observation_work(tmp_path, monkeypatch):
+    gateway = _role_gateway(tmp_path, monkeypatch, "control")
+    calls = []
+
+    gateway.wrap(
+        "wire.check",
+        lambda *, mutate=False: calls.append("wire"),
+        op="check",
+        sub="wire",
+    )
+
+    with pytest.raises(ValueError, match="Invalid observation cursor"):
+        gateway("watch --changed --cursor not-a-valid-cursor")
+
+    assert calls == []
+
+
+def test_watch_changed_composes_with_only_filter(tmp_path, monkeypatch):
+    gateway = _role_gateway(tmp_path, monkeypatch, "control")
+    state = {"ready": True}
+
+    gateway.wrap(
+        "wire.check",
+        lambda *, mutate=False: {"ready": state["ready"]},
+        op="check",
+        sub="wire",
+    )
+
+    first = gateway("watch --only node,wire")
+    state["ready"] = False
+    second = gateway(
+        f"watch --only node,wire --changed --cursor {first['cursor']}"
+    )
+
+    assert set(second) == {
+        "wire",
+        "health",
+        "changed_at",
+        "cursor",
+    }
