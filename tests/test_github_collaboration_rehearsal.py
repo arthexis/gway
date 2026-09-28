@@ -73,7 +73,31 @@ class CollaborationClient:
         )
 
 
-@pytest.mark.parametrize(\n    "operation",\n    sorted(f"github.{name}" for name in WRITE_OPERATIONS if name in {\n        "create_issue", "update_issue", "close_issue", "reopen_issue",\n        "comment_issue", "create_pull", "update_pull", "close_pull",\n        "reopen_pull", "reply_review_comment", "add_labels", "remove_label",\n        "ready_pull", "draft_pull", "merge_pull",\n    }),\n)
+@pytest.mark.parametrize(
+    "operation",
+    sorted(
+        f"github.{name}"
+        for name in WRITE_OPERATIONS
+        if name
+        in {
+            "create_issue",
+            "update_issue",
+            "close_issue",
+            "reopen_issue",
+            "comment_issue",
+            "create_pull",
+            "update_pull",
+            "close_pull",
+            "reopen_pull",
+            "reply_review_comment",
+            "add_labels",
+            "remove_label",
+            "ready_pull",
+            "draft_pull",
+            "merge_pull",
+        }
+    ),
+)
 def test_read_authority_rejects_collaboration_writes(gateway, operation):
     with gateway.authorized(operations={"github.pull", "github.issue"}):
         with pytest.raises(AuthorizationError, match=operation):
