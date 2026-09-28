@@ -512,13 +512,15 @@ def test_required_service_companion_repairs_missing_dependency(
 
 
 
-def test_service_list_and_inspect_support_non_mutating_execution(service_gateway):
+def test_service_list_status_and_inspect_support_non_mutating_execution(service_gateway):
     gateway, _ = service_gateway
 
     listed = gateway.execute("service list", mutate=False)
+    status = gateway.execute("service status worker", mutate=False)
     inspected = gateway.execute("service inspect worker", mutate=False)
 
     assert any(item["service"] == "remote-auth" for item in listed)
+    assert status is not None
     assert inspected["service"] == "worker"
 
     assert gateway.ops.resolve("service.list").mutates is False
