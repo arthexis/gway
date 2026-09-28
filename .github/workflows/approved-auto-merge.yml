@@ -81,6 +81,19 @@ jobs:
             gh pr merge "$PR_NUMBER" --repo "$REPOSITORY" --disable-auto || true
           fi
 
+      - name: Reset stale auto-merge request
+        if: steps.pr.outputs.skip != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          PR_NUMBER: ${{ steps.pr.outputs.number }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Reconciliation is head-specific. Clear any request armed for an older
+          # revision before validating and re-arming the current head.
+          gh pr merge "$PR_NUMBER" --repo "$REPOSITORY" --disable-auto || true
+
       - name: Validate approval gate
         if: steps.pr.outputs.skip != 'true'
         id: gate
