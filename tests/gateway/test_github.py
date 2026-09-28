@@ -48,6 +48,28 @@ def test_github_operations_are_registered_as_source_read(gateway):
         assert {"github", "source", "read"} <= topics
 
 
+def test_github_admin_reads_are_separate_from_mutation(gateway):
+    expected = {
+        "github.rulesets",
+        "github.ruleset",
+        "github.branch_protection",
+        "github.collaborators",
+        "github.collaborator_permission",
+        "github.webhooks",
+        "github.webhook",
+        "github.actions_permissions",
+        "github.actions_workflow_permissions",
+    }
+
+    for name in expected:
+        operation = gateway.ops.resolve(name)
+        assert operation is not None
+        assert operation.mutates is False
+        topics = set(operation.__gway_metadata__["topics"])
+        assert {"github", "source", "read", "admin"} <= topics
+        assert "write" not in topics
+
+
 def test_github_reads_respect_authorization(gateway):
     from gway.authorization import AuthorizationError
 
@@ -75,3 +97,15 @@ def test_every_github_operation_has_exactly_one_access_topic(gateway):
         assert {"github", "source"} <= topics
         assert len({"read", "write"} & topics) == 1
         assert record.callable.mutates is ("write" in topics)
+        if "admin" in topics:
+            assert record.name.removeprefix("github.") in {
+                "rulesets",
+                "ruleset",
+                "branch_protection",
+                "collaborators",
+                "collaborator_permission",
+                "webhooks",
+                "webhook",
+                "actions_permissions",
+                "actions_workflow_permissions",
+            }

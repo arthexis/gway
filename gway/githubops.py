@@ -12,6 +12,19 @@ def _segment(value):
     return quote(str(value), safe="")
 
 
+ADMIN_OPERATIONS = frozenset({
+    "rulesets",
+    "ruleset",
+    "branch_protection",
+    "collaborators",
+    "collaborator_permission",
+    "webhooks",
+    "webhook",
+    "actions_permissions",
+    "actions_workflow_permissions",
+})
+
+
 WRITE_OPERATIONS = frozenset({
     "set_variable",
     "delete_variable",
@@ -122,6 +135,74 @@ class Controller:
         return self._github().request(
             "GET",
             f"{self._repo(repository)}/branches/{_segment(branch)}",
+        ).data
+
+    def rulesets(self, repository):
+        """List repository rulesets; requires repository administration authority."""
+        return self._all(
+            f"{self._repo(repository)}/rulesets",
+            params={"per_page": 100},
+        )
+
+    def ruleset(self, repository, ruleset):
+        """Return one repository ruleset by numeric ID."""
+        return self._github().request(
+            "GET",
+            f"{self._repo(repository)}/rulesets/{int(ruleset)}",
+        ).data
+
+    def branch_protection(self, repository, branch):
+        """Return protection policy for one repository branch."""
+        return self._github().request(
+            "GET",
+            f"{self._repo(repository)}/branches/{_segment(branch)}/protection",
+        ).data
+
+    def collaborators(self, repository, affiliation=None, permission=None):
+        """List repository collaborators and visible permission metadata."""
+        params = {"per_page": 100}
+        if affiliation is not None:
+            params["affiliation"] = str(affiliation)
+        if permission is not None:
+            params["permission"] = str(permission)
+        return self._all(
+            f"{self._repo(repository)}/collaborators",
+            params=params,
+        )
+
+    def collaborator_permission(self, repository, username):
+        """Return one collaborator's effective repository permission."""
+        return self._github().request(
+            "GET",
+            f"{self._repo(repository)}/collaborators/{_segment(username)}/permission",
+        ).data
+
+    def webhooks(self, repository):
+        """List repository webhook metadata without exposing hook secrets."""
+        return self._all(
+            f"{self._repo(repository)}/hooks",
+            params={"per_page": 100},
+        )
+
+    def webhook(self, repository, hook):
+        """Return one repository webhook's metadata."""
+        return self._github().request(
+            "GET",
+            f"{self._repo(repository)}/hooks/{int(hook)}",
+        ).data
+
+    def actions_permissions(self, repository):
+        """Return repository-level GitHub Actions policy."""
+        return self._github().request(
+            "GET",
+            f"{self._repo(repository)}/actions/permissions",
+        ).data
+
+    def actions_workflow_permissions(self, repository):
+        """Return default workflow-token and PR approval permissions."""
+        return self._github().request(
+            "GET",
+            f"{self._repo(repository)}/actions/permissions/workflow",
         ).data
 
     def commits(self, repository, branch=None, path=None):

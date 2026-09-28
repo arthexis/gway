@@ -241,6 +241,40 @@ def test_remote_runtime_converges_source_read_scope(tmp_path):
     assert source.operations.isdisjoint(logs.operations)
 
 
+def test_remote_runtime_converges_source_admin_scope(tmp_path):
+    from gway.gateway import Gateway
+    from gway.security.scopes import ScopeRegistry
+
+    runtime = Gateway()
+    runtime.security_path = tmp_path / "security.sqlite"
+    metadata = RemoteOAuthMetadata.from_origin("https://remote.example.test")
+
+    RemoteApplication(metadata, runtime=runtime)
+
+    registry = ScopeRegistry(runtime.security_path)
+    admin = registry.require("source-admin")
+    read = registry.require("source-read")
+
+    assert admin.operations == frozenset(
+        {
+            "github.rulesets",
+            "github.ruleset",
+            "github.branch_protection",
+            "github.collaborators",
+            "github.collaborator_permission",
+            "github.webhooks",
+            "github.webhook",
+            "github.actions_permissions",
+            "github.actions_workflow_permissions",
+        }
+    )
+    assert admin.environment == frozenset()
+    assert admin.operations.isdisjoint(read.operations)
+    assert registry.resolve({"source-read", "source-admin"}).operations == (
+        read.operations | admin.operations
+    )
+
+
 def test_remote_runtime_converges_operator_read_scope(tmp_path):
     from gway.gateway import Gateway
     from gway.security.scopes import ScopeRegistry
