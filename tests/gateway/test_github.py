@@ -77,6 +77,8 @@ def test_github_ruleset_writes_are_admin_mutations(gateway):
         "github.delete_ruleset",
         "github.update_branch_protection",
         "github.delete_branch_protection",
+        "github.set_actions_permissions",
+        "github.set_actions_workflow_permissions",
     }:
         operation = gateway.ops.resolve(name)
         assert operation is not None
@@ -84,6 +86,49 @@ def test_github_ruleset_writes_are_admin_mutations(gateway):
         topics = set(operation.__gway_metadata__["topics"])
         assert {"github", "source", "write", "admin"} <= topics
         assert "read" not in topics
+
+
+def test_actions_policy_boolean_parameters_bind_from_command_text(gateway):
+    from types import SimpleNamespace
+
+    calls = []
+
+    class Client:
+        def request(self, method, path, *, params=None, json=None, headers=None):
+            calls.append((method, path, json))
+            return SimpleNamespace(data=None)
+
+    gateway._github_controller._client = Client()
+
+    gateway.execute(
+        "github set actions permissions arthexis/gway "
+        "--enabled true --allowed-actions selected --sha-pinning-required false"
+    )
+    gateway.execute(
+        "github set actions workflow permissions arthexis/gway "
+        "--default-workflow-permissions read "
+        "--can-approve-pull-request-reviews false"
+    )
+
+    assert calls == [
+        (
+            "PUT",
+            "/repos/arthexis/gway/actions/permissions",
+            {
+                "enabled": True,
+                "allowed_actions": "selected",
+                "sha_pinning_required": False,
+            },
+        ),
+        (
+            "PUT",
+            "/repos/arthexis/gway/actions/permissions/workflow",
+            {
+                "default_workflow_permissions": "read",
+                "can_approve_pull_request_reviews": False,
+            },
+        ),
+    ]
 
 
 def test_github_reads_respect_authorization(gateway):
@@ -129,4 +174,6 @@ def test_every_github_operation_has_exactly_one_access_topic(gateway):
                 "webhook",
                 "actions_permissions",
                 "actions_workflow_permissions",
+                "set_actions_permissions",
+                "set_actions_workflow_permissions",
             }
