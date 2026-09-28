@@ -313,3 +313,82 @@ def test_branch_protection_mutations_respect_no_mutate_before_network_access():
             raise AssertionError("branch protection mutation unexpectedly allowed")
 
     assert client.calls == []
+
+
+def test_branch_protection_rejects_partial_nested_policy_shapes():
+    target = Controller(None, client=FakeClient())
+    cases = (
+        (
+            "required_status_checks",
+            {"strict": True},
+            "missing required fields: contexts",
+        ),
+        (
+            "required_pull_request_reviews",
+            {"required_approving_review_count": 1},
+            "missing required fields",
+        ),
+        (
+            "restrictions",
+            {"users": []},
+            "missing required fields",
+        ),
+    )
+
+    for name, nested, message in cases:
+        policy = complete_branch_protection_policy()
+        policy[name] = nested
+        try:
+            target.update_branch_protection("arthexis/gway", "main", policy)
+        except ValueError as error:
+            assert message in str(error)
+        else:
+            raise AssertionError(f"partial nested {name} unexpectedly accepted")
+
+    assert target._client.calls == []
+
+
+def test_branch_protection_rejects_unsupported_nested_fields():
+    target = Controller(None, client=FakeClient())
+    policy = complete_branch_protection_policy()
+    policy["required_status_checks"]["checks"] = [
+        {"context": "python / Quality", "app_id": -1}
+    ]
+
+    try:
+        target.update_branch_protection("arthexis/gway", "main", policy)
+    except ValueError as error:
+        assert "required_status_checks contains unsupported fields: checks" in str(error)
+    else:
+        raise AssertionError("unsupported nested field unexpectedly accepted")
+
+    assert target._client.calls == []
+
+
+def test_branch_protection_validates_nested_value_types_before_network_access():
+    target = Controller(None, client=FakeClient())
+    cases = (
+        ("required_status_checks", "strict", "yes"),
+        (
+            "required_pull_request_reviews",
+            "required_approving_review_count",
+            True,
+        ),
+        ("restrictions", "users", ["alice", 7]),
+    )
+
+    for section, field, value in cases:
+        policy = complete_branch_protection_policy()
+        if section == "restrictions":
+            policy[section] = {"users": [], "teams": [], "apps": []}
+        policy[section][field] = value
+        try:
+            target.update_branch_protection("arthexis/gway", "main", policy)
+        except TypeError:
+            pass
+        else:
+            raise AssertionError(
+                f"invalid nested value {section}.{field} unexpectedly accepted"
+            )
+
+    assert target._client.calls == []

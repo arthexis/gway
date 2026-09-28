@@ -277,19 +277,85 @@ class Controller:
                 + ", ".join(sorted(extra))
             )
         result = dict(policy)
-        nullable_mappings = {
-            "required_status_checks",
-            "required_pull_request_reviews",
-            "restrictions",
+        nested_policies = {
+            "required_status_checks": {"strict", "contexts"},
+            "required_pull_request_reviews": {
+                "dismiss_stale_reviews",
+                "require_code_owner_reviews",
+                "required_approving_review_count",
+                "require_last_push_approval",
+            },
+            "restrictions": {"users", "teams", "apps"},
         }
-        for name in nullable_mappings:
+        for name, fields in nested_policies.items():
             value = result[name]
-            if value is not None and not isinstance(value, dict):
+            if value is None:
+                continue
+            if not isinstance(value, dict):
                 raise TypeError(
                     f"GitHub branch protection {name} must be a mapping or null"
                 )
-            if isinstance(value, dict):
-                result[name] = dict(value)
+            missing_nested = fields - set(value)
+            extra_nested = set(value) - fields
+            if missing_nested:
+                raise ValueError(
+                    f"GitHub branch protection {name} is missing required fields: "
+                    + ", ".join(sorted(missing_nested))
+                )
+            if extra_nested:
+                raise ValueError(
+                    f"GitHub branch protection {name} contains unsupported fields: "
+                    + ", ".join(sorted(extra_nested))
+                )
+            result[name] = dict(value)
+
+        status_checks = result["required_status_checks"]
+        if status_checks is not None:
+            if not isinstance(status_checks["strict"], bool):
+                raise TypeError(
+                    "GitHub branch protection required_status_checks strict "
+                    "must be boolean"
+                )
+            if not isinstance(status_checks["contexts"], list) or not all(
+                isinstance(context, str) for context in status_checks["contexts"]
+            ):
+                raise TypeError(
+                    "GitHub branch protection required_status_checks contexts "
+                    "must be a list of strings"
+                )
+            status_checks["contexts"] = list(status_checks["contexts"])
+
+        reviews = result["required_pull_request_reviews"]
+        if reviews is not None:
+            for name in (
+                "dismiss_stale_reviews",
+                "require_code_owner_reviews",
+                "require_last_push_approval",
+            ):
+                if not isinstance(reviews[name], bool):
+                    raise TypeError(
+                        "GitHub branch protection required_pull_request_reviews "
+                        f"{name} must be boolean"
+                    )
+            count = reviews["required_approving_review_count"]
+            if not isinstance(count, int) or isinstance(count, bool):
+                raise TypeError(
+                    "GitHub branch protection required_pull_request_reviews "
+                    "required_approving_review_count must be an integer"
+                )
+
+        restrictions = result["restrictions"]
+        if restrictions is not None:
+            for name in ("users", "teams", "apps"):
+                value = restrictions[name]
+                if not isinstance(value, list) or not all(
+                    isinstance(item, str) for item in value
+                ):
+                    raise TypeError(
+                        f"GitHub branch protection restrictions {name} "
+                        "must be a list of strings"
+                    )
+                restrictions[name] = list(value)
         if not isinstance(result["enforce_admins"], bool):
             raise TypeError("GitHub branch protection enforce_admins must be boolean")
         for name in (
