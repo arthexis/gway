@@ -116,7 +116,14 @@ def search_descriptor(descriptor, query, *, context=2):
     }
 
 
-def inspect_source(gateway, *operation, search=None, context=2, all=False, mutate=False):
+def inspect_source(
+    gateway,
+    *operation,
+    search=None,
+    context=2,
+    all=False,
+    mutate=False,
+):
     """Return source metadata for the operation normal dispatch would execute."""
     del mutate
     if not operation:
@@ -162,7 +169,13 @@ def _source_topics(callable_):
     topics = metadata.get("topics", ())
     if isinstance(topics, str):
         topics = (topics,)
-    return tuple(dict.fromkeys(str(topic).strip() for topic in topics if str(topic).strip()))
+    return tuple(
+        dict.fromkeys(
+            str(topic).strip()
+            for topic in topics
+            if str(topic).strip()
+        )
+    )
 
 
 def _corpus_descriptor(gateway, record):
@@ -176,7 +189,15 @@ def _corpus_descriptor(gateway, record):
     return describe_resolved_source(resolution)
 
 
-def search_source_corpus(gateway, query, *, kind=None, topic=(), context=0, mutate=False):
+def search_source_corpus(
+    gateway,
+    query,
+    *,
+    kind=None,
+    topic=(),
+    context=0,
+    mutate=False,
+):
     """Search retrievable sources belonging to registered Gway operations."""
     del mutate
     if context < 0:
