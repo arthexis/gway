@@ -208,3 +208,32 @@ def test_redirect_apply_failure_does_not_leave_owned_state(monkeypatch, tmp_path
     assert not (
         tmp_path / "network" / "redirects" / "abcdef123456.json"
     ).exists()
+
+
+
+def test_network_redirect_uses_standard_sudo_identity(monkeypatch, tmp_path):
+    calls = []
+
+    def runner(command, **kwargs):
+        calls.append(command)
+        return Result()
+
+    controller = Controller(
+        FakeGateway(tmp_path),
+        runner=runner,
+        which=lambda name: "/usr/sbin/nft" if name == "nft" else None,
+    )
+    monkeypatch.setattr(
+        "gway.network.uuid.uuid4",
+        lambda: type("UUID", (), {"hex": "abcdef1234567890"})(),
+    )
+
+    controller.redirect(
+        "eth0",
+        "198.51.100.40",
+        9000,
+        target_port=9000,
+        sudo=True,
+    )
+
+    assert calls[0][:2] == ["sudo", "/usr/sbin/nft"]
