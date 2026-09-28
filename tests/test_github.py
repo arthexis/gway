@@ -175,3 +175,42 @@ def test_pages_rejects_cross_origin_link_next():
 
     with pytest.raises(ValueError, match="configured API origin"):
         list(client.pages("/items"))
+
+
+def test_download_redirect_drops_authorization_on_signed_url():
+    observed = []
+
+    def handler(request):
+        observed.append((str(request.url), request.headers.get("authorization")))
+        if request.url.host == "api.github.com":
+            return httpx.Response(
+                302,
+                headers={"Location": "https://logs.example/signed?token=opaque"},
+                request=request,
+            )
+        return httpx.Response(
+            200,
+            content=b"job output",
+            headers={"Content-Type": "text/plain"},
+            request=request,
+        )
+
+    response = Client("secret-token", transport=transport(handler)).download_redirect(
+        "/repos/example/repo/actions/jobs/1/logs"
+    )
+
+    assert response.data == b"job output"
+    assert observed == [
+        (
+            "https://api.github.com/repos/example/repo/actions/jobs/1/logs",
+            "Bearer secret-token",
+        ),
+        ("https://logs.example/signed?token=opaque", None),
+    ]
+
+
+def test_download_redirect_rejects_caller_supplied_absolute_url():
+    client = Client("secret-token", transport=transport(lambda request: None))
+
+    with pytest.raises(ValueError, match="configured API origin"):
+        client.download_redirect("https://logs.example/signed")
