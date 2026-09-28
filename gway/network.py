@@ -142,8 +142,6 @@ class Controller:
                 "",
             ]
         )
-        self._run("-f", "-", input_text=script)
-
         record = {
             "id": handle,
             "backend": "nftables",
@@ -155,14 +153,30 @@ class Controller:
             "port": destination_port,
             "target": local_target,
             "target_port": local_port,
-            "active": True,
+            "active": False,
         }
         root = self._state_root()
         root.mkdir(parents=True, exist_ok=True)
-        (root / f"{handle}.json").write_text(
+        path = root / f"{handle}.json"
+        path.write_text(
             json.dumps(record, indent=2, sort_keys=True) + "\n",
             encoding="utf-8",
         )
+        try:
+            self._run("-f", "-", input_text=script)
+        except Exception:
+            path.unlink(missing_ok=True)
+            raise
+
+        record["active"] = True
+        try:
+            path.write_text(
+                json.dumps(record, indent=2, sort_keys=True) + "\n",
+                encoding="utf-8",
+            )
+        except Exception:
+            self._run("delete", "table", family, table)
+            raise
         return record
 
     def remove(self, id, *, mutate=True) -> dict[str, object]:
