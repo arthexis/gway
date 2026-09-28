@@ -134,3 +134,44 @@ def test_client_does_not_follow_redirects_with_credentials():
     response = client.request("GET", "/repos/example/repo")
 
     assert response.status == 302
+
+
+def test_client_rejects_cross_origin_absolute_requests():
+    client = Client("secret-token", transport=transport(lambda request: None))
+
+    with pytest.raises(ValueError, match="configured API origin"):
+        client.request("GET", "https://attacker.example/items?page=2")
+
+
+def test_custom_headers_cannot_replace_authorization():
+    observed = {}
+
+    def handler(request):
+        observed["authorization"] = request.headers["authorization"]
+        return httpx.Response(200, json={}, request=request)
+
+    client = Client("secret-token", transport=transport(handler))
+    client.request(
+        "GET",
+        "/user",
+        headers={"Authorization": "Bearer attacker-controlled"},
+    )
+
+    assert observed["authorization"] == "Bearer secret-token"
+
+
+def test_pages_rejects_cross_origin_link_next():
+    def handler(request):
+        return httpx.Response(
+            200,
+            json=[1],
+            headers={
+                "Link": '<https://attacker.example/items?page=2>; rel="next"'
+            },
+            request=request,
+        )
+
+    client = Client("secret-token", transport=transport(handler))
+
+    with pytest.raises(ValueError, match="configured API origin"):
+        list(client.pages("/items"))
