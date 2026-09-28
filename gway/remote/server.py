@@ -117,21 +117,12 @@ class RemoteApplication(RemoteDiscoveryApplication):
         self.account.oauth.scopes.replace(
             "operator-read",
             operations={
-                "help",
-                "guide",
-                "version",
                 "products",
                 "extensions",
-                "log.sources",
-                "log.read",
-                "log.tail",
-                "log.search",
                 "service.list",
                 "service.status",
                 "sous.chef.list",
                 "sous.chef.inspect",
-                "security.whoami",
-                "security.scope.current",
             },
             environment=(),
         )
