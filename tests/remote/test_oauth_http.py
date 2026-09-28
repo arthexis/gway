@@ -439,9 +439,9 @@ def test_cimd_fetch_caps_document_before_json_parsing(monkeypatch):
     monkeypatch.setattr(
         OAuthClientResolver,
         "_require_public_host",
-        staticmethod(lambda hostname, port: None),
+        staticmethod(lambda _hostname, _port: None),
     )
-    monkeypatch.setattr("gway.remote.oauth.build_opener", lambda *args: Opener())
+    monkeypatch.setattr("gway.remote.oauth.build_opener", lambda *_args: Opener())
 
     with pytest.raises(ValueError, match="too large"):
         OAuthClientResolver._fetch_cimd(
