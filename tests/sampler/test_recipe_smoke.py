@@ -164,7 +164,7 @@ def test_mcp_server_recipe_smoke_executes_with_fake_server(monkeypatch, run_reci
 
     runtime.server_serve = runtime.wrap("server.serve", serve)
 
-    result = _run(runtime, "mcp/server.rx")
+    result = run_recipe(runtime, "mcp/server.rx")
 
     assert result == {"served": True}
     assert observed == {
