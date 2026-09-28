@@ -227,8 +227,9 @@ def __main__(*, mutate=False):
 """,
     )
 
+    expected = gateway("version")
     with gateway.authorized(operations={"observe"}):
-        assert gateway("observe") == gateway("version")
+        assert gateway("observe") == expected
 
 
 def test_external_authority_cannot_configure_operation_roots(tmp_path):
