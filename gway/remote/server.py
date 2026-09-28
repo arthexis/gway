@@ -115,6 +115,14 @@ class RemoteApplication(RemoteDiscoveryApplication):
             environment=(),
         )
         self.account.oauth.scopes.replace(
+            "source-read",
+            operations={
+                "source",
+                "search.source",
+            },
+            environment=(),
+        )
+        self.account.oauth.scopes.replace(
             "operator-read",
             operations={
                 "products",
