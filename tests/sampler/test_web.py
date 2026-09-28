@@ -1,24 +1,14 @@
 from pathlib import Path
 
-from gway.recipe import load_recipe, recipe_path
-
-
-def sampler_root():
-    return Path(__file__).resolve().parents[2] / "sampler" / "web" / "expose"
-
-
-def rendered_commands(path):
-    commands, _ = load_recipe(path)
-    return [" ".join(str(token) for token in command["tokens"]) for command in commands]
-
+from gway.recipe import recipe_path
 
 def test_web_expose_sampler_is_not_builtin(gateway):
     assert gateway.ops.resolve("expose") is None
     assert gateway.ops.resolve("web expose") is None
 
 
-def test_web_expose_package_has_required_shape():
-    root = sampler_root()
+def test_web_expose_package_has_required_shape(sampler_path):
+    root = sampler_path("web/expose")
 
     assert (root / "expose.rx").is_file()
     assert (root / "dns-http.rx").is_file()
@@ -30,12 +20,12 @@ def test_web_expose_package_has_required_shape():
     assert (root / "nginx-https-[site].conf").is_file()
 
 
-def test_web_expose_default_composes_http_then_https():
-    assert rendered_commands(sampler_root() / "expose.rx") == ["./http.rx", "./https.rx"]
+def test_web_expose_default_composes_http_then_https(recipe_commands):
+    assert recipe_commands("web/expose/expose.rx") == ["./http.rx", "./https.rx"]
 
 
-def test_web_expose_http_bootstraps_acme_and_nginx():
-    rendered = rendered_commands(sampler_root() / "http.rx")
+def test_web_expose_http_bootstraps_acme_and_nginx(recipe_commands):
+    rendered = recipe_commands("web/expose/http.rx")
 
     assert rendered[:2] == [
         "ingest [nginx_executable|nginx] --kind proc --sudo",
@@ -50,8 +40,8 @@ def test_web_expose_http_bootstraps_acme_and_nginx():
     assert not any(command.startswith("certbot ") for command in rendered)
 
 
-def test_web_expose_https_uses_certbot_webroot_before_tls_render():
-    rendered = rendered_commands(sampler_root() / "https.rx")
+def test_web_expose_https_uses_certbot_webroot_before_tls_render(recipe_commands):
+    rendered = recipe_commands("web/expose/https.rx")
 
     assert rendered[:2] == [
         "ingest [nginx_executable|nginx] --kind proc --sudo",
@@ -80,8 +70,8 @@ def test_web_expose_https_uses_certbot_webroot_before_tls_render():
     assert rendered[-2:] == ["nginx -t", "nginx -s reload"]
 
 
-def test_web_expose_http_template_matches_certbot_webroot():
-    content = (sampler_root() / "nginx-http-[site].conf").read_text(encoding="utf-8")
+def test_web_expose_http_template_matches_certbot_webroot(sampler_path):
+    content = (sampler_path("web/expose") / "nginx-http-[site].conf").read_text(encoding="utf-8")
 
     assert "listen 80;" in content
     assert "listen [[::]]:80;" in content
@@ -93,8 +83,8 @@ def test_web_expose_http_template_matches_certbot_webroot():
     assert "listen 443 ssl;" not in content
 
 
-def test_web_expose_https_template_serves_tls_and_preserves_acme():
-    content = (sampler_root() / "nginx-https-[site].conf").read_text(encoding="utf-8")
+def test_web_expose_https_template_serves_tls_and_preserves_acme(sampler_path):
+    content = (sampler_path("web/expose") / "nginx-https-[site].conf").read_text(encoding="utf-8")
 
     assert "listen 80;" in content
     assert "location ^~ /.well-known/acme-challenge/" in content
@@ -106,8 +96,8 @@ def test_web_expose_https_template_serves_tls_and_preserves_acme():
     assert "proxy_pass http://[host]:[port];" in content
 
 
-def test_sampler_package_resolves_default_and_children(gateway):
-    root = sampler_root()
+def test_sampler_package_resolves_default_and_children(sampler_path, gateway):
+    root = sampler_path("web/expose")
 
     assert recipe_path(gateway, root / "expose.rx", allow_bare=False) == (
         root / "expose.rx"
@@ -124,9 +114,9 @@ def test_sampler_package_resolves_default_and_children(gateway):
 
 
 def test_sampler_templates_resolve_from_recipe_directory(
-    gateway, tmp_path, monkeypatch
+    sampler_path, gateway, tmp_path, monkeypatch
 ):
-    root = sampler_root()
+    root = sampler_path("web/expose")
     elsewhere = tmp_path / "elsewhere"
     elsewhere.mkdir()
     monkeypatch.chdir(elsewhere)
@@ -146,8 +136,8 @@ def test_sampler_templates_resolve_from_recipe_directory(
     assert resolved == Path("nginx-http-demo.conf")
 
 
-def test_web_expose_dns_http_is_explicit_provider_neutral_preparation():
-    rendered = rendered_commands(sampler_root() / "dns-http.rx")
+def test_web_expose_dns_http_is_explicit_provider_neutral_preparation(recipe_commands):
+    rendered = recipe_commands("web/expose/dns-http.rx")
 
     assert rendered[0].startswith("dns create [domain]")
     assert "--type A" in rendered[0]
@@ -167,15 +157,15 @@ def test_web_expose_dns_http_is_explicit_provider_neutral_preparation():
     assert len(rendered) == 2
 
 
-def test_web_expose_default_does_not_mutate_dns():
-    rendered = rendered_commands(sampler_root() / "expose.rx")
+def test_web_expose_default_does_not_mutate_dns(recipe_commands):
+    rendered = recipe_commands("web/expose/expose.rx")
 
     assert rendered == ["./http.rx", "./https.rx"]
     assert "./dns-http" not in rendered
 
 
-def test_web_expose_cleanup_removes_only_sampler_artifacts():
-    rendered = rendered_commands(sampler_root() / "cleanup.rx")
+def test_web_expose_cleanup_removes_only_sampler_artifacts(recipe_commands):
+    rendered = recipe_commands("web/expose/cleanup.rx")
 
     assert rendered[0] == "./cleanup-http"
 
@@ -186,7 +176,7 @@ def test_web_expose_cleanup_removes_only_sampler_artifacts():
     assert "--backend [dns_backend|godaddy]" in dns_delete
     assert "--zone [zone]" in dns_delete
 
-    http_cleanup = rendered_commands(sampler_root() / "cleanup-http.rx")
+    http_cleanup = recipe_commands("web/expose/cleanup-http.rx")
     assert http_cleanup[0] == "ingest nginx --kind proc --sudo"
     assert http_cleanup[1].startswith("remove [nginx_enabled")
     assert "--as root" in http_cleanup[1]
@@ -195,16 +185,16 @@ def test_web_expose_cleanup_removes_only_sampler_artifacts():
     assert http_cleanup[3:5] == ["nginx -t", "nginx -s reload"]
 
 
-def test_web_expose_cleanup_does_not_remove_certificates_or_shared_webroot():
-    rendered = rendered_commands(sampler_root() / "cleanup.rx")
+def test_web_expose_cleanup_does_not_remove_certificates_or_shared_webroot(recipe_commands):
+    rendered = recipe_commands("web/expose/cleanup.rx")
 
     assert not any("certbot" in command for command in rendered)
     assert not any("letsencrypt" in command for command in rendered)
     assert not any("[acme_webroot" in command for command in rendered)
 
 
-def test_godaddy_setup_uses_generic_input_and_secret_store():
-    rendered = rendered_commands(sampler_root() / "godaddy-setup.rx")
+def test_godaddy_setup_uses_generic_input_and_secret_store(recipe_commands):
+    rendered = recipe_commands("web/expose/godaddy-setup.rx")
 
     assert rendered == [
         "input GoDaddy key --as godaddy_key --secret",
@@ -214,17 +204,17 @@ def test_godaddy_setup_uses_generic_input_and_secret_store():
     ]
 
 
-def test_web_expose_templates_reject_unknown_or_missing_hosts():
+def test_web_expose_templates_reject_unknown_or_missing_hosts(sampler_path):
     for name in ("nginx-http-[site].conf", "nginx-https-[site].conf"):
-        content = (sampler_root() / name).read_text(encoding="utf-8")
+        content = (sampler_path("web/expose") / name).read_text(encoding="utf-8")
 
         assert 'if ($http_host = "") {' in content
         assert "if ($host != [domain]) {" in content
         assert content.count("return 444;") >= 2
 
 
-def test_web_expose_https_template_sets_safe_edge_defaults():
-    content = (sampler_root() / "nginx-https-[site].conf").read_text(encoding="utf-8")
+def test_web_expose_https_template_sets_safe_edge_defaults(sampler_path):
+    content = (sampler_path("web/expose") / "nginx-https-[site].conf").read_text(encoding="utf-8")
 
     assert "server_tokens off;" in content
     assert "ssl_protocols TLSv1.2 TLSv1.3;" in content
