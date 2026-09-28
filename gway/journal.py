@@ -462,10 +462,10 @@ class JournalManager:
         """Verify that an applied filesystem entry has not drifted."""
         journal = self.require_open(name)
         entry = self._entry(journal, sequence)
-        if entry.state is not MutationState.APPLIED:
+        if entry.state not in {MutationState.APPLIED, MutationState.MUTATED}:
             raise JournalError(
                 f"Rollback journal {name!r} entry {sequence} is "
-                f"{entry.state.value}, not applied"
+                f"{entry.state.value}, not recoverable"
             )
         if entry.kind == "filesystem" and "expected" in entry.data:
             from .identity import ExecutionIdentity
@@ -492,7 +492,7 @@ class JournalManager:
         """Restore one APPLIED logical mutation through its registered semantics."""
         journal = self.require_open(name)
         entry = self._entry(journal, sequence)
-        if entry.state is MutationState.MUTATED:
+        if entry.state is MutationState.MUTATED and entry.kind != "operation":
             raise JournalError(
                 f"Rollback journal {name!r} entry {sequence} cannot be rolled back "
                 "safely because its post-mutation state is unavailable"
@@ -515,6 +515,9 @@ class JournalManager:
                     "has no forward operation identity"
                 )
             self.rollback_executor(operation, entry.data.get("result"))
+            if entry.state is MutationState.MUTATED:
+                entry.state = MutationState.APPLIED
+                self._persist(journal)
             return self.mark_rolled_back(name, sequence)
 
         if entry.kind != "filesystem":
