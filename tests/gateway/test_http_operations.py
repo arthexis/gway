@@ -1,4 +1,4 @@
-import pytest
+from gway.documentation import describe\nimport pytest
 
 from gway.mutation import mutates
 
@@ -75,3 +75,36 @@ def test_http_post_decodes_json_body(gateway, monkeypatch):
     assert result["status"] == 201
     assert observed["method"] == "POST"
     assert observed["json"] == {"name": "Ada"}
+
+
+
+def test_http_operations_are_discoverable_with_documentation(gateway):
+    operation = gateway.ops.resolve("http.get")
+    documentation = describe(operation)
+
+    assert documentation.path == ("http", "get")
+    assert documentation.summary == "Perform a non-mutating HTTP GET request."
+    assert documentation.parameter("url").required is True
+    assert documentation.parameter("follow_redirects").default is False
+
+
+def test_http_result_composes_through_gateway_chain(gateway, monkeypatch):
+    monkeypatch.setattr(
+        "gway.http_operations.transport_request",
+        lambda *args, **kwargs: type(
+            "Response",
+            (),
+            {
+                "result": lambda self: {
+                    "status": 200,
+                    "url": "https://example.test/status",
+                    "headers": {},
+                    "result": {"ready": True},
+                }
+            },
+        )(),
+    )
+
+    result = gateway("http get https://example.test/status ; check status --is 200")
+
+    assert result is True
