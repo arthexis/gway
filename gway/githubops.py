@@ -147,6 +147,59 @@ class Controller:
             "GET", f"{self._repo(repository)}/pulls/{int(number)}"
         ).data
 
+    def create_pull(
+        self, repository, title, head, base, body=None, draft=False, mutate=True
+    ):
+        """Create a GitHub pull request."""
+        if not mutate:
+            raise PermissionError("GitHub pull request mutation is disabled")
+        payload = {
+            "title": str(title),
+            "head": str(head),
+            "base": str(base),
+            "draft": bool(draft),
+        }
+        if body is not None:
+            payload["body"] = str(body)
+        return self._github().request(
+            "POST", f"{self._repo(repository)}/pulls", json=payload
+        ).data
+
+    def update_pull(
+        self, repository, number, title=None, body=None, state=None, base=None,
+        mutate=True
+    ):
+        """Update a GitHub pull request's ordinary collaboration fields."""
+        if not mutate:
+            raise PermissionError("GitHub pull request mutation is disabled")
+        payload = {}
+        if title is not None:
+            payload["title"] = str(title)
+        if body is not None:
+            payload["body"] = str(body)
+        if state is not None:
+            state = str(state).lower()
+            if state not in {"open", "closed"}:
+                raise ValueError("pull request state must be open or closed")
+            payload["state"] = state
+        if base is not None:
+            payload["base"] = str(base)
+        if not payload:
+            raise ValueError("pull request update requires title, body, state, or base")
+        return self._github().request(
+            "PATCH",
+            f"{self._repo(repository)}/pulls/{int(number)}",
+            json=payload,
+        ).data
+
+    def close_pull(self, repository, number, mutate=True):
+        """Close a GitHub pull request."""
+        return self.update_pull(repository, number, state="closed", mutate=mutate)
+
+    def reopen_pull(self, repository, number, mutate=True):
+        """Reopen a GitHub pull request."""
+        return self.update_pull(repository, number, state="open", mutate=mutate)
+
     def issues(self, repository, state="open"):
         """List issue records, including pull requests as GitHub returns them."""
         return self._all(
