@@ -1,5 +1,7 @@
 import pytest
 
+from gway.githubops import ADMIN_OPERATIONS, WRITE_OPERATIONS
+
 def test_github_operations_are_registered_as_source_read(gateway):
     expected = {
         "github.repository",
@@ -48,44 +50,59 @@ def test_github_operations_are_registered_as_source_read(gateway):
         assert {"github", "source", "read"} <= topics
 
 
-def test_github_admin_reads_are_separate_from_mutation(gateway):
-    expected = {
-        "github.rulesets",
-        "github.ruleset",
-        "github.branch_protection",
-        "github.collaborators",
-        "github.collaborator_permission",
-        "github.webhooks",
-        "github.webhook",
-        "github.actions_permissions",
-        "github.actions_workflow_permissions",
+ADMIN_READ_OPERATIONS = {
+    "rulesets",
+    "ruleset",
+    "branch_protection",
+    "collaborators",
+    "collaborator_permission",
+    "webhooks",
+    "webhook",
+    "actions_permissions",
+    "actions_workflow_permissions",
+}
+
+ADMIN_WRITE_OPERATIONS = {
+    "create_ruleset",
+    "update_ruleset",
+    "delete_ruleset",
+    "update_branch_protection",
+    "delete_branch_protection",
+    "set_actions_permissions",
+    "set_actions_workflow_permissions",
+}
+
+
+@pytest.mark.parametrize(
+    ("operation_name", "access"),
+    [
+        *((f"github.{name}", "read") for name in sorted(ADMIN_READ_OPERATIONS)),
+        *((f"github.{name}", "write") for name in sorted(ADMIN_WRITE_OPERATIONS)),
+    ],
+)
+def test_github_admin_operation_matrix(gateway, operation_name, access):
+    operation = gateway.ops.resolve(operation_name)
+    assert operation is not None
+    topics = set(operation.__gway_metadata__["topics"])
+
+    assert {"github", "source", "admin", access} <= topics
+    assert len({"read", "write"} & topics) == 1
+    assert operation.mutates is (access == "write")
+
+
+def test_github_admin_sets_match_registry_classification(gateway):
+    registered = {
+        record.name.removeprefix("github.")
+        for record in gateway.ops.records()
+        if record.name.startswith("github.")
+        and "admin" in set(record.callable.__gway_metadata__["topics"])
     }
 
-    for name in expected:
-        operation = gateway.ops.resolve(name)
-        assert operation is not None
-        assert operation.mutates is False
-        topics = set(operation.__gway_metadata__["topics"])
-        assert {"github", "source", "read", "admin"} <= topics
-        assert "write" not in topics
+    expected = ADMIN_READ_OPERATIONS | ADMIN_WRITE_OPERATIONS
 
-
-def test_github_ruleset_writes_are_admin_mutations(gateway):
-    for name in {
-        "github.create_ruleset",
-        "github.update_ruleset",
-        "github.delete_ruleset",
-        "github.update_branch_protection",
-        "github.delete_branch_protection",
-        "github.set_actions_permissions",
-        "github.set_actions_workflow_permissions",
-    }:
-        operation = gateway.ops.resolve(name)
-        assert operation is not None
-        assert operation.mutates is True
-        topics = set(operation.__gway_metadata__["topics"])
-        assert {"github", "source", "write", "admin"} <= topics
-        assert "read" not in topics
+    assert registered == expected
+    assert set(ADMIN_OPERATIONS) == expected
+    assert set(ADMIN_OPERATIONS) & set(WRITE_OPERATIONS) == ADMIN_WRITE_OPERATIONS
 
 
 def test_actions_policy_boolean_parameters_bind_from_command_text(gateway):
@@ -159,21 +176,4 @@ def test_every_github_operation_has_exactly_one_access_topic(gateway):
         assert len({"read", "write"} & topics) == 1
         assert record.callable.mutates is ("write" in topics)
         if "admin" in topics:
-            assert record.name.removeprefix("github.") in {
-                "rulesets",
-                "ruleset",
-                "create_ruleset",
-                "update_ruleset",
-                "delete_ruleset",
-                "branch_protection",
-                "update_branch_protection",
-                "delete_branch_protection",
-                "collaborators",
-                "collaborator_permission",
-                "webhooks",
-                "webhook",
-                "actions_permissions",
-                "actions_workflow_permissions",
-                "set_actions_permissions",
-                "set_actions_workflow_permissions",
-            }
+            assert record.name.removeprefix("github.") in ADMIN_OPERATIONS

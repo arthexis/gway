@@ -243,6 +243,7 @@ def test_remote_runtime_converges_source_read_scope(tmp_path):
 
 def test_remote_runtime_converges_source_admin_scope(tmp_path):
     from gway.gateway import Gateway
+    from gway.githubops import ADMIN_OPERATIONS
     from gway.security.scopes import ScopeRegistry
 
     runtime = Gateway()
@@ -256,24 +257,7 @@ def test_remote_runtime_converges_source_admin_scope(tmp_path):
     read = registry.require("source-read")
 
     assert admin.operations == frozenset(
-        {
-            "github.rulesets",
-            "github.ruleset",
-            "github.create_ruleset",
-            "github.update_ruleset",
-            "github.delete_ruleset",
-            "github.branch_protection",
-            "github.update_branch_protection",
-            "github.delete_branch_protection",
-            "github.collaborators",
-            "github.collaborator_permission",
-            "github.webhooks",
-            "github.webhook",
-            "github.actions_permissions",
-            "github.actions_workflow_permissions",
-            "github.set_actions_permissions",
-            "github.set_actions_workflow_permissions",
-        }
+        f"github.{name}" for name in ADMIN_OPERATIONS
     )
     assert admin.environment == frozenset()
     assert admin.operations.isdisjoint(read.operations)
