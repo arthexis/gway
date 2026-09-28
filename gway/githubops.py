@@ -512,6 +512,53 @@ class Controller:
             f"{self._repo(repository)}/actions/workflows/{_segment(workflow)}",
         ).data
 
+    def dispatch_workflow(
+        self, repository, workflow, ref, inputs=None, mutate=True
+    ):
+        """Dispatch a GitHub Actions workflow at an explicit ref."""
+        if not mutate:
+            raise PermissionError("GitHub workflow mutation is disabled")
+        payload = {"ref": str(ref)}
+        if inputs is not None:
+            if not isinstance(inputs, dict):
+                raise TypeError("workflow inputs must be a mapping")
+            payload["inputs"] = dict(inputs)
+        self._github().request(
+            "POST",
+            f"{self._repo(repository)}/actions/workflows/{_segment(workflow)}/dispatches",
+            json=payload,
+        )
+        return {
+            "repository": str(repository),
+            "workflow": str(workflow),
+            "ref": str(ref),
+            "dispatched": True,
+        }
+
+    def dispatch_repository(
+        self, repository, event, payload=None, mutate=True
+    ):
+        """Dispatch a repository event with an optional client payload."""
+        if not mutate:
+            raise PermissionError("GitHub repository mutation is disabled")
+        if not str(event):
+            raise ValueError("repository dispatch event is required")
+        body = {"event_type": str(event)}
+        if payload is not None:
+            if not isinstance(payload, dict):
+                raise TypeError("repository dispatch payload must be a mapping")
+            body["client_payload"] = dict(payload)
+        self._github().request(
+            "POST",
+            f"{self._repo(repository)}/dispatches",
+            json=body,
+        )
+        return {
+            "repository": str(repository),
+            "event": str(event),
+            "dispatched": True,
+        }
+
     def releases(self, repository):
         """List repository releases."""
         return self._all(
