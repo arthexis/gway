@@ -9,7 +9,15 @@ import httpx
 
 
 DEFAULT_TIMEOUT = 30.0
-_SENSITIVE_HEADERS = {\n    "authorization",\n    "proxy-authorization",\n    "cookie",\n    "set-cookie",\n    "x-api-key",\n    "x-auth-token",\n    "api-key",\n}
+_SENSITIVE_HEADERS = {
+    "authorization",
+    "proxy-authorization",
+    "cookie",
+    "set-cookie",
+    "x-api-key",
+    "x-auth-token",
+    "api-key",
+}
 
 
 class HTTPTransportError(RuntimeError):
@@ -71,3 +79,45 @@ def _safe_url(url):
         host = f"{host}:{parsed.port}"
     return urlunsplit((parsed.scheme, host, parsed.path, "", ""))
 
+
+def request(
+    method,
+    url,
+    *,
+    headers=None,
+    params=None,
+    json=None,
+    data=None,
+    timeout=DEFAULT_TIMEOUT,
+    follow_redirects=False,
+    transport=None,
+):
+    """Execute one HTTP request and return a stable GWAY response."""
+    method = str(method).upper()
+    try:
+        with httpx.Client(
+            timeout=timeout,
+            follow_redirects=bool(follow_redirects),
+            transport=transport,
+        ) as client:
+            response = client.request(
+                method,
+                str(url),
+                headers=headers,
+                params=params,
+                json=json,
+                content=data,
+            )
+    except httpx.HTTPError as error:
+        safe = _safe_headers(headers)
+        detail = f"HTTP {method} request failed for {_safe_url(url)}"
+        if safe:
+            detail += f" with header names {sorted(safe)!r}"
+        raise HTTPTransportError(detail) from error
+
+    return HTTPResponse(
+        status=response.status_code,
+        url=str(response.url),
+        headers={name.lower(): value for name, value in response.headers.items()},
+        content=response.content,
+    )
