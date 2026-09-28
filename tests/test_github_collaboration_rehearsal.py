@@ -95,7 +95,7 @@ class CollaborationClient:
 def test_read_authority_rejects_collaboration_writes(gateway, operation):
     with gateway.authorized(operations={"github.pull", "github.issue"}):
         with pytest.raises(AuthorizationError, match=operation):
-            gateway.ops.authorize(operation)
+            gateway.authorization.authorize_operation(operation)
 
 
 def test_collaboration_lifecycle_rehearsal():
