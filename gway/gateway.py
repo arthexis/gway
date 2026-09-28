@@ -278,6 +278,9 @@ class Gateway(Resolver):
             "github.create_branch",
             "github.delete_ref",
             "github.delete_branch",
+            "github.create_file",
+            "github.update_file",
+            "github.delete_file",
         }
         for record in self.ops.records():
             if record.name.startswith("github."):
