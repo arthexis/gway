@@ -260,6 +260,10 @@ class Gateway(Resolver):
             "github.close_issue",
             "github.reopen_issue",
             "github.comment_issue",
+            "github.create_pull",
+            "github.update_pull",
+            "github.close_pull",
+            "github.reopen_pull",
         }
         for record in self.ops.records():
             if record.name.startswith("github."):
