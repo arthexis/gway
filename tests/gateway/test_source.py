@@ -1,7 +1,5 @@
 import pytest
 
-from gway.gateway import Gateway
-
 
 def test_source_inspects_resolved_python_operation(gateway):
     result = gateway("source env")
