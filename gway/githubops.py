@@ -5,7 +5,7 @@ from __future__ import annotations
 from urllib.parse import quote
 import base64
 
-from .github import Client
+from .github import Client, GitHubError
 
 
 def _segment(value):
@@ -363,27 +363,33 @@ class Controller:
         ).data
 
     def set_variable(self, repository, name, value, mutate=True):
-        """Create or update a GitHub Actions repository variable."""
+        """Converge a GitHub Actions repository variable to the requested value."""
         if not mutate:
             raise PermissionError("GitHub variable mutation is disabled")
-        path = f"{self._repo(repository)}/actions/variables/{_segment(name)}"
+        root = f"{self._repo(repository)}/actions/variables"
+        path = f"{root}/{_segment(name)}"
+        payload = {"name": str(name), "value": str(value)}
         try:
             self._github().request("GET", path)
-        except Exception as error:
-            if getattr(error, "status", None) != 404:
+        except GitHubError as error:
+            if error.status != 404:
                 raise
-            self._github().request(
-                "POST",
-                f"{self._repo(repository)}/actions/variables",
-                json={"name": str(name), "value": str(value)},
-            )
+            try:
+                self._github().request("POST", root, json=payload)
+                return {"name": str(name), "value": str(value), "created": True}
+            except GitHubError as create_error:
+                if create_error.status not in {409, 422}:
+                    raise
+                self._github().request("PATCH", path, json=payload)
+                return {"name": str(name), "value": str(value), "created": False}
+        try:
+            self._github().request("PATCH", path, json=payload)
+            return {"name": str(name), "value": str(value), "created": False}
+        except GitHubError as update_error:
+            if update_error.status != 404:
+                raise
+            self._github().request("POST", root, json=payload)
             return {"name": str(name), "value": str(value), "created": True}
-        self._github().request(
-            "PATCH",
-            path,
-            json={"name": str(name), "value": str(value)},
-        )
-        return {"name": str(name), "value": str(value), "created": False}
 
     def delete_variable(self, repository, name, mutate=True):
         """Delete a GitHub Actions repository variable."""
@@ -420,6 +426,8 @@ class Controller:
         if not mutate:
             raise PermissionError("GitHub secret mutation is disabled")
         key = self.secret_key(repository)
+        if not isinstance(key, dict) or not key.get("key") or not key.get("key_id"):
+            raise ValueError("GitHub Actions secret public key response is incomplete")
         encrypted = self._encrypt_secret(key["key"], value)
         self._github().request(
             "PUT",
