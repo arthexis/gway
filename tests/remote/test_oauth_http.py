@@ -432,8 +432,8 @@ def test_cimd_fetch_caps_document_before_json_parsing(monkeypatch):
             return b"x" * 65537
 
     class Opener:
-        def open(self, request, timeout):
-            assert timeout == 5
+        def open(self, _request, _timeout):
+            assert _timeout == 5
             return Response()
 
     monkeypatch.setattr(
@@ -463,7 +463,7 @@ def test_cimd_fetch_installs_no_redirect_handler(monkeypatch):
             return b'{"client_id":"https://client.example/oauth/client.json"}'
 
     class Opener:
-        def open(self, request, timeout):
+        def open(self, _request, _timeout):
             return Response()
 
     def build(*handlers):
@@ -473,7 +473,7 @@ def test_cimd_fetch_installs_no_redirect_handler(monkeypatch):
     monkeypatch.setattr(
         OAuthClientResolver,
         "_require_public_host",
-        staticmethod(lambda hostname, port: None),
+        staticmethod(lambda _hostname, _port: None),
     )
     monkeypatch.setattr("gway.remote.oauth.build_opener", build)
 
