@@ -99,6 +99,21 @@ class RemoteApplication(RemoteDiscoveryApplication):
             operations={"__all__"},
             environment={"__all__"},
         )
+        self.account.oauth.scopes.replace(
+            "logs-read",
+            operations={
+                "help",
+                "guide",
+                "version",
+                "log.sources",
+                "log.read",
+                "log.tail",
+                "log.search",
+                "security.whoami",
+                "security.scope.current",
+            },
+            environment=(),
+        )
         self.oauth = RemoteOAuthProtocol(
             metadata,
             self.account,
@@ -562,7 +577,7 @@ def build_server(
     metadata = RemoteOAuthMetadata.from_origin(
         public_origin,
         resource_path=resource_path,
-        scopes_supported=("full-access",),
+        scopes_supported=("full-access", "logs-read"),
         allow_insecure_loopback=allow_insecure_loopback,
     )
     application = RemoteApplication(
