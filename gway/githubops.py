@@ -328,3 +328,35 @@ class Controller:
             "GET",
             f"{self._repo(repository)}/releases/latest",
         ).data
+
+    def variables(self, repository):
+        """List GitHub Actions repository variables and their visible values."""
+        data = self._github().request(
+            "GET",
+            f"{self._repo(repository)}/actions/variables",
+            params={"per_page": 100},
+        ).data
+        return data.get("variables", []) if isinstance(data, dict) else data
+
+    def variable(self, repository, name):
+        """Return one GitHub Actions repository variable."""
+        return self._github().request(
+            "GET",
+            f"{self._repo(repository)}/actions/variables/{_segment(name)}",
+        ).data
+
+    def secrets(self, repository):
+        """List Actions secret metadata; secret values are never available."""
+        data = self._github().request(
+            "GET",
+            f"{self._repo(repository)}/actions/secrets",
+            params={"per_page": 100},
+        ).data
+        return data.get("secrets", []) if isinstance(data, dict) else data
+
+    def secret(self, repository, name):
+        """Return metadata for one Actions secret, never its value."""
+        return self._github().request(
+            "GET",
+            f"{self._repo(repository)}/actions/secrets/{_segment(name)}",
+        ).data
