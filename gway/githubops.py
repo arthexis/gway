@@ -215,3 +215,31 @@ class Controller:
     def secret(self, repository, name):
         """Return metadata for one Actions secret, never its value."""
         return self._github().request("GET", f"{self._repo(repository)}/actions/secrets/{_segment(name)}").data
+
+    def pulls(self, repository, state="open"):
+        """List pull requests."""
+        return self._all(f"{self._repo(repository)}/pulls", params={"state": state, "per_page": 100})
+
+    def pull(self, repository, number):
+        """Return one pull request."""
+        return self._github().request("GET", f"{self._repo(repository)}/pulls/{int(number)}").data
+
+    def issues(self, repository, state="open"):
+        """List issue records, including pull requests as GitHub returns them."""
+        return self._all(f"{self._repo(repository)}/issues", params={"state": state, "per_page": 100})
+
+    def issue(self, repository, number):
+        """Return one issue record."""
+        return self._github().request("GET", f"{self._repo(repository)}/issues/{int(number)}").data
+
+    def comments(self, repository, number):
+        """List conversation comments for an issue or pull request."""
+        return self._all(f"{self._repo(repository)}/issues/{int(number)}/comments", params={"per_page": 100})
+
+    def reviews(self, repository, number):
+        """List submitted pull-request reviews."""
+        return self._all(f"{self._repo(repository)}/pulls/{int(number)}/reviews", params={"per_page": 100})
+
+    def review_comments(self, repository, number):
+        """List inline pull-request review comments."""
+        return self._all(f"{self._repo(repository)}/pulls/{int(number)}/comments", params={"per_page": 100})
