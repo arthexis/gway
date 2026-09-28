@@ -18,6 +18,12 @@ fi
 
 "$UV" tool install --upgrade gway
 
+# Make uv-managed tools available to this bootstrap process immediately and
+# persist the tool directory for future shells. A piped child shell cannot
+# mutate the PATH of the already-running parent shell.
+export PATH="$HOME/.local/bin:$PATH"
+"$UV" tool update-shell >/dev/null 2>&1 || true
+
 if command -v gway >/dev/null 2>&1; then
     GWAY="$(command -v gway)"
 elif test -x "$HOME/.local/bin/gway"; then
@@ -27,4 +33,5 @@ else
     exit 1
 fi
 
-"$GWAY" version
+"$GWAY" --help >/dev/null
+echo "gway bootstrap: installation verified"
