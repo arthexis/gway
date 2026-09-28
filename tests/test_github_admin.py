@@ -202,3 +202,114 @@ def test_ruleset_mutations_respect_no_mutate_before_network_access():
             raise AssertionError("ruleset mutation unexpectedly allowed")
 
     assert client.calls == []
+
+
+def complete_branch_protection_policy():
+    return {
+        "required_status_checks": {
+            "strict": True,
+            "contexts": ["python / Quality"],
+        },
+        "enforce_admins": True,
+        "required_pull_request_reviews": {
+            "dismiss_stale_reviews": True,
+            "require_code_owner_reviews": False,
+            "required_approving_review_count": 1,
+            "require_last_push_approval": True,
+        },
+        "restrictions": None,
+        "required_linear_history": True,
+        "allow_force_pushes": False,
+        "allow_deletions": False,
+        "block_creations": False,
+        "required_conversation_resolution": True,
+        "lock_branch": False,
+        "allow_fork_syncing": False,
+    }
+
+
+def test_branch_protection_mutations_require_complete_explicit_policy():
+    client = FakeClient(
+        responses=[
+            {"url": "https://api.github.test/protection"},
+            None,
+        ]
+    )
+    target = Controller(None, client=client)
+    policy = complete_branch_protection_policy()
+
+    updated = target.update_branch_protection(
+        "arthexis/gway",
+        "release/test",
+        policy,
+    )
+    deleted = target.delete_branch_protection(
+        "arthexis/gway",
+        "release/test",
+    )
+
+    assert updated["url"] == "https://api.github.test/protection"
+    assert deleted == {
+        "repository": "arthexis/gway",
+        "branch": "release/test",
+        "deleted": True,
+    }
+    assert client.calls == [
+        (
+            "PUT",
+            "/repos/arthexis/gway/branches/release%2Ftest/protection",
+            None,
+        ),
+        (
+            "DELETE",
+            "/repos/arthexis/gway/branches/release%2Ftest/protection",
+            None,
+        ),
+    ]
+    assert client.payloads == [policy, None]
+
+
+def test_branch_protection_rejects_partial_policy():
+    target = Controller(None, client=FakeClient())
+
+    try:
+        target.update_branch_protection(
+            "arthexis/gway",
+            "main",
+            {
+                "required_status_checks": None,
+                "enforce_admins": True,
+            },
+        )
+    except ValueError as error:
+        assert "missing required fields" in str(error)
+    else:
+        raise AssertionError("partial branch protection unexpectedly accepted")
+
+
+def test_branch_protection_mutations_respect_no_mutate_before_network_access():
+    client = FakeClient()
+    target = Controller(None, client=client)
+    policy = complete_branch_protection_policy()
+
+    for call in (
+        lambda: target.update_branch_protection(
+            "arthexis/gway",
+            "main",
+            policy,
+            mutate=False,
+        ),
+        lambda: target.delete_branch_protection(
+            "arthexis/gway",
+            "main",
+            mutate=False,
+        ),
+    ):
+        try:
+            call()
+        except PermissionError as error:
+            assert "branch protection mutation is disabled" in str(error)
+        else:
+            raise AssertionError("branch protection mutation unexpectedly allowed")
+
+    assert client.calls == []
