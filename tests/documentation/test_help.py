@@ -197,3 +197,11 @@ def test_namespace_help_filters_unauthorized_children(gateway):
 
     assert "read" in output
     assert "error" not in output
+
+
+def test_targeted_help_rejects_unauthorized_operation(gateway):
+    with gateway.authorized(operations={"help", "log.read"}):
+        import pytest
+
+        with pytest.raises(LookupError, match="not available to current scope"):
+            gateway("help security token list")
