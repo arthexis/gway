@@ -272,6 +272,8 @@ class Gateway(Resolver):
             "github.merge_pull",
             "github.dispatch_workflow",
             "github.dispatch_repository",
+            "github.create_release",
+            "github.update_release",
         }
         for record in self.ops.records():
             if record.name.startswith("github."):
