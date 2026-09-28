@@ -7,3 +7,4 @@ default
 network redirect [interface] [destination] [port]
 --target [target]
 --target-port [target_port]
+--sudo
