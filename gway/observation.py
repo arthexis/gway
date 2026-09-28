@@ -35,53 +35,53 @@ class Controller:
             if len(command) == 1 and isinstance(command[0], str)
             else list(command)
         )
-        try:
-            with self.gateway.attenuated_scope(scope):
+        with self.gateway.attenuated_scope(scope):
+            try:
                 if self.gateway.authorization is not None:
                     with self.gateway.external_authority():
                         result = self.gateway.execute(target, mutate=False)
                 else:
                     result = self.gateway.execute(target, mutate=False)
-        except AuthorizationError as exception:
-            envelope = {
-                "status": "unauthorized",
-                "available": False,
-                "result": None,
-                "error": _error(exception),
-            }
-            if section is not None:
-                return {str(section): envelope}
-            return envelope
-        except (OperationLookupError, LookupError, FileNotFoundError) as exception:
-            envelope = {
-                "status": "unavailable",
-                "available": False,
-                "result": None,
-                "error": _error(exception),
-            }
-            if section is not None:
-                return {str(section): envelope}
-            return envelope
-        except MutationError as exception:
-            envelope = {
-                "status": "blocked",
-                "available": False,
-                "result": None,
-                "error": _error(exception),
-            }
-            if section is not None:
-                return {str(section): envelope}
-            return envelope
-        except Exception as exception:
-            envelope = {
-                "status": "error",
-                "available": True,
-                "result": None,
-                "error": _error(exception),
-            }
-            if section is not None:
-                return {str(section): envelope}
-            return envelope
+            except AuthorizationError as exception:
+                envelope = {
+                    "status": "unauthorized",
+                    "available": False,
+                    "result": None,
+                    "error": _error(exception),
+                }
+                if section is not None:
+                    return {str(section): envelope}
+                return envelope
+            except (OperationLookupError, LookupError, FileNotFoundError) as exception:
+                envelope = {
+                    "status": "unavailable",
+                    "available": False,
+                    "result": None,
+                    "error": _error(exception),
+                }
+                if section is not None:
+                    return {str(section): envelope}
+                return envelope
+            except MutationError as exception:
+                envelope = {
+                    "status": "blocked",
+                    "available": False,
+                    "result": None,
+                    "error": _error(exception),
+                }
+                if section is not None:
+                    return {str(section): envelope}
+                return envelope
+            except Exception as exception:
+                envelope = {
+                    "status": "error",
+                    "available": True,
+                    "result": None,
+                    "error": _error(exception),
+                }
+                if section is not None:
+                    return {str(section): envelope}
+                return envelope
 
         envelope = {
             "status": "ok",
