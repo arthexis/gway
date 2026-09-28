@@ -12,6 +12,19 @@ def _error(exception):
     }
 
 
+def _section_filter(value):
+    """Normalize one comma/space separated section filter."""
+    if value in (None, "", ()):
+        return ()
+    if isinstance(value, str):
+        parts = value.replace(",", " ").split()
+    else:
+        parts = []
+        for item in value:
+            parts.extend(str(item).replace(",", " ").split())
+    return tuple(dict.fromkeys(part.strip() for part in parts if part.strip()))
+
+
 class Controller:
     """Execute one command observationally and capture bounded failure metadata."""
 
@@ -99,6 +112,8 @@ class Controller:
         *section,
         changed_at=None,
         cursor=None,
+        only=None,
+        except_=None,
         mutate=False,
         **values,
     ):
@@ -114,12 +129,33 @@ class Controller:
         if not names:
             raise TypeError("observation collect requires at least one section")
 
+        only_sections = _section_filter(only)
+        except_sections = _section_filter(except_)
+        if only_sections and except_sections:
+            raise ValueError("observation collect accepts only one of --only or --except")
+
+        known = frozenset(names)
+        requested = frozenset((*only_sections, *except_sections))
+        unknown = sorted(requested - known)
+        if unknown:
+            raise ValueError(
+                "Unknown observation section(s): " + ", ".join(unknown)
+            )
+
+        selected = set(names)
+        if only_sections:
+            selected &= set(only_sections)
+        elif except_sections:
+            selected -= set(except_sections)
+
         result = {}
         states = {}
         degraded = []
         counts = {}
 
         for name in names:
+            if name not in selected:
+                continue
             envelope = self.gateway.context.get(name)
             if not isinstance(envelope, dict):
                 continue
