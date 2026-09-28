@@ -159,7 +159,7 @@ def test_empty_response_is_valid():
         lambda request: httpx.Response(204, content=b"", request=request)
     )
 
-    result = request("DELETE", "https://example.test/item", transport=transport).result()
+    response = request(\n        "DELETE", "https://example.test/item", transport=transport\n    )\n    result = response.result()
 
     assert result["status"] == 204
     assert result["result"] == ""
