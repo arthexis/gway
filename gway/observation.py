@@ -87,6 +87,47 @@ class Controller:
             return {str(section): envelope}
         return envelope
 
+
+    def collect(self, *section, mutate=False, **values):
+        """Collect visible observation sections and synthesize their health summary.
+
+        Unauthorized observation envelopes are omitted from the returned mapping.
+        Authorized but unavailable sections remain visible, while runtime failures
+        contribute to degraded health. Additional keyword values are copied into
+        the result so recipes can reserve stable aggregate fields.
+        """
+        del mutate
+        names = tuple(str(name) for name in section)
+        if not names:
+            raise TypeError("observation collect requires at least one section")
+
+        result = {}
+        states = {}
+        degraded = []
+        counts = {}
+
+        for name in names:
+            envelope = self.gateway.context.get(name)
+            if not isinstance(envelope, dict):
+                continue
+            status = envelope.get("status", "unavailable")
+            if status == "unauthorized":
+                continue
+            result[name] = envelope
+            states[name] = status
+            counts[status] = counts.get(status, 0) + 1
+            if status in {"error", "blocked"}:
+                degraded.append(name)
+
+        result["health"] = {
+            "status": "degraded" if degraded else "ok",
+            "sections": states,
+            "counts": counts,
+            "degraded": degraded,
+        }
+        result.update(values)
+        return result
+
     def status(self, *section, mutate=False):
         """Summarize named observation envelopes already present in semantic context."""
         del mutate
@@ -127,6 +168,12 @@ def register(gateway):
         "observation.status",
         controller.status,
         op="status",
+        sub="observation",
+    )
+    gateway.wrap(
+        "observation.collect",
+        controller.collect,
+        op="collect",
         sub="observation",
     )
     return controller
