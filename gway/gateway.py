@@ -258,6 +258,10 @@ class Gateway(Resolver):
 
         self._github_controller = GitHubController(self)
         ingest_python(self, self._github_controller, path=("github",))
+
+        from .watchtower import register as register_watchtower
+
+        register_watchtower(self)
         for record in self.ops.records():
             if record.name.startswith("github."):
                 operation = record.name.removeprefix("github.")
