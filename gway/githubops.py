@@ -103,6 +103,88 @@ class Controller:
             params=params,
         ).data
 
+    def create_file(
+        self, repository, path, content, message, branch=None, mutate=True
+    ):
+        """Create a repository file with an explicit commit message."""
+        if not mutate:
+            raise PermissionError("GitHub file mutation is disabled")
+        encoded = quote(str(path).strip("/"), safe="/")
+        if not encoded:
+            raise ValueError("repository file path is required")
+        if not str(message):
+            raise ValueError("repository file commit message is required")
+        payload = {
+            "message": str(message),
+            "content": base64.b64encode(
+                content if isinstance(content, bytes) else str(content).encode()
+            ).decode(),
+        }
+        if branch is not None:
+            payload["branch"] = str(branch)
+        return self._github().request(
+            "PUT",
+            f"{self._repo(repository)}/contents/{encoded}",
+            json=payload,
+        ).data
+
+    def update_file(
+        self,
+        repository,
+        path,
+        content,
+        message,
+        sha,
+        branch=None,
+        mutate=True,
+    ):
+        """Update a repository file only at the expected blob SHA."""
+        if not mutate:
+            raise PermissionError("GitHub file mutation is disabled")
+        if not str(sha):
+            raise ValueError("repository file SHA is required")
+        encoded = quote(str(path).strip("/"), safe="/")
+        if not encoded:
+            raise ValueError("repository file path is required")
+        if not str(message):
+            raise ValueError("repository file commit message is required")
+        payload = {
+            "message": str(message),
+            "content": base64.b64encode(
+                content if isinstance(content, bytes) else str(content).encode()
+            ).decode(),
+            "sha": str(sha),
+        }
+        if branch is not None:
+            payload["branch"] = str(branch)
+        return self._github().request(
+            "PUT",
+            f"{self._repo(repository)}/contents/{encoded}",
+            json=payload,
+        ).data
+
+    def delete_file(
+        self, repository, path, message, sha, branch=None, mutate=True
+    ):
+        """Delete a repository file only at the expected blob SHA."""
+        if not mutate:
+            raise PermissionError("GitHub file mutation is disabled")
+        if not str(sha):
+            raise ValueError("repository file SHA is required")
+        encoded = quote(str(path).strip("/"), safe="/")
+        if not encoded:
+            raise ValueError("repository file path is required")
+        if not str(message):
+            raise ValueError("repository file commit message is required")
+        payload = {"message": str(message), "sha": str(sha)}
+        if branch is not None:
+            payload["branch"] = str(branch)
+        return self._github().request(
+            "DELETE",
+            f"{self._repo(repository)}/contents/{encoded}",
+            json=payload,
+        ).data
+
     def tree(self, repository, tree, recursive=False):
         """Return a Git tree."""
         params = {"recursive": "1"} if recursive else None
