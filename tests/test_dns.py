@@ -1,22 +1,7 @@
 import json
-from urllib.error import HTTPError
-
 import pytest
 
 from gway import Gateway
-
-
-class Response:
-    status = 200
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, *args):
-        return False
-
-    def read(self):
-        return b""
 
 
 def test_dns_operations_are_registered():
@@ -34,15 +19,15 @@ def test_dns_create_uses_proven_godaddy_v1_replace_shape(monkeypatch):
     monkeypatch.setenv("GODADDY_API_KEY", "key")
     monkeypatch.setenv("GODADDY_API_SECRET", "secret")
 
-    def open_(request, timeout):
-        observed["url"] = request.full_url
-        observed["method"] = request.get_method()
-        observed["authorization"] = request.headers["Authorization"]
-        observed["payload"] = json.loads(request.data.decode("utf-8"))
-        observed["timeout"] = timeout
-        return Response()
+    def request_(method, url, **kwargs):
+        observed["url"] = url
+        observed["method"] = method
+        observed["authorization"] = kwargs["headers"]["Authorization"]
+        observed["payload"] = kwargs["json"]
+        observed["timeout"] = kwargs["timeout"]
+        return type("Response", (), {"status": 200, "content": b"", "text": ""})()
 
-    monkeypatch.setattr("gway.dns.urlopen", open_)
+    monkeypatch.setattr("gway.dns.http_request", request_)
 
     result = gateway(
         "dns create remote.arthexis.com "
@@ -68,11 +53,11 @@ def test_dns_create_prefers_godaddy_pat(monkeypatch):
     monkeypatch.delenv("GODADDY_API_KEY", raising=False)
     monkeypatch.delenv("GODADDY_API_SECRET", raising=False)
 
-    def open_(request, timeout):
-        observed["authorization"] = request.headers["Authorization"]
-        return Response()
+    def request_(method, url, **kwargs):
+        observed["authorization"] = kwargs["headers"]["Authorization"]
+        return type("Response", (), {"status": 200, "content": b"", "text": ""})()
 
-    monkeypatch.setattr("gway.dns.urlopen", open_)
+    monkeypatch.setattr("gway.dns.http_request", request_)
 
     gateway(
         "dns create remote.arthexis.com "
@@ -101,18 +86,14 @@ def test_dns_create_surfaces_provider_error_without_secret(monkeypatch):
     monkeypatch.setenv("GODADDY_API_KEY", "key")
     monkeypatch.setenv("GODADDY_API_SECRET", "secret")
 
-    def open_(request, timeout):
-        from io import BytesIO
+    def request_(method, url, **kwargs):
+        return type(
+            "Response",
+            (),
+            {"status": 403, "content": b'{"message":"denied"}', "text": '{"message":"denied"}'},
+        )()
 
-        raise HTTPError(
-            request.full_url,
-            403,
-            "Forbidden",
-            {},
-            BytesIO(b'{"message":"denied"}'),
-        )
-
-    monkeypatch.setattr("gway.dns.urlopen", open_)
+    monkeypatch.setattr("gway.dns.http_request", request_)
 
     with pytest.raises(RuntimeError, match="HTTP 403: denied"):
         gateway(
@@ -145,12 +126,12 @@ def test_dns_delete_uses_name_and_type(monkeypatch):
     monkeypatch.setenv("GODADDY_API_KEY", "key")
     monkeypatch.setenv("GODADDY_API_SECRET", "secret")
 
-    def open_(request, timeout):
-        observed["url"] = request.full_url
-        observed["method"] = request.get_method()
-        return Response()
+    def request_(method, url, **kwargs):
+        observed["url"] = url
+        observed["method"] = method
+        return type("Response", (), {"status": 200, "content": b"", "text": ""})()
 
-    monkeypatch.setattr("gway.dns.urlopen", open_)
+    monkeypatch.setattr("gway.dns.http_request", request_)
 
     gateway(
         "dns delete remote.arthexis.com "
@@ -179,11 +160,11 @@ def test_dns_create_reads_host_secret_store(monkeypatch, tmp_path):
 
     observed = {}
 
-    def open_(request, timeout):
-        observed["authorization"] = request.headers["Authorization"]
-        return Response()
+    def request_(method, url, **kwargs):
+        observed["authorization"] = kwargs["headers"]["Authorization"]
+        return type("Response", (), {"status": 200, "content": b"", "text": ""})()
 
-    monkeypatch.setattr("gway.dns.urlopen", open_)
+    monkeypatch.setattr("gway.dns.http_request", request_)
 
     gateway(
         "dns create remote.arthexis.com "
@@ -209,11 +190,11 @@ def test_dns_create_reads_host_pat_before_keypair(monkeypatch, tmp_path):
 
     observed = {}
 
-    def open_(request, timeout):
-        observed["authorization"] = request.headers["Authorization"]
-        return Response()
+    def request_(method, url, **kwargs):
+        observed["authorization"] = kwargs["headers"]["Authorization"]
+        return type("Response", (), {"status": 200, "content": b"", "text": ""})()
 
-    monkeypatch.setattr("gway.dns.urlopen", open_)
+    monkeypatch.setattr("gway.dns.http_request", request_)
 
     gateway(
         "dns create remote.arthexis.com "
@@ -235,11 +216,11 @@ def test_dns_environment_overrides_host_secret_store(monkeypatch, tmp_path):
 
     observed = {}
 
-    def open_(request, timeout):
-        observed["authorization"] = request.headers["Authorization"]
-        return Response()
+    def request_(method, url, **kwargs):
+        observed["authorization"] = kwargs["headers"]["Authorization"]
+        return type("Response", (), {"status": 200, "content": b"", "text": ""})()
 
-    monkeypatch.setattr("gway.dns.urlopen", open_)
+    monkeypatch.setattr("gway.dns.http_request", request_)
 
     gateway(
         "dns create remote.arthexis.com "
