@@ -94,6 +94,17 @@ operations = ["help", "guide", "version", "log.sources", "log.read", "log.tail",
 environment = []
 ```
 
+A broader observational operator scope is also maintained:
+
+```toml
+[scopes.operator-read]
+operations = ["help", "guide", "version", "products", "extensions", "log.sources", "log.read", "log.tail", "log.search", "service.list", "service.status", "sous.chef.list", "sous.chef.inspect", "security.whoami", "security.scope.current"]
+environment = []
+```
+
+This scope intentionally excludes environment reads, service lifecycle changes,
+Sous Chef execution, installation changes, and security/token/OAuth administration.
+
 G-Way Remote also maintains an explicit full-access scope:
 
 ```toml
