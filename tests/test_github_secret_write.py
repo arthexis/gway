@@ -1,4 +1,5 @@
 import base64
+
 import pytest
 
 from gway.githubops import Controller
@@ -33,7 +34,7 @@ def test_set_secret_sends_only_encrypted_value(monkeypatch, github_client):
 
 
 def test_delete_secret_returns_no_secret_material(github_client):
-    client = github_client([{"key_id": "kid", "key": "public-key"}])
+    client = github_client()
     target = Controller(None, client=client)
 
     assert target.delete_secret("arthexis/gway", "TOKEN") == {
