@@ -4,26 +4,8 @@ import pytest
 
 from gway.authorization import AuthorizationError
 from gway.github import GitHubError
-from gway.githubops import Controller
+from gway.githubops import Controller, WRITE_OPERATIONS
 
-
-WRITE_OPERATIONS = {
-    "github.create_issue",
-    "github.update_issue",
-    "github.close_issue",
-    "github.reopen_issue",
-    "github.comment_issue",
-    "github.create_pull",
-    "github.update_pull",
-    "github.close_pull",
-    "github.reopen_pull",
-    "github.reply_review_comment",
-    "github.add_labels",
-    "github.remove_label",
-    "github.ready_pull",
-    "github.draft_pull",
-    "github.merge_pull",
-}
 
 
 class CollaborationClient:
@@ -91,7 +73,7 @@ class CollaborationClient:
         )
 
 
-@pytest.mark.parametrize("operation", sorted(WRITE_OPERATIONS))
+@pytest.mark.parametrize(\n    "operation",\n    sorted(f"github.{name}" for name in WRITE_OPERATIONS if name in {\n        "create_issue", "update_issue", "close_issue", "reopen_issue",\n        "comment_issue", "create_pull", "update_pull", "close_pull",\n        "reopen_pull", "reply_review_comment", "add_labels", "remove_label",\n        "ready_pull", "draft_pull", "merge_pull",\n    }),\n)
 def test_read_authority_rejects_collaboration_writes(gateway, operation):
     with gateway.authorized(operations={"github.pull", "github.issue"}):
         with pytest.raises(AuthorizationError, match=operation):
