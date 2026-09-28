@@ -946,6 +946,9 @@ class Gateway(Resolver):
             raise LookupError(f"Unable to resolve operation: {name}")
         if self.ops.is_namespace(candidate):
             return self._namespace_help(candidate.replace(".", " "))
+        canonical = self.ops.canonical_name(target, candidate)
+        if not self._operation_visible(canonical):
+            raise LookupError(f"Operation is not available to current scope: {name}")
         return render(target, verbose=verbose)
 
     def _guide(self, *task: str, mutate=False):
