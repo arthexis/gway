@@ -1,15 +1,7 @@
 from gway import Gateway
-from gway.recipe import execute_recipe
-from gway.sampler import root as sampler_root
 
 
-def _run(runtime, relative, **context):
-    path = sampler_root() / relative
-    _, result = execute_recipe(runtime, path, context=context)
-    return result
-
-
-def test_dns_http_recipe_retries_boolean_readiness_in_same_pipeline(monkeypatch):
+def test_dns_http_recipe_retries_boolean_readiness_in_same_pipeline(monkeypatch, run_recipe):
     from gway.dns import Controller as DNSController
 
     attempts = []
@@ -28,7 +20,7 @@ def test_dns_http_recipe_retries_boolean_readiness_in_same_pipeline(monkeypatch)
     monkeypatch.setattr("gway.dispatch.time.sleep", lambda _seconds: None)
 
     runtime = Gateway()
-    result = _run(
+    result = run_recipe(
         runtime,
         "web/expose/dns-http.rx",
         domain="register.arthexis.com",
@@ -40,7 +32,7 @@ def test_dns_http_recipe_retries_boolean_readiness_in_same_pipeline(monkeypatch)
     assert len(attempts) == 3
 
 
-def test_wire_watchtower_recipe_smoke_executes_with_fake_host_adapters(monkeypatch):
+def test_wire_watchtower_recipe_smoke_executes_with_fake_host_adapters(monkeypatch, run_recipe):
     from gway.filesystem import Filesystem
     from gway.gateway import Gateway as GatewayClass
     from gway.rendering import Renderer
@@ -124,7 +116,7 @@ def test_wire_watchtower_recipe_smoke_executes_with_fake_host_adapters(monkeypat
     )
 
     runtime = Gateway()
-    result = _run(
+    result = run_recipe(
         runtime,
         "wire/watchtower.rx",
         email="ops@example.com",
@@ -142,7 +134,7 @@ def test_wire_watchtower_recipe_smoke_executes_with_fake_host_adapters(monkeypat
     assert "wire.check" in names
 
 
-def test_mcp_server_recipe_smoke_executes_with_fake_server(monkeypatch):
+def test_mcp_server_recipe_smoke_executes_with_fake_server(monkeypatch, run_recipe):
     observed = {}
 
     monkeypatch.setattr(
