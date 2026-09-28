@@ -18,10 +18,9 @@ import subprocess
 from contextlib import contextmanager
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.error import HTTPError, URLError
-from urllib.request import Request, urlopen
 
 from gway.host import run_as_identity
+from gway.http import HTTPTransportError, request as http_request
 from gway.identity import execution_identity
 from gway.rendering import atomic_write_text
 
@@ -253,24 +252,32 @@ def _normalize_enrollment_url(value):
 
 
 def _post_enrollment(url, payload):
-    request = Request(
-        _normalize_enrollment_url(url),
-        data=json.dumps(payload, separators=(",", ":")).encode("utf-8"),
-        headers={"content-type": "application/json", "accept": "application/json"},
-        method="POST",
-    )
     try:
-        with urlopen(request, timeout=30) as response:
-            return json.loads(response.read().decode("utf-8"))
-    except HTTPError as error:
-        body = error.read().decode("utf-8", "replace")
+        response = http_request(
+            "POST",
+            _normalize_enrollment_url(url),
+            headers={"accept": "application/json"},
+            json=payload,
+            timeout=30,
+        )
+    except HTTPTransportError as error:
+        raise ConnectionError(
+            f"wire enrollment service unavailable: {error}"
+        ) from error
+
+    if response.status >= 400:
+        body = response.text
         try:
-            detail = json.loads(body).get("message", body)
-        except (json.JSONDecodeError, AttributeError):
+            parsed = json.loads(body)
+            detail = parsed.get("message", body) if isinstance(parsed, dict) else body
+        except json.JSONDecodeError:
             detail = body
-        raise PermissionError(f"wire enrollment failed: {detail}") from error
-    except URLError as error:
-        raise ConnectionError(f"wire enrollment service unavailable: {error.reason}") from error
+        raise PermissionError(f"wire enrollment failed: {detail}")
+
+    try:
+        return response.json()
+    except (json.JSONDecodeError, UnicodeDecodeError) as error:
+        raise ValueError("wire enrollment returned invalid JSON") from error
 
 
 _MANAGED_BEGIN = "# BEGIN gway wire peer: "

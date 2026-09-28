@@ -4,10 +4,10 @@ from pathlib import Path
 import os
 import shutil
 import subprocess
-from urllib.request import Request, urlopen
 
 from ..environment import environment_child
 from ..install.paths import data_root
+from ..http import request as http_request
 
 
 UV_INSTALL_SH = "https://astral.sh/uv/install.sh"
@@ -39,9 +39,17 @@ def find_uv(*, system=False, root=None):
 
 
 def _download_text(url):
-    request = Request(url, headers={"User-Agent": "gway"})
-    with urlopen(request) as response:
-        return response.read().decode("utf-8")
+    response = http_request(
+        "GET",
+        url,
+        headers={"User-Agent": "gway"},
+        follow_redirects=True,
+    )
+    if response.status >= 400:
+        raise RuntimeError(
+            f"uv installer download failed with HTTP {response.status}: {url}"
+        )
+    return response.text
 
 
 def _bootstrap_posix(target):

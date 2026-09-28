@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import json
 import socket
-from urllib.error import HTTPError, URLError
 from urllib.parse import quote
-from urllib.request import Request, urlopen
+
+from .http import HTTPTransportError, request as http_request
 
 
 class Controller:
@@ -53,38 +53,41 @@ class Controller:
         return f"sso-key {key}:{secret}"
 
     def _request(self, method, url, *, payload=None, backend="godaddy"):
-        data = None
         headers = {
             "Authorization": self._auth_header(backend),
             "Accept": "application/json",
         }
         if payload is not None:
-            data = json.dumps(payload).encode("utf-8")
             headers["Content-Type"] = "application/json"
-        request = Request(url, data=data, headers=headers, method=method)
         try:
-            with urlopen(request, timeout=30) as response:
-                body = response.read()
-                return response.status, body
-        except HTTPError as error:
-            body = error.read().decode("utf-8", "replace")
+            response = http_request(
+                method,
+                url,
+                headers=headers,
+                json=payload,
+                timeout=30,
+            )
+        except HTTPTransportError as error:
+            raise RuntimeError(f"GoDaddy DNS API request failed: {error}") from error
+
+        if response.status >= 400:
+            body = response.text
             detail = body[:500]
             try:
-                payload = json.loads(body)
+                error_payload = json.loads(body)
             except ValueError:
-                payload = None
-            if isinstance(payload, dict):
+                error_payload = None
+            if isinstance(error_payload, dict):
                 detail = str(
-                    payload.get("message")
-                    or payload.get("detail")
-                    or payload.get("error")
+                    error_payload.get("message")
+                    or error_payload.get("detail")
+                    or error_payload.get("error")
                     or detail
                 )
             raise RuntimeError(
-                f"GoDaddy DNS API {method} failed with HTTP {error.code}: {detail}"
-            ) from error
-        except URLError as error:
-            raise RuntimeError(f"GoDaddy DNS API request failed: {error.reason}") from error
+                f"GoDaddy DNS API {method} failed with HTTP {response.status}: {detail}"
+            )
+        return response.status, response.content
 
     def create(
         self,

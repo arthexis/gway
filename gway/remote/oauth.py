@@ -77,6 +77,13 @@ class OAuthClientResolver:
 
     @classmethod
     def _fetch_cimd(cls, client_id):
+        """Fetch CIMD with deliberately strict, non-generic HTTP semantics.
+
+        This path intentionally does not use the shared HTTPX transport. CIMD is
+        an SSRF-sensitive server-side fetch: it requires HTTPS, pre-validates
+        every resolved address as public, refuses redirects, and caps the body at
+        64 KiB. A future migration must preserve or strengthen all invariants.
+        """
         parsed = cls._client_url(client_id)
         cls._require_public_host(parsed.hostname, parsed.port)
         opener = build_opener(_NoRedirect)
