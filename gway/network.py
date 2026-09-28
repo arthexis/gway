@@ -119,6 +119,7 @@ class Controller:
         target="127.0.0.1",
         target_port=None,
         sudo=False,
+        rollback=None,
         mutate=True,
     ) -> dict[str, object]:
         """Redirect matching inbound TCP traffic to a local listener.
@@ -172,6 +173,17 @@ class Controller:
         root = self._state_root()
         root.mkdir(parents=True, exist_ok=True)
         path = root / f"{handle}.json"
+
+        journal_entry = None
+        if rollback is not None:
+            journal_entry = self.gateway.journal.prepare(
+                rollback,
+                kind="operation",
+                data={
+                    "operation": "network.redirect",
+                    "result": dict(record),
+                },
+            )
         path.write_text(
             json.dumps(record, indent=2, sort_keys=True) + "\n",
             encoding="utf-8",
@@ -182,6 +194,9 @@ class Controller:
             path.unlink(missing_ok=True)
             raise
 
+        if journal_entry is not None:
+            self.gateway.journal.mark_mutated(rollback, journal_entry.sequence)
+
         record["active"] = True
         try:
             path.write_text(
@@ -191,6 +206,9 @@ class Controller:
         except Exception:
             self._run("delete", "table", family, table, sudo=sudo)
             raise
+
+        if journal_entry is not None:
+            self.gateway.journal.mark_applied(rollback, journal_entry.sequence)
         return record
 
     def remove(self, id, *, mutate=True) -> dict[str, object]:
