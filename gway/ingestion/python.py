@@ -29,15 +29,23 @@ def _default_path(source):
     raise ValueError("Python source requires an explicit ingestion path")
 
 
+_ENTRY_SPECIAL_METHOD = "__main__"
+_RESERVED_SPECIAL_METHODS = frozenset({"__main__", "__help__"})
+
+
 def _public_members(source):
-    """Yield direct public attributes plus the module __main__ convention."""
+    """Yield direct public attributes plus the reserved __main__ entrypoint.
+
+    Other dunder methods, including __help__, are framework metadata hooks and
+    are never published as standalone operations.
+    """
     try:
         names = dir(source)
     except Exception:
         return
 
     for name in names:
-        if name.startswith("_") and name != "__main__":
+        if name.startswith("_") and name != _ENTRY_SPECIAL_METHOD:
             continue
         try:
             value = getattr(source, name)
