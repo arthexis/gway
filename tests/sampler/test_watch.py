@@ -1,5 +1,3 @@
-from types import SimpleNamespace
-
 from gway import Gateway
 
 
@@ -75,7 +73,9 @@ role = "{role}"
     )
     gateway.wrap(
         "log.search",
-        lambda pattern, *source, since=None, until=None, limit=100, all=False, mutate=False: [],
+        lambda pattern, *source, since=None, until=None, limit=100, all=False, mutate=False: (
+            []
+        ),
         op="search",
         sub="log",
     )
