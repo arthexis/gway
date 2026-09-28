@@ -53,14 +53,14 @@ def _is_under(path, root):
     return True
 
 
-def test_repository_recipes_are_sampler_or_explicit_root_entrypoints():
+def test_all_repository_recipes_live_under_sampler():
     root = repository_root()
     sampler = root / "sampler"
 
     recipes = sorted(path for path in root.rglob("*.rx") if path.is_file())
     misplaced = [path.relative_to(root) for path in recipes if not _is_under(path, sampler)]
 
-    assert misplaced == [Path("ci.rx")]
+    assert misplaced == []
 
 
 def test_all_recipe_companions_live_beside_recipes_under_sampler():
