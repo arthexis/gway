@@ -1,23 +1,11 @@
-from types import SimpleNamespace
+import pytest
 
 from gway.github import GitHubError
 from gway.githubops import Controller
 
 
-class FakeClient:
-    def __init__(self, exists=True):
-        self.exists = exists
-        self.calls = []
-
-    def request(self, method, path, *, params=None, json=None, headers=None):
-        self.calls.append((method, path, json))
-        if method == "GET" and "/actions/variables/" in path and not self.exists:
-            raise GitHubError(404, "Not Found")
-        return SimpleNamespace(data=None)
-
-
-def test_set_variable_creates_when_missing():
-    client = FakeClient(exists=False)
+def test_set_variable_creates_when_missing(github_client):
+    client = github_client([GitHubError(404, "Not Found"), None])
     target = Controller(None, client=client)
 
     result = target.set_variable("arthexis/gway", "DEPLOY_ENV", "production")
@@ -27,40 +15,39 @@ def test_set_variable_creates_when_missing():
         "value": "production",
         "created": True,
     }
-    assert client.calls[-1] == (
-        "POST",
-        "/repos/arthexis/gway/actions/variables",
-        {"name": "DEPLOY_ENV", "value": "production"},
-    )
+    assert client.calls[-1] == {
+        "method": "POST",
+        "path": "/repos/arthexis/gway/actions/variables",
+        "params": None,
+        "json": {"name": "DEPLOY_ENV", "value": "production"},
+    }
 
 
-def test_set_variable_updates_when_present():
-    client = FakeClient(exists=True)
+def test_set_variable_updates_when_present(github_client):
+    client = github_client([None, None])
     target = Controller(None, client=client)
 
     result = target.set_variable("arthexis/gway", "DEPLOY_ENV", "staging")
 
     assert result["created"] is False
-    assert client.calls[-1] == (
-        "PATCH",
-        "/repos/arthexis/gway/actions/variables/DEPLOY_ENV",
-        {"name": "DEPLOY_ENV", "value": "staging"},
-    )
+    assert client.calls[-1] == {
+        "method": "PATCH",
+        "path": "/repos/arthexis/gway/actions/variables/DEPLOY_ENV",
+        "params": None,
+        "json": {"name": "DEPLOY_ENV", "value": "staging"},
+    }
 
 
-def test_delete_variable_uses_delete():
-    client = FakeClient()
+def test_delete_variable_uses_delete(github_client):
+    client = github_client()
     target = Controller(None, client=client)
 
     assert target.delete_variable("arthexis/gway", "DEPLOY_ENV") == {
         "name": "DEPLOY_ENV",
         "deleted": True,
     }
-    assert client.calls[-1] == (
-        "DELETE",
-        "/repos/arthexis/gway/actions/variables/DEPLOY_ENV",
-        None,
-    )
+    assert client.calls[-1]["method"] == "DELETE"
+    assert client.calls[-1]["path"].endswith("/actions/variables/DEPLOY_ENV")
 
 
 def test_variable_mutations_are_source_write(gateway):
