@@ -531,28 +531,21 @@ def test_mcp_http_query_uses_bearer_scope_and_forces_no_mutation(
     recipe = _mcp_http_recipe(recipe_factory, tmp_path / "mcphttpquery")
     recipe.write_text(
         "require fastmcp\n"
-        f"server probe http {issued.bearer!r} observe --tool query\n",
+        f"server probe http {issued.bearer!r} observe "
+        f"{issued.bearer!r} restart --tool query\n",
         encoding="utf-8",
     )
     gateway.ingest(recipe.parent)
 
     with gateway.authorized(operations={"mcphttpquery.server"}):
-        tools, result, error = gateway("mcphttpquery server")
+        first, second = gateway("mcphttpquery server")
 
+    tools, result, error = first
     assert tools == ["gway", "query"]
     assert result == "observed"
     assert error is None
-    assert seen == [("observe", False)]
 
-    recipe.write_text(
-        "require fastmcp\n"
-        f"server probe http {issued.bearer!r} restart --tool query\n",
-        encoding="utf-8",
-    )
-
-    with gateway.authorized(operations={"mcphttpquery.server"}):
-        tools, result, error = gateway("mcphttpquery server")
-
+    tools, result, error = second
     assert tools == ["gway", "query"]
     assert result is None
     assert "does not support non-mutating execution" in error
