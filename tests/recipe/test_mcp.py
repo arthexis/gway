@@ -575,7 +575,7 @@ def _issued_oauth_token(tmp_path, monkeypatch, *, resource=MCP_RESOURCE):
     return scopes, tokens, oauth, issued
 
 
-def test_mcp_http_real_client_accepts_oauth_access_token(
+def test_mcp_http_oauth_access_token_obeys_scope_and_capability_boundary(
     gateway, recipe_factory, required_runtime, tmp_path, monkeypatch
 ):
     _, _, _, issued = _issued_oauth_token(tmp_path, monkeypatch)
@@ -583,17 +583,21 @@ def test_mcp_http_real_client_accepts_oauth_access_token(
     gateway.allowed = gateway.wrap("allowed", lambda: "ok")
     recipe = _mcp_http_recipe(recipe_factory, tmp_path / "mcpoauth")
     recipe.write_text(
-        f"require fastmcp\nserver probe http {issued.access_token!r} allowed\n",
+        "require fastmcp\n"
+        f"server probe http {issued.access_token!r} allowed "
+        f"{issued.access_token!r} clear\n",
         encoding="utf-8",
     )
     gateway.ingest(recipe.parent)
 
     with gateway.authorized(operations={"mcpoauth.server"}):
-        tools, result, error = gateway("mcpoauth server")
+        allowed, trusted_only = gateway("mcpoauth server")
 
-    assert tools == ["gway", "query"]
-    assert result == "ok"
-    assert error is None
+    assert allowed == (["gway", "query"], "ok", None)
+    assert trusted_only[0] == ["gway", "query"]
+    assert trusted_only[1] is None
+    assert "Operation is not authorized: clear" in trusted_only[2]
+    assert "401" not in trusted_only[2]
 
 
 def test_mcp_http_oauth_token_uses_live_named_scope_after_issuance(
@@ -621,27 +625,6 @@ def test_mcp_http_oauth_token_uses_live_named_scope_after_issuance(
     assert first[1] is None
     assert "Operation is not authorized: allowed" in first[2]
     assert second == (["gway", "query"], "new", None)
-
-
-def test_mcp_http_oauth_authority_does_not_inherit_trusted_recipe_capability(
-    gateway, recipe_factory, required_runtime, tmp_path, monkeypatch
-):
-    _, _, _, issued = _issued_oauth_token(tmp_path, monkeypatch)
-
-    recipe = _mcp_http_recipe(recipe_factory, tmp_path / "mcpoauthcapability")
-    recipe.write_text(
-        f"require fastmcp\nserver probe http {issued.access_token!r} clear\n",
-        encoding="utf-8",
-    )
-    gateway.ingest(recipe.parent)
-
-    with gateway.authorized(operations={"mcpoauthcapability.server"}):
-        tools, result, error = gateway("mcpoauthcapability server")
-
-    assert tools == ["gway", "query"]
-    assert result is None
-    assert "Operation is not authorized: clear" in error
-    assert "401" not in error
 
 
 def test_mcp_http_rejects_oauth_token_for_different_resource(
