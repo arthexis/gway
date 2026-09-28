@@ -29,12 +29,13 @@ class Controller:
         if not command:
             raise TypeError("observe requires a command")
 
+        target = command[0] if len(command) == 1 and isinstance(command[0], str) else list(command)
         try:
             if self.gateway.authorization is not None:
                 with self.gateway.external_authority():
-                    result = self.gateway.execute(list(command), mutate=False)
+                    result = self.gateway.execute(target, mutate=False)
             else:
-                result = self.gateway.execute(list(command), mutate=False)
+                result = self.gateway.execute(target, mutate=False)
         except AuthorizationError as exception:
             envelope = {
                 "status": "unauthorized",
