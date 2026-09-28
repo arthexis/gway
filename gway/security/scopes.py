@@ -308,6 +308,24 @@ class ScopeRegistry:
                 )
         return [self.require(name) for name in sorted(normalized)]
 
+    def rename(self, name, new_name):
+        """Rename one scope while preserving grants and all bindings."""
+        name = self._name(name)
+        new_name = self._name(new_name)
+        with self.state.connect() as connection:
+            if connection.execute(
+                "SELECT 1 FROM scopes WHERE name = ?",
+                (new_name,),
+            ).fetchone():
+                raise ValueError(f"Security scope already exists: {new_name}")
+            cursor = connection.execute(
+                "UPDATE scopes SET name = ? WHERE name = ?",
+                (new_name, name),
+            )
+            if not cursor.rowcount:
+                raise LookupError(f"Unknown security scope: {name}")
+        return self.require(new_name)
+
     def remove(self, name):
         """Delete one scope and its grants."""
         if not self.path.is_file():
