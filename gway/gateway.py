@@ -262,6 +262,10 @@ class Gateway(Resolver):
         from .watchtower import register as register_watchtower
 
         register_watchtower(self)
+
+        from .observation import register as register_observation
+
+        register_observation(self)
         for record in self.ops.records():
             if record.name.startswith("github."):
                 operation = record.name.removeprefix("github.")
