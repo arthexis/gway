@@ -10,6 +10,8 @@ import subprocess
 import uuid
 from pathlib import Path
 
+from .identity import execution_identity
+
 
 _TABLE_PREFIX = "gway_capture_"
 _HANDLE_RE = re.compile(r"^[a-f0-9]{12}$")
@@ -76,9 +78,19 @@ class Controller:
             "strategy": "destination-redirect" if executable is not None else None,
         }
 
-    def _run(self, *arguments: str, input_text: str | None = None):
+    def _command(self, *arguments: str, sudo: bool = False) -> list[str]:
+        return list(
+            execution_identity(sudo=sudo).command(self._nft(), *arguments)
+        )
+
+    def _run(
+        self,
+        *arguments: str,
+        input_text: str | None = None,
+        sudo: bool = False,
+    ):
         result = self.runner(
-            [self._nft(), *arguments],
+            self._command(*arguments, sudo=sudo),
             input=input_text,
             text=True,
             capture_output=True,
@@ -89,9 +101,9 @@ class Controller:
             raise RuntimeError(f"nftables redirect failed: {detail or result.returncode}")
         return result
 
-    def _table_exists(self, family: str, table: str) -> bool:
+    def _table_exists(self, family: str, table: str, *, sudo: bool = False) -> bool:
         result = self.runner(
-            [self._nft(), "list", "table", family, table],
+            self._command("list", "table", family, table, sudo=sudo),
             text=True,
             capture_output=True,
             check=False,
@@ -106,6 +118,7 @@ class Controller:
         *,
         target="127.0.0.1",
         target_port=None,
+        sudo=False,
         mutate=True,
     ) -> dict[str, object]:
         """Redirect matching inbound TCP traffic to a local listener.
@@ -154,6 +167,7 @@ class Controller:
             "target": local_target,
             "target_port": local_port,
             "active": False,
+            "sudo": bool(sudo),
         }
         root = self._state_root()
         root.mkdir(parents=True, exist_ok=True)
@@ -163,7 +177,7 @@ class Controller:
             encoding="utf-8",
         )
         try:
-            self._run("-f", "-", input_text=script)
+            self._run("-f", "-", input_text=script, sudo=sudo)
         except Exception:
             path.unlink(missing_ok=True)
             raise
@@ -175,7 +189,7 @@ class Controller:
                 encoding="utf-8",
             )
         except Exception:
-            self._run("delete", "table", family, table)
+            self._run("delete", "table", family, table, sudo=sudo)
             raise
         return record
 
@@ -194,8 +208,9 @@ class Controller:
         family = str(record["family"])
         table = str(record["table"])
         changed = False
-        if self._table_exists(family, table):
-            self._run("delete", "table", family, table)
+        sudo = bool(record.get("sudo", False))
+        if self._table_exists(family, table, sudo=sudo):
+            self._run("delete", "table", family, table, sudo=sudo)
             changed = True
 
         record["active"] = False
@@ -221,5 +236,6 @@ class Controller:
         record["active"] = self._table_exists(
             str(record["family"]),
             str(record["table"]),
+            sudo=bool(record.get("sudo", False)),
         )
         return record
