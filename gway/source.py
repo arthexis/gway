@@ -80,7 +80,43 @@ def describe_resolved_source(resolution):
     return _python_descriptor(operation, callable_)
 
 
-def inspect_source(gateway, *operation, mutate=False):
+def search_descriptor(descriptor, query, *, context=2):
+    """Search only within one already-resolved source descriptor."""
+    if context < 0:
+        raise ValueError("source search context must be non-negative")
+    if not descriptor.available or descriptor.source is None:
+        result = descriptor.result()
+        result["matches"] = []
+        result.pop("source", None)
+        return result
+
+    query = str(query)
+    lines = descriptor.source.splitlines()
+    first_line = descriptor.start_line or 1
+    matches = []
+    for index, line in enumerate(lines):
+        if query not in line:
+            continue
+        before_start = max(0, index - context)
+        after_end = min(len(lines), index + context + 1)
+        matches.append(
+            {
+                "line": first_line + index,
+                "text": line,
+                "before": lines[before_start:index],
+                "after": lines[index + 1 : after_end],
+            }
+        )
+
+    return {
+        "operation": descriptor.operation,
+        "kind": descriptor.kind,
+        "path": descriptor.path,
+        "matches": matches,
+    }
+
+
+def inspect_source(gateway, *operation, search=None, context=2, mutate=False):
     """Return source metadata for the operation normal dispatch would execute."""
     del mutate
     if not operation:
@@ -95,4 +131,7 @@ def inspect_source(gateway, *operation, mutate=False):
             "source target includes unresolved arguments: "
             + " ".join(map(str, resolution.arguments))
         )
-    return describe_resolved_source(resolution).result()
+    descriptor = describe_resolved_source(resolution)
+    if search is not None:
+        return search_descriptor(descriptor, search, context=context)
+    return descriptor.result()
