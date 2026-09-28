@@ -5,11 +5,12 @@
 # Unsupported authorized capabilities degrade independently instead of
 # aborting the whole snapshot.
 
+observation validate --changed [changed]
 observe --section node --scope [scope] -- node
 observe --section services --scope [scope] -- service statuses
 observe --section deploy --scope [scope] -- node deploy status
 observe --section release --scope [scope] -- node release status
 observe --section queue --scope [scope] -- node queue status
 observe --section wire --scope [scope] -- wire check
-observe --section errors --scope [scope] -- log search "ERROR|CRITICAL" --all --limit 20
-observation collect node services deploy release queue wire errors --only [only] --except [except_]
+observe --section errors --scope [scope] -- log search "ERROR|CRITICAL" --all --limit 20 --since [since]
+observation collect node services deploy release queue wire errors --only [only] --except [except_] --errors [errors]
