@@ -231,27 +231,25 @@ def test_remote_runtime_converges_operator_read_scope(tmp_path):
 
     RemoteApplication(metadata, runtime=runtime)
 
-    scope = ScopeRegistry(runtime.security_path).require("operator-read")
-    assert scope.operations == frozenset(
+    registry = ScopeRegistry(runtime.security_path)
+    logs = registry.require("logs-read")
+    operator = registry.require("operator-read")
+
+    assert operator.operations == frozenset(
         {
-            "help",
-            "guide",
-            "version",
             "products",
             "extensions",
-            "log.sources",
-            "log.read",
-            "log.tail",
-            "log.search",
             "service.list",
             "service.status",
             "sous.chef.list",
             "sous.chef.inspect",
-            "security.whoami",
-            "security.scope.current",
         }
     )
-    assert scope.environment == frozenset()
+    assert operator.environment == frozenset()
+    assert logs.operations.isdisjoint(operator.operations)
+    assert registry.resolve({"logs-read", "operator-read"}).operations == (
+        logs.operations | operator.operations
+    )
 
 
 def test_remote_runtime_permission_summary_expands_lazy_read_only_operation(tmp_path):
