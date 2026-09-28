@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from urllib.parse import quote
+import base64
 
 from .github import Client
 
@@ -389,5 +390,46 @@ class Controller:
         self._github().request(
             "DELETE",
             f"{self._repo(repository)}/actions/variables/{_segment(name)}",
+        )
+        return {"name": str(name), "deleted": True}
+
+    def secret_key(self, repository):
+        """Return the Actions public key used to encrypt repository secrets."""
+        return self._github().request(
+            "GET",
+            f"{self._repo(repository)}/actions/secrets/public-key",
+        ).data
+
+    @staticmethod
+    def _encrypt_secret(public_key, value):
+        try:
+            from nacl import encoding, public
+        except ImportError as error:
+            raise RuntimeError(
+                "GitHub secret writes require PyNaCl"
+            ) from error
+        key = public.PublicKey(str(public_key), encoding.Base64Encoder())
+        box = public.SealedBox(key)
+        encrypted = box.encrypt(str(value).encode("utf-8"))
+        return base64.b64encode(encrypted).decode("ascii")
+
+    def set_secret(self, repository, name, value, mutate=True):
+        """Encrypt and set a GitHub Actions repository secret."""
+        del mutate
+        key = self.secret_key(repository)
+        encrypted = self._encrypt_secret(key["key"], value)
+        self._github().request(
+            "PUT",
+            f"{self._repo(repository)}/actions/secrets/{_segment(name)}",
+            json={"encrypted_value": encrypted, "key_id": key["key_id"]},
+        )
+        return {"name": str(name), "updated": True}
+
+    def delete_secret(self, repository, name, mutate=True):
+        """Delete a GitHub Actions repository secret."""
+        del mutate
+        self._github().request(
+            "DELETE",
+            f"{self._repo(repository)}/actions/secrets/{_segment(name)}",
         )
         return {"name": str(name), "deleted": True}
