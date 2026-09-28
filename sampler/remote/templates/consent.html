@@ -12,7 +12,7 @@
   <div class="brand">G-Way Remote</div>
   <section class="card">
     <h1>Authorize remote access</h1>
-    <p class="meta muted">Client: <code>[client_id]</code></p>
+    <form class="consent-form" method="post" action="/consent">\n      <input type="hidden" name="csrf" value="[csrf]">\n    <p class="meta muted">Client: <code>[client_id]</code></p>
     [resource_html]
     <div class="notice"><strong>Review this authority carefully.</strong><br>[authority_notice]</div>
 

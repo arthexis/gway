@@ -8,6 +8,7 @@
 html { min-height: 100%; background: #0b1020; }
 body {
   margin: 0;
+  -webkit-text-size-adjust: 100%;
   min-height: 100vh;
   background: linear-gradient(180deg, #11182b 0%, #0b1020 100%);
   color: #f3f6ff;
@@ -17,7 +18,7 @@ body {
 main {
   width: min(100% - 32px, 720px);
   margin: 0 auto;
-  padding: 40px 0 64px;
+  padding: max(28px, env(safe-area-inset-top)) 0 max(48px, env(safe-area-inset-bottom));
 }
 .brand {
   display: inline-flex;
@@ -29,6 +30,7 @@ main {
   letter-spacing: .02em;
 }
 .card {
+  min-width: 0;
   background: #151d31;
   border: 1px solid #2a3655;
   border-radius: 20px;
@@ -119,6 +121,8 @@ button, .button {
   margin: 18px 0;
 }
 .summary {
+  min-width: 0;
+  overflow-wrap: anywhere;
   background: #0f1728;
   border: 1px solid #2c3957;
   border-radius: 14px;
@@ -137,11 +141,21 @@ button, .button {
   padding: 14px 16px;
   margin-top: 10px;
 }
-details { margin-top: 8px; }
+details { margin-top: 8px; min-width: 0; overflow-wrap: anywhere; }
 summary { cursor: pointer; color: #c9d4ff; }
 nav { display: grid; gap: 12px; margin-top: 22px; }
 a { color: #b9c8ff; }
 .small { font-size: .9rem; }
+@media (max-width: 599px) {
+  main { width: min(100% - 24px, 720px); }
+  .card { padding: 22px 18px; border-radius: 16px; }
+  h1 { font-size: clamp(1.85rem, 9vw, 2.5rem); }
+  .notice { padding: 14px; }
+  .scope-list > li, .environment-list > li { padding: 13px; }
+  .actions { position: sticky; bottom: max(8px, env(safe-area-inset-bottom)); z-index: 2;
+    padding: 10px; margin-inline: -10px; border-radius: 16px;
+    background: rgba(21,29,49,.96); box-shadow: 0 -8px 24px rgba(0,0,0,.22); }
+}
 @media (min-width: 600px) {
   main { padding-top: 64px; }
   .card { padding: 36px; }
