@@ -12,6 +12,40 @@ def _segment(value):
     return quote(str(value), safe="")
 
 
+WRITE_OPERATIONS = frozenset({
+    "set_variable",
+    "delete_variable",
+    "set_secret",
+    "delete_secret",
+    "create_issue",
+    "update_issue",
+    "close_issue",
+    "reopen_issue",
+    "comment_issue",
+    "create_pull",
+    "update_pull",
+    "close_pull",
+    "reopen_pull",
+    "reply_review_comment",
+    "add_labels",
+    "remove_label",
+    "ready_pull",
+    "draft_pull",
+    "merge_pull",
+    "dispatch_workflow",
+    "dispatch_repository",
+    "create_release",
+    "update_release",
+    "create_ref",
+    "create_branch",
+    "delete_ref",
+    "delete_branch",
+    "create_file",
+    "update_file",
+    "delete_file",
+})
+
+
 class Controller:
     """GitHub repository inspection operations."""
 
