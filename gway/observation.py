@@ -1,8 +1,88 @@
 """Structured observation boundaries for read-only composition."""
 
+import base64
+import hashlib
+import json
+from datetime import datetime, timezone
+from pathlib import Path
+
 from .authorization import AuthorizationError
 from .dispatch import OperationLookupError
 from .mutation import MutationError
+
+
+_CURSOR_VERSION = 1
+
+
+def _stable_value(value):
+    """Normalize ordinary structured results for deterministic fingerprinting."""
+    if isinstance(value, dict):
+        return {
+            str(key): _stable_value(item)
+            for key, item in sorted(value.items(), key=lambda pair: str(pair[0]))
+        }
+    if isinstance(value, (list, tuple)):
+        return [_stable_value(item) for item in value]
+    if isinstance(value, (set, frozenset)):
+        normalized = [_stable_value(item) for item in value]
+        return sorted(
+            normalized,
+            key=lambda item: json.dumps(item, sort_keys=True, default=str),
+        )
+    if isinstance(value, Path):
+        return str(value)
+    if hasattr(value, "isoformat") and callable(value.isoformat):
+        try:
+            return value.isoformat()
+        except (TypeError, ValueError):
+            pass
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+    return str(value)
+
+
+def _fingerprint(value):
+    payload = json.dumps(
+        _stable_value(value),
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+    ).encode("utf-8")
+    return hashlib.sha256(payload).hexdigest()
+
+
+def _encode_cursor(sections, observed_at):
+    document = {
+        "v": _CURSOR_VERSION,
+        "at": observed_at,
+        "sections": {
+            name: _fingerprint(value)
+            for name, value in sorted(sections.items())
+        },
+    }
+    raw = json.dumps(
+        document,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    return base64.urlsafe_b64encode(raw).rstrip(b"=").decode("ascii")
+
+
+def _decode_cursor(value):
+    if value in (None, ""):
+        return None
+    try:
+        encoded = str(value).encode("ascii")
+        padding = b"=" * (-len(encoded) % 4)
+        document = json.loads(base64.urlsafe_b64decode(encoded + padding))
+    except (UnicodeEncodeError, ValueError, TypeError, json.JSONDecodeError) as exc:
+        raise ValueError("Invalid observation cursor") from exc
+    if document.get("v") != _CURSOR_VERSION:
+        raise ValueError("Unsupported observation cursor version")
+    sections = document.get("sections")
+    if not isinstance(sections, dict):
+        raise ValueError("Invalid observation cursor")
+    return document
 
 
 def _error(exception):
@@ -118,13 +198,13 @@ class Controller:
         return envelope
 
 
-    def validate(self, *, changed=None, mutate=False):
-        """Validate observation filters that need incremental state."""
+    def validate(self, *, changed=None, cursor=None, mutate=False):
+        """Validate incremental observation arguments before probe work."""
         del mutate
-        if _enabled(changed):
-            raise NotImplementedError(
-                "watch --changed requires cursor/change tracking from chunk 4.6"
-            )
+        if _enabled(changed) and cursor in (None, ""):
+            raise ValueError("watch --changed requires --cursor")
+        if cursor not in (None, ""):
+            _decode_cursor(cursor)
         return None
 
     def collect(
@@ -135,6 +215,7 @@ class Controller:
         only=None,
         except_=None,
         errors=None,
+        changed=None,
         mutate=False,
         **values,
     ):
@@ -193,6 +274,34 @@ class Controller:
             if status in {"error", "blocked"}:
                 degraded.append(name)
 
+        visible_sections = dict(result)
+        observed_at = datetime.now(timezone.utc).isoformat()
+        baseline = _decode_cursor(cursor)
+        if _enabled(changed):
+            previous = baseline["sections"]
+            changed_names = {
+                name
+                for name, envelope in visible_sections.items()
+                if previous.get(name) != _fingerprint(envelope)
+            }
+            result = {
+                name: envelope
+                for name, envelope in visible_sections.items()
+                if name in changed_names
+            }
+            states = {
+                name: status
+                for name, status in states.items()
+                if name in changed_names
+            }
+            degraded = [
+                name for name in degraded if name in changed_names
+            ]
+            counts = {}
+            for status in states.values():
+                counts[status] = counts.get(status, 0) + 1
+            changed_at = observed_at if changed_names else None
+
         result["health"] = {
             "status": "degraded" if degraded else "ok",
             "sections": states,
@@ -201,7 +310,7 @@ class Controller:
         }
         result.update(values)
         result["changed_at"] = changed_at
-        result["cursor"] = cursor
+        result["cursor"] = _encode_cursor(visible_sections, observed_at)
         return result
 
     def status(self, *section, mutate=False):
