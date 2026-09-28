@@ -4,8 +4,7 @@ from gway.githubops import Controller
 
 
 class LifecycleClient:
-    def __init__(self, draft):
-        self.draft = draft
+    def __init__(self):
         self.calls = []
 
     def request(self, method, path, *, params=None, json=None, headers=None):
@@ -43,7 +42,7 @@ class LifecycleClient:
     [("ready_pull", False), ("draft_pull", True)],
 )
 def test_pull_lifecycle_uses_graphql_mutation(method, expected_draft):
-    client = LifecycleClient(draft=not expected_draft)
+    client = LifecycleClient()
     target = Controller(None, client=client)
 
     result = getattr(target, method)("arthexis/gway", 51)
@@ -116,7 +115,7 @@ def test_merge_pull_validates_method_before_http(github_client):
     ],
 )
 def test_pull_lifecycle_rejects_no_mutate_before_http(method, args):
-    client = LifecycleClient(draft=True)
+    client = LifecycleClient()
     target = Controller(None, client=client)
 
     with pytest.raises(PermissionError):
