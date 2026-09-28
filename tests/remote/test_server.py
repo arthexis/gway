@@ -221,6 +221,39 @@ def test_remote_runtime_converges_logs_read_scope(tmp_path):
     assert scope.environment == frozenset()
 
 
+def test_remote_runtime_converges_operator_read_scope(tmp_path):
+    from gway.gateway import Gateway
+    from gway.security.scopes import ScopeRegistry
+
+    runtime = Gateway()
+    runtime.security_path = tmp_path / "security.sqlite"
+    metadata = RemoteOAuthMetadata.from_origin("https://remote.example.test")
+
+    RemoteApplication(metadata, runtime=runtime)
+
+    scope = ScopeRegistry(runtime.security_path).require("operator-read")
+    assert scope.operations == frozenset(
+        {
+            "help",
+            "guide",
+            "version",
+            "products",
+            "extensions",
+            "log.sources",
+            "log.read",
+            "log.tail",
+            "log.search",
+            "service.list",
+            "service.status",
+            "sous.chef.list",
+            "sous.chef.inspect",
+            "security.whoami",
+            "security.scope.current",
+        }
+    )
+    assert scope.environment == frozenset()
+
+
 def test_remote_runtime_permission_summary_expands_lazy_read_only_operation(tmp_path):
     from gway.gateway import Gateway
     from gway.security.scopes import ScopeRegistry
