@@ -174,7 +174,7 @@ def test_observation_collect_omits_unauthorized_but_keeps_unavailable():
         }
     )
 
-    result = gateway("observation collect visible hidden optional --cursor null")
+    result = gateway("observation collect visible hidden optional")
 
     assert "hidden" not in result
     assert result["visible"]["status"] == "ok"
