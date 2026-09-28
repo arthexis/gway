@@ -1,6 +1,7 @@
 # file: gway/gateway.py
 
 from contextlib import contextmanager, nullcontext
+import inspect
 from contextvars import ContextVar
 
 from .runner import invoke
@@ -194,7 +195,10 @@ class Gateway(Resolver):
             with self.topics("cache"):
                 configured_cache = self.resolve("[cache_dir]", default=cache)
             self.cache = Cache(configured_cache)
-        self._root_state.journal = JournalManager(self.cache.root / "rollback")
+        self._root_state.journal = JournalManager(
+            self.cache.root / "rollback",
+            rollback_executor=self._execute_operation_rollback,
+        )
         self.security_path = self.cache.root / "security" / "state.sqlite"
 
         with self.topics("log"):
@@ -274,6 +278,46 @@ class Gateway(Resolver):
         self._souschef_controller = SousChefController(self)
         ingest_python(self, self._souschef_controller, path=("sous", "chef"))
         self._sigil_dispatch_enabled = True
+
+    def _execute_operation_rollback(self, operation, result):
+        """Resolve and execute the semantic inverse of one operation result."""
+        forward = self.ops.resolve(operation)
+        if forward is None:
+            raise LookupError(f"Unable to resolve rollback source operation: {operation}")
+        inverse = self.ops.rollback_operation(forward)
+        if inverse is None:
+            raise LookupError(f"No semantic rollback operation for {operation}")
+
+        values = dict(result) if isinstance(result, dict) else {}
+        signature = inspect.signature(inverse)
+        kwargs = {
+            name: values[name]
+            for name, parameter in signature.parameters.items()
+            if name in values
+            and parameter.kind
+            in (
+                inspect.Parameter.POSITIONAL_OR_KEYWORD,
+                inspect.Parameter.KEYWORD_ONLY,
+            )
+        }
+        missing = [
+            name
+            for name, parameter in signature.parameters.items()
+            if parameter.default is inspect.Parameter.empty
+            and parameter.kind
+            in (
+                inspect.Parameter.POSITIONAL_OR_KEYWORD,
+                inspect.Parameter.KEYWORD_ONLY,
+            )
+            and name not in kwargs
+        ]
+        if missing:
+            names = ", ".join(missing)
+            raise TypeError(
+                f"Rollback result for {operation} cannot satisfy inverse "
+                f"{self.ops.canonical_name(inverse, inverse.__name__)}: {names}"
+            )
+        return inverse(**kwargs)
 
     @property
     def request_state(self):
@@ -365,7 +409,10 @@ class Gateway(Resolver):
         from .journal import JournalManager
 
         state = RequestState(
-            journal=JournalManager(self.cache.root / "rollback"),
+            journal=JournalManager(
+                self.cache.root / "rollback",
+                rollback_executor=self._execute_operation_rollback,
+            ),
         )
         state.context["verbose"] = self.verbose
         state.context["silent"] = self.silent
