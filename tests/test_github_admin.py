@@ -8,9 +8,11 @@ class FakeClient:
         self.responses = list(responses)
         self.page_data = list(pages)
         self.calls = []
+        self.payloads = []
 
     def request(self, method, path, *, params=None, json=None, headers=None):
         self.calls.append((method, path, params))
+        self.payloads.append(json)
         return SimpleNamespace(data=self.responses.pop(0))
 
     def pages(self, path, *, params=None):
@@ -161,6 +163,7 @@ def test_ruleset_mutations_require_complete_explicit_policy():
         ("PUT", "/repos/arthexis/gway/rulesets/11", None),
         ("DELETE", "/repos/arthexis/gway/rulesets/11", None),
     ]
+    assert client.payloads == [policy, policy, None]
 
 
 def test_ruleset_policy_rejects_partial_or_implicit_patch_shape():
