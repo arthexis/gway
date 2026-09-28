@@ -409,7 +409,7 @@ def test_cimd_client_id_rejects_non_https_and_url_credentials(tmp_path):
 def test_cimd_public_host_check_rejects_any_non_global_address(monkeypatch):
     monkeypatch.setattr(
         "gway.remote.oauth.socket.getaddrinfo",
-        lambda *args, **kwargs: [
+        lambda *_args, **_kwargs: [
             (2, 1, 6, "", ("203.0.113.10", 443)),
             (2, 1, 6, "", ("127.0.0.1", 443)),
         ],
@@ -424,7 +424,7 @@ def test_cimd_fetch_caps_document_before_json_parsing(monkeypatch):
         def __enter__(self):
             return self
 
-        def __exit__(self, *args):
+        def __exit__(self, *_args):
             return False
 
         def read(self, size):
@@ -456,7 +456,7 @@ def test_cimd_fetch_installs_no_redirect_handler(monkeypatch):
         def __enter__(self):
             return self
 
-        def __exit__(self, *args):
+        def __exit__(self, *_args):
             return False
 
         def read(self, size):
