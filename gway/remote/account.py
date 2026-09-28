@@ -11,7 +11,12 @@ from .session import RemoteSessionStore
 def _page(title, body):
     return (
         "<!doctype html><html><head><meta charset=\"utf-8\">"
-        f"<title>{escape(title)}</title></head><body>{body}</body></html>"
+        '<meta name="viewport" content="width=device-width, initial-scale=1">'
+        '<meta name="color-scheme" content="dark">'
+        f"<title>{escape(title)}</title>"
+        '<link rel="stylesheet" href="/remote.css">'
+        "</head><body><main>"
+        f"{body}</main></body></html>"
     )
 
 
@@ -73,8 +78,8 @@ class RemoteAccountApplication:
             '<form method="post" action="/connect">'
             f'<input type="hidden" name="csrf" value="{context["csrf"]}">'
             '<label>Bearer <input type="password" name="bearer" '
-            'autocomplete="off" required></label>'
-            '<button type="submit">Connect</button></form>',
+            'autocomplete="off" autocapitalize="none" spellcheck="false" inputmode="text" required></label>'
+            '<div class="actions"><button class="primary" type="submit">Connect securely</button></div></form>',
         )
 
     def connect(self, session, *, csrf, bearer):
