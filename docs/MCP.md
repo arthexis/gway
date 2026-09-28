@@ -98,12 +98,21 @@ A broader observational operator scope is also maintained:
 
 ```toml
 [scopes.operator-read]
-operations = ["help", "guide", "version", "products", "extensions", "log.sources", "log.read", "log.tail", "log.search", "service.list", "service.status", "sous.chef.list", "sous.chef.inspect", "security.whoami", "security.scope.current"]
+operations = ["products", "extensions", "service.list", "service.status", "sous.chef.list", "sous.chef.inspect"]
 environment = []
 ```
 
-This scope intentionally excludes environment reads, service lifecycle changes,
-Sous Chef execution, installation changes, and security/token/OAuth administration.
+Default read-only scopes are intentionally composable and non-overlapping.
+An operator bearer should bind both scopes rather than duplicating grants:
+
+```text
+gway security token create operator logs-read operator-read
+```
+
+The token resolves the union of both named scopes at authentication time. The
+`operator-read` scope intentionally excludes environment reads, service lifecycle
+changes, Sous Chef execution, installation changes, and security/token/OAuth
+administration.
 
 G-Way Remote also maintains an explicit full-access scope:
 
