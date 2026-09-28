@@ -126,6 +126,11 @@ def inspect_source(gateway, *operation, search=None, context=2, mutate=False):
     from .tokens import tokenize
 
     resolution = resolve_operation(gateway, tokenize(" ".join(map(str, operation))))
+    canonical = resolution.candidate
+    if not gateway._operation_visible(canonical):
+        from .authorization import AuthorizationError
+
+        raise AuthorizationError("Operation is not authorized for source inspection")
     if resolution.arguments:
         raise LookupError(
             "source target includes unresolved arguments: "
