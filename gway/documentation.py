@@ -39,6 +39,7 @@ class CallableDocumentation:
     metadata: object = None
     operation: str | None = None
     subject: str | None = None
+    help: object = None
 
     def parameter(self, name):
         """Return documentation for one parameter by name, if present."""
@@ -137,8 +138,21 @@ def describe(callable_obj):
     if target is callable_obj:
         target = getattr(callable_obj, "__wrapped__", callable_obj)
     docstring = inspect.getdoc(target) or inspect.getdoc(callable_obj) or ""
-    summary = docstring.splitlines()[0].strip() if docstring else ""
+    help_meta = getattr(callable_obj, "__gway_help__", None)
+    if not isinstance(help_meta, dict):
+        help_meta = {}
+    summary = help_meta.get("summary") or (
+        docstring.splitlines()[0].strip() if docstring else ""
+    )
     descriptions = _parameter_descriptions(docstring)
+    topics = help_meta.get("topics", {})
+    if isinstance(topics, dict):
+        for key, value in topics.items():
+            parameter_name = str(key).lstrip("-").replace("-", "_")
+            if parameter_name not in descriptions and isinstance(value, dict):
+                description = value.get("description") or value.get("summary")
+                if description:
+                    descriptions[parameter_name] = str(description)
     try:
         signature = callable_signature(callable_obj)
     except (TypeError, ValueError):
@@ -182,6 +196,7 @@ def describe(callable_obj):
         metadata=getattr(callable_obj, "__gway_metadata__", None),
         operation=getattr(callable_obj, "__gway_operation__", None),
         subject=getattr(callable_obj, "__gway_subject__", None),
+        help=help_meta,
     )
 
 
@@ -253,6 +268,8 @@ def render(callable_obj, *, verbose=False):
                 if default is not None:
                     lines.append(f"    Default: {default}")
 
+    lines.extend(_render_help_fields(documentation.help))
+
     return "\n".join(lines)
 
 
@@ -279,3 +296,54 @@ def render_parameter(callable_obj, name):
             lines.append(f"  Default: {default}")
 
     return "\n".join(lines)
+
+
+def _render_help_fields(metadata):
+    """Render optional structured examples, notes, and related help."""
+    if not isinstance(metadata, dict):
+        return []
+    lines = []
+    for field, title in (
+        ("examples", "Examples"),
+        ("notes", "Notes"),
+        ("see_also", "See also"),
+    ):
+        values = metadata.get(field)
+        if not values:
+            continue
+        if isinstance(values, str):
+            values = [values]
+        lines.extend(["", f"{title}:"])
+        lines.extend(f"  {value}" for value in values)
+    return lines
+
+
+def render_topic(callable_obj, *query):
+    """Render specific structured help for a topic or parameter."""
+    documentation = describe(callable_obj)
+    raw = " ".join(str(value) for value in query).strip()
+    if not raw:
+        return render(callable_obj, verbose=True)
+
+    metadata = documentation.help if isinstance(documentation.help, dict) else {}
+    topics = metadata.get("topics", {})
+    topic = topics.get(raw) if isinstance(topics, dict) else None
+    if topic is None and raw.startswith("--") and isinstance(topics, dict):
+        topic = topics.get(raw.lstrip("-").replace("-", "_"))
+    if topic is not None:
+        if isinstance(topic, str):
+            topic = {"description": topic}
+        title = topic.get("summary") or raw
+        lines = [str(title)]
+        description = topic.get("description")
+        if description and description != title:
+            lines.extend(["", str(description)])
+        lines.extend(_render_help_fields(topic))
+        return "\n".join(lines)
+
+    parameter_name = raw.lstrip("-").replace("-", "_")
+    parameter = documentation.parameter(parameter_name)
+    if parameter is not None:
+        return render_parameter(callable_obj, parameter_name)
+
+    return ""
