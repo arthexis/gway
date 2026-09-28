@@ -388,3 +388,32 @@ def test_authorize_defaults_missing_scope_to_mcp_resource_scope(tmp_path):
         server.shutdown()
         server.server_close()
         thread.join(timeout=2)
+
+
+def test_remote_auth_pages_expose_mobile_first_presentation(tmp_path):
+    _, _, _, _, server, thread, connection = _setup(tmp_path)
+    try:
+        connection.request("GET", "/connect")
+        response = connection.getresponse()
+        html = response.read().decode()
+        assert response.status == 200
+        assert 'name="viewport" content="width=device-width, initial-scale=1"' in html
+        assert '<link rel="stylesheet" href="/remote.css">' in html
+        assert 'id="bearer"' in html
+        assert 'Connect securely' in html
+
+        connection.request("GET", "/remote.css")
+        response = connection.getresponse()
+        css = response.read().decode()
+        assert response.status == 200
+        assert "-webkit-text-size-adjust: 100%" in css
+        assert "env(safe-area-inset-bottom)" in css
+        assert "@media (max-width: 599px)" in css
+        assert "position: sticky" in css
+        assert "overflow-wrap: anywhere" in css
+        assert "min-height: 54px" in css
+    finally:
+        connection.close()
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=2)
