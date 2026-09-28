@@ -1,5 +1,6 @@
-from gway.gateway import Gateway
 import pytest
+
+from gway.gateway import Gateway
 
 
 def test_source_inspects_resolved_python_operation(gateway):
@@ -139,12 +140,8 @@ def test_search_source_filters_explicit_topics_as_intersection(gateway):
 
     from gway.source import search_source_corpus
 
-    forward = search_source_corpus(
-        gateway, "Return", topic=("remote", "log")
-    )
-    reverse = search_source_corpus(
-        gateway, "Return", topic=("log", "remote")
-    )
+    forward = search_source_corpus(gateway, "Return", topic=("remote", "log"))
+    reverse = search_source_corpus(gateway, "Return", topic=("log", "remote"))
 
     assert [item["operation"] for item in forward] == [
         item["operation"] for item in reverse
@@ -185,7 +182,10 @@ def test_search_source_excludes_hidden_operations(gateway):
         results = gateway("search source Return")
 
     assert any(item["operation"] == "env" for item in results)
-    assert all(item["operation"].replace(" ", ".") in {"search.source", "env"} for item in results)
+    assert all(
+        item["operation"].replace(" ", ".") in {"search.source", "env"}
+        for item in results
+    )
 
 
 def test_search_source_requires_source_search_capability(gateway):
