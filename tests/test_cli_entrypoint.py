@@ -286,6 +286,21 @@ def test_cli_json_recipe_exposes_final_result_and_history(tmp_path):
     assert payload == {"result": "two", "results": ["one", "two"]}
 
 
+def test_cli_root_recipe_failure_propagates_nonzero_exit(tmp_path):
+    recipe = tmp_path / "ci.rx"
+    recipe.write_text("check false\n", encoding="utf-8")
+
+    completed = subprocess.run(
+        [sys.executable, "-m", "gway", "ci"],
+        cwd=tmp_path,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert completed.returncode != 0
+
+
 def test_cli_json_operation_keeps_existing_result_shape():
     completed = subprocess.run(
         [sys.executable, "-m", "gway", "resolve", "[site|MTY]", "--json"],
