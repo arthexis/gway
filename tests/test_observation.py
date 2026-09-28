@@ -184,7 +184,8 @@ def test_observation_collect_omits_unauthorized_but_keeps_unavailable():
         "visible": "ok",
         "optional": "unavailable",
     }
-    assert result["cursor"] is None
+    assert isinstance(result["cursor"], str)
+    assert result["cursor"]
 
 
 def test_observation_collect_only_filters_visible_sections_and_health():
@@ -318,11 +319,53 @@ def test_observation_collect_errors_omits_empty_error_log_section():
     assert result["health"]["sections"] == {}
 
 
-def test_observation_validate_rejects_changed_until_cursor_support():
+def test_observation_validate_requires_cursor_for_changed():
     gateway = Gateway()
 
-    with pytest.raises(
-        NotImplementedError,
-        match="requires cursor/change tracking",
-    ):
+    with pytest.raises(ValueError, match="requires --cursor"):
         gateway("observation validate --changed true")
+
+
+def test_observation_cursor_detects_changed_section():
+    gateway = Gateway()
+    gateway.context["node"] = {
+        "status": "ok",
+        "available": True,
+        "result": {"role": "control"},
+        "error": None,
+    }
+
+    first = gateway("observation collect node")
+    gateway.context["node"] = {
+        "status": "ok",
+        "available": True,
+        "result": {"role": "watchtower"},
+        "error": None,
+    }
+    second = gateway(
+        f"observation collect node --changed true --cursor {first['cursor']}"
+    )
+
+    assert second["node"]["result"] == {"role": "watchtower"}
+    assert second["health"]["sections"] == {"node": "ok"}
+    assert second["changed_at"] is not None
+    assert second["cursor"] != first["cursor"]
+
+
+def test_observation_cursor_unchanged_result_is_empty_surface():
+    gateway = Gateway()
+    gateway.context["node"] = {
+        "status": "ok",
+        "available": True,
+        "result": {"role": "control"},
+        "error": None,
+    }
+
+    first = gateway("observation collect node")
+    second = gateway(
+        f"observation collect node --changed true --cursor {first['cursor']}"
+    )
+
+    assert set(second) == {"health", "changed_at", "cursor"}
+    assert second["health"]["sections"] == {}
+    assert second["changed_at"] is None
