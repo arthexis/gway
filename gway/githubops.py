@@ -284,3 +284,47 @@ class Controller:
             "content": response.data,
             "content_type": response.headers.get("content-type"),
         }
+
+    def workflows(self, repository):
+        """List GitHub Actions workflow definitions."""
+        data = self._github().request(
+            "GET",
+            f"{self._repo(repository)}/actions/workflows",
+            params={"per_page": 100},
+        ).data
+        return data.get("workflows", []) if isinstance(data, dict) else data
+
+    def workflow(self, repository, workflow):
+        """Return one workflow definition by numeric ID or file name."""
+        return self._github().request(
+            "GET",
+            f"{self._repo(repository)}/actions/workflows/{_segment(workflow)}",
+        ).data
+
+    def releases(self, repository):
+        """List repository releases."""
+        return self._all(
+            f"{self._repo(repository)}/releases",
+            params={"per_page": 100},
+        )
+
+    def release(self, repository, release):
+        """Return one repository release by numeric ID."""
+        return self._github().request(
+            "GET",
+            f"{self._repo(repository)}/releases/{int(release)}",
+        ).data
+
+    def release_tag(self, repository, tag):
+        """Return one repository release by tag."""
+        return self._github().request(
+            "GET",
+            f"{self._repo(repository)}/releases/tags/{_segment(tag)}",
+        ).data
+
+    def latest_release(self, repository):
+        """Return the repository's latest published release."""
+        return self._github().request(
+            "GET",
+            f"{self._repo(repository)}/releases/latest",
+        ).data
