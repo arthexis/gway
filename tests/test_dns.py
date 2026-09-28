@@ -148,7 +148,6 @@ def test_dns_delete_uses_name_and_type(monkeypatch):
     }
 
 
-
 def test_dns_create_reads_host_secret_store(monkeypatch, tmp_path):
     gateway = Gateway()
     root = tmp_path / "secrets"
