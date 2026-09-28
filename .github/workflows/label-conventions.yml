@@ -1,0 +1,93 @@
+name: Reconcile automation labels
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/label-conventions.yml
+  workflow_dispatch:
+
+permissions:
+  issues: write
+  pull-requests: write
+
+jobs:
+  reconcile:
+    name: Prefer dashed automation labels
+    runs-on: ubuntu-latest
+    steps:
+      - name: Reconcile legacy aliases
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          encode_label() {
+            python3 - "$1" <<'PY'
+          import sys
+          import urllib.parse
+          print(urllib.parse.quote(sys.argv[1], safe=""))
+          PY
+          }
+
+          label_exists() {
+            local label="$1"
+            local encoded
+            encoded="$(encode_label "$label")"
+            gh api "repos/$REPOSITORY/labels/$encoded" >/dev/null 2>&1
+          }
+
+          migrate_assignments() {
+            local legacy="$1"
+            local canonical="$2"
+            local legacy_encoded
+            legacy_encoded="$(encode_label "$legacy")"
+
+            gh api --paginate --method GET "repos/$REPOSITORY/issues" \
+              -f state=all -f labels="$legacy" -f per_page=100 \
+              --jq '.[].number' |
+            while read -r number; do
+              [[ -n "$number" ]] || continue
+              gh api --method POST "repos/$REPOSITORY/issues/$number/labels" \
+                -f "labels[]=$canonical" >/dev/null
+              gh api --method DELETE \
+                "repos/$REPOSITORY/issues/$number/labels/$legacy_encoded" >/dev/null
+            done
+          }
+
+          canonicalize() {
+            local legacy="$1"
+            local canonical="$2"
+            local color="$3"
+            local description="$4"
+
+            if label_exists "$canonical"; then
+              if label_exists "$legacy"; then
+                migrate_assignments "$legacy" "$canonical"
+                gh api --method DELETE \
+                  "repos/$REPOSITORY/labels/$(encode_label "$legacy")" >/dev/null
+              fi
+              return
+            fi
+
+            if label_exists "$legacy"; then
+              gh api --method PATCH \
+                "repos/$REPOSITORY/labels/$(encode_label "$legacy")" \
+                -f new_name="$canonical" \
+                -f description="$description" >/dev/null
+            else
+              gh api --method POST "repos/$REPOSITORY/labels" \
+                -f name="$canonical" -f color="$color" \
+                -f description="$description" >/dev/null
+            fi
+          }
+
+          # Automation-owned labels use lowercase kebab-case. Legacy spellings
+          # remain accepted by parsers during migration, but automation emits
+          # only the canonical dashed spellings.
+          canonicalize "version" "version-only" "ededed" \
+            "Mechanical version advancement only"
+          canonicalize "on hold" "on-hold" "d4c5f9" \
+            "Excluded from automated queues until resumed"
