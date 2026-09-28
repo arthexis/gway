@@ -140,6 +140,9 @@ def describe(callable_obj):
     docstring = inspect.getdoc(target) or inspect.getdoc(callable_obj) or ""
     help_meta = getattr(callable_obj, "__gway_help__", None)
     if not isinstance(help_meta, dict):
+        metadata = getattr(callable_obj, "__gway_metadata__", None)
+        help_meta = metadata.get("help", {}) if hasattr(metadata, "get") else {}
+    if not isinstance(help_meta, dict):
         help_meta = {}
     summary = help_meta.get("summary") or (
         docstring.splitlines()[0].strip() if docstring else ""
