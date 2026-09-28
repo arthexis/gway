@@ -78,6 +78,19 @@ class Controller:
             result.extend(page.data)
         return result
 
+    def _all_enveloped(self, path, key, *, params=None):
+        result = []
+        response = self._github().request("GET", path, params=params)
+        while True:
+            data = response.data
+            if not isinstance(data, dict) or not isinstance(data.get(key), list):
+                raise TypeError(f"GitHub collection response must contain a {key} list")
+            result.extend(data[key])
+            next_url = getattr(response, "next_url", None)
+            if not next_url:
+                return result
+            response = self._github().request("GET", next_url)
+
     def repository(self, repository):
         """Return GitHub repository metadata."""
         return self._github().request("GET", self._repo(repository)).data
@@ -238,9 +251,9 @@ class Controller:
 
     def refs(self, repository, namespace=None):
         """List Git references, optionally below a namespace."""
-        suffix = ""
+        suffix = "/"
         if namespace:
-            suffix = "/" + quote(str(namespace).removeprefix("refs/"), safe="/")
+            suffix += quote(str(namespace).removeprefix("refs/"), safe="/")
         return self._all(f"{self._repo(repository)}/git/matching-refs{suffix}")
 
     def create_ref(self, repository, ref, sha, mutate=True):
@@ -610,8 +623,7 @@ class Controller:
             params["branch"] = branch
         if status is not None:
             params["status"] = status
-        data = self._github().request("GET", path, params=params).data
-        return data.get("workflow_runs", []) if isinstance(data, dict) else data
+        return self._all_enveloped(path, "workflow_runs", params=params)
 
     def run(self, repository, run):
         """Return one GitHub Actions workflow run."""
@@ -622,12 +634,11 @@ class Controller:
 
     def jobs(self, repository, run):
         """List jobs belonging to a GitHub Actions workflow run."""
-        data = self._github().request(
-            "GET",
+        return self._all_enveloped(
             f"{self._repo(repository)}/actions/runs/{int(run)}/jobs",
+            "jobs",
             params={"per_page": 100},
-        ).data
-        return data.get("jobs", []) if isinstance(data, dict) else data
+        )
 
     def job(self, repository, job):
         """Return one GitHub Actions job."""
@@ -638,12 +649,11 @@ class Controller:
 
     def checks(self, repository, ref):
         """List check runs for a commit or Git ref."""
-        data = self._github().request(
-            "GET",
+        return self._all_enveloped(
             f"{self._repo(repository)}/commits/{_segment(ref)}/check-runs",
+            "check_runs",
             params={"per_page": 100},
-        ).data
-        return data.get("check_runs", []) if isinstance(data, dict) else data
+        )
 
     def check(self, repository, check):
         """Return one check run."""
@@ -665,12 +675,11 @@ class Controller:
 
     def workflows(self, repository):
         """List GitHub Actions workflow definitions."""
-        data = self._github().request(
-            "GET",
+        return self._all_enveloped(
             f"{self._repo(repository)}/actions/workflows",
+            "workflows",
             params={"per_page": 100},
-        ).data
-        return data.get("workflows", []) if isinstance(data, dict) else data
+        )
 
     def workflow(self, repository, workflow):
         """Return one workflow definition by numeric ID or file name."""
@@ -827,12 +836,11 @@ class Controller:
 
     def variables(self, repository):
         """List GitHub Actions repository variables and their visible values."""
-        data = self._github().request(
-            "GET",
+        return self._all_enveloped(
             f"{self._repo(repository)}/actions/variables",
+            "variables",
             params={"per_page": 100},
-        ).data
-        return data.get("variables", []) if isinstance(data, dict) else data
+        )
 
     def variable(self, repository, name):
         """Return one GitHub Actions repository variable."""
@@ -843,12 +851,11 @@ class Controller:
 
     def secrets(self, repository):
         """List Actions secret metadata; secret values are never available."""
-        data = self._github().request(
-            "GET",
+        return self._all_enveloped(
             f"{self._repo(repository)}/actions/secrets",
+            "secrets",
             params={"per_page": 100},
-        ).data
-        return data.get("secrets", []) if isinstance(data, dict) else data
+        )
 
     def secret(self, repository, name):
         """Return metadata for one Actions secret, never its value."""
