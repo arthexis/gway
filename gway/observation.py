@@ -25,6 +25,17 @@ def _section_filter(value):
     return tuple(dict.fromkeys(part.strip() for part in parts if part.strip()))
 
 
+def _enabled(value):
+    """Normalize bool-like recipe context values."""
+    if isinstance(value, bool):
+        return value
+    if value in (None, "", 0):
+        return False
+    if isinstance(value, str):
+        return value.casefold() in {"1", "true", "yes", "on"}
+    return bool(value)
+
+
 class Controller:
     """Execute one command observationally and capture bounded failure metadata."""
 
@@ -107,6 +118,15 @@ class Controller:
         return envelope
 
 
+    def validate(self, *, changed=None, mutate=False):
+        """Validate observation filters that need incremental state."""
+        del mutate
+        if _enabled(changed):
+            raise NotImplementedError(
+                "watch --changed requires cursor/change tracking from chunk 4.6"
+            )
+        return None
+
     def collect(
         self,
         *section,
@@ -114,6 +134,7 @@ class Controller:
         cursor=None,
         only=None,
         except_=None,
+        errors=None,
         mutate=False,
         **values,
     ):
@@ -162,6 +183,10 @@ class Controller:
             status = envelope.get("status", "unavailable")
             if status == "unauthorized":
                 continue
+            if _enabled(errors):
+                has_log_errors = name == "errors" and bool(envelope.get("result"))
+                if status not in {"error", "blocked"} and not has_log_errors:
+                    continue
             result[name] = envelope
             states[name] = status
             counts[status] = counts.get(status, 0) + 1
@@ -219,6 +244,12 @@ def register(gateway):
         "observation.status",
         controller.status,
         op="status",
+        sub="observation",
+    )
+    gateway.wrap(
+        "observation.validate",
+        controller.validate,
+        op="validate",
         sub="observation",
     )
     gateway.wrap(
