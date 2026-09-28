@@ -241,6 +241,11 @@ class Gateway(Resolver):
             path=("security", "token"),
         )
 
+        from .http_operations import Controller as HTTPController
+
+        self._http_controller = HTTPController()
+        ingest_python(self, self._http_controller, path=("http",))
+
         from .dns import Controller as DNSController
 
         self._dns_controller = DNSController(self)
