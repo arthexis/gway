@@ -171,6 +171,7 @@ class Gateway(Resolver):
 
         from .ingestion.python import ingest_python
         from .security.client import Controller as OAuthClientController
+        from .security.controller import Controller as SecurityController
         from .security.scope import Controller as ScopeController
         from .security.token import Controller as TokenController
         from .remote.service import register as register_remote_service
@@ -183,6 +184,12 @@ class Gateway(Resolver):
 
         self._service_controller = Controller(self)
         ingest_python(self, self._service_controller, path=("service",))
+        self._security_controller = SecurityController(self)
+        ingest_python(
+            self,
+            self._security_controller,
+            path=("security",),
+        )
         self._oauth_client_controller = OAuthClientController(self)
         ingest_python(
             self,
@@ -1017,13 +1024,27 @@ class Gateway(Resolver):
         return stack[-1] if stack else None
 
     @contextmanager
-    def authorized(self, *, operations=(), environment=None, context=None):
+    def authorized(
+        self,
+        *,
+        operations=(),
+        environment=None,
+        context=None,
+        kind=None,
+        principal=None,
+        client_id=None,
+        scopes=(),
+    ):
         """Constrain one external request using request-local semantic state."""
         from .authorization import Authorization
 
         authority = Authorization.create(
             operations=operations,
             environment=environment,
+            kind=kind,
+            principal=principal,
+            client_id=client_id,
+            scopes=scopes,
         )
         outermost = self.authorization is None
         scope = (
@@ -1072,6 +1093,8 @@ class Gateway(Resolver):
         """Authorize one canonical operation immediately before invocation."""
         authority = self.authorization
         if authority is None or self._capability_depth:
+            return
+        if operation in {"security.whoami", "security.scope.current"}:
             return
         authority.authorize_operation(operation)
         if operation in {"env", "set.env", "clear.env"}:
@@ -1225,6 +1248,10 @@ class Gateway(Resolver):
             with self.authorized(
                 operations=identity.authority.operations,
                 environment=identity.authority.environment,
+                kind=identity.kind,
+                principal=identity.principal,
+                client_id=identity.client_id,
+                scopes=identity.scopes,
             ):
                 with self.external_authority():
                     return self.execute(command, mutate=mutate)
