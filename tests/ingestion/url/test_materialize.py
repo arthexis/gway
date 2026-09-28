@@ -1,7 +1,7 @@
 import pytest
 
 from gway.cache import Cache, digest
-import gway.ingestion.url as url_ingestor
+from gway.ingestion import url as url_ingestor
 
 
 @pytest.mark.parametrize(
