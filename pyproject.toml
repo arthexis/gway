@@ -21,6 +21,7 @@ content-type = "text/x-rst"
 [project.optional-dependencies]
 dev = ["pytest", "pytest-xdist", "ruff", "fastmcp>=4,<5", "pydantic>=2,<3"]
 validation = ["pydantic>=2,<3"]
+github = ["PyNaCl>=1.5,<2"]
 toml = ['tomli>=2; python_version < "3.11"']
 
 [project.scripts]
