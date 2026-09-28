@@ -1,0 +1,71 @@
+# Publish the certified Gway bootstrap at https://install.arthexis.com/gway.
+default
+--domain install.arthexis.com
+--site install-arthexis-com
+--root /var/www/gway-install
+--zone arthexis.com
+--dns-backend godaddy
+--acme-webroot /var/www/gway-acme
+--nginx-available /etc/nginx/sites-available
+--nginx-enabled /etc/nginx/sites-enabled
+
+ingest [mkdir_executable|mkdir] --kind proc --sudo
+ingest [nginx_executable|nginx] --kind proc --sudo
+ingest [certbot_executable|certbot] --kind proc --sudo
+
+mkdir -p [root]
+mkdir -p [acme_webroot]
+
+render gway.sh
+--to [root]/gway
+--as root
+--mode 0644
+--rollback gway-bootstrap
+
+dns create [domain]
+--type A
+--value [public_ipv4]
+--backend [dns_backend]
+--zone [zone]
+
+dns ready [domain]
+--type A
+--value [public_ipv4]
+--backend [dns_backend]
+--zone [zone] - repeat
+--until true
+--interval 10
+--max 60
+
+render nginx-http-[site].conf
+--to [nginx_available]/[site]
+--as root
+--rollback gway-bootstrap
+
+link [nginx_available]/[site]
+--to [nginx_enabled]/[site]
+--as root
+--rollback gway-bootstrap
+
+nginx -t
+nginx -s reload
+
+certbot certonly
+--webroot
+--webroot-path [acme_webroot]
+--domain [domain]
+--cert-name [domain]
+--non-interactive
+--agree-tos
+--email [email]
+--keep-until-expiring
+
+render nginx-https-[site].conf
+--to [nginx_available]/[site]
+--as root
+--rollback gway-bootstrap
+
+nginx -t
+nginx -s reload
+
+commit gway-bootstrap
