@@ -13,7 +13,7 @@ def test_http_operations_have_conservative_mutation_contract(gateway):
 def test_http_get_is_allowed_in_no_mutate_mode(gateway, monkeypatch):
     monkeypatch.setattr(
         "gway.http_operations.transport_request",
-        lambda *args, **kwargs: type(
+        lambda *_args, **_kwargs: type(
             "Response",
             (),
             {"result": lambda self: {"status": 200, "result": {"ready": True}}},
@@ -91,7 +91,7 @@ def test_http_operations_are_discoverable_with_documentation(gateway):
 def test_http_result_composes_through_gateway_chain(gateway, monkeypatch):
     monkeypatch.setattr(
         "gway.http_operations.transport_request",
-        lambda *args, **kwargs: type(
+        lambda *_args, **_kwargs: type(
             "Response",
             (),
             {
