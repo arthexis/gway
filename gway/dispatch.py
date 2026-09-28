@@ -617,6 +617,25 @@ def resolve_operation(runtime, tokens, *, pipeline=_MISSING):
     raise OperationLookupError(query, _operation_suggestions(runtime, values))
 
 
+
+def resolution_candidates(runtime, resolution):
+    """Return selected then shadowed registrations for one resolved operation."""
+    canonical = runtime.ops.canonical_name(
+        resolution.callable,
+        resolution.candidate.replace(" ", "."),
+    )
+    records = runtime.ops.candidates(canonical)
+    if not records:
+        return (resolution,)
+
+    candidates = []
+    for record in records:
+        candidates.append(
+            _resolved(record.callable, list(resolution.arguments), record.name)
+        )
+    return tuple(candidates)
+
+
 def resolve_target(runtime, tokens):
     """Describe the command target selected by normal dispatch without executing it."""
     tokens = list(tokens)
