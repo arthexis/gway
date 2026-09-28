@@ -2,6 +2,8 @@ from datetime import datetime, timezone
 
 import pytest
 
+pytestmark = pytest.mark.xdist_group("process-integration")
+
 from gway.install.service import ServiceInstallRecord, ServiceInstallState
 from gway.logs import LogRecord
 from gway.logs import operations as log_operations
