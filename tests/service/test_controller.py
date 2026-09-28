@@ -8,6 +8,8 @@ import time
 
 import pytest
 
+pytestmark = pytest.mark.xdist_group("process-integration")
+
 from fastmcp import Client
 from fastmcp.client.auth import BearerAuth
 
