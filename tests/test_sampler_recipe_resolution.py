@@ -42,7 +42,7 @@ def test_project_root_recipe_resolves_as_bare_command(gateway, tmp_path, monkeyp
 def test_gway_ci_recipe_uses_generic_recipe_and_test_contracts():
     from pathlib import Path
 
-    recipe = Path("ci.rx").read_text(encoding="utf-8")
+    recipe = Path("sampler/ci/__main__.rx").read_text(encoding="utf-8")
 
     assert "recipe check sampler" in recipe
     assert "test run - check --is 0" in recipe
