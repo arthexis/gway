@@ -54,6 +54,41 @@ def test_jobs_and_checks_unwrap_github_collection_envelopes():
     assert target.checks("arthexis/gway", "abc")[0]["id"] == 22
 
 
+def test_runs_follow_enveloped_pagination():
+    class PagingClient:
+        def __init__(self):
+            self.calls = []
+
+        def request(self, method, path, *, params=None, json=None, headers=None):
+            self.calls.append((method, path, params))
+            if len(self.calls) == 1:
+                return SimpleNamespace(
+                    data={"workflow_runs": [{"id": 1}]},
+                    next_url="https://api.github.com/repos/arthexis/gway/actions/runs?page=2",
+                )
+            return SimpleNamespace(
+                data={"workflow_runs": [{"id": 2}]},
+                next_url=None,
+            )
+
+    client = PagingClient()
+    target = Controller(None, client=client)
+
+    assert target.runs("arthexis/gway") == [{"id": 1}, {"id": 2}]
+    assert client.calls == [
+        (
+            "GET",
+            "/repos/arthexis/gway/actions/runs",
+            {"per_page": 100},
+        ),
+        (
+            "GET",
+            "https://api.github.com/repos/arthexis/gway/actions/runs?page=2",
+            None,
+        ),
+    ]
+
+
 def test_job_logs_preserve_diagnostic_content_and_type():
     client = FakeClient(
         [
