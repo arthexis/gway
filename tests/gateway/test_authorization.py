@@ -4,6 +4,7 @@ from threading import Barrier
 import pytest
 
 from gway.authorization import AuthorizationError
+from gway.security.scopes import ScopeRegistry
 
 
 def test_authorized_execution_allows_canonical_operation(gateway):
@@ -268,3 +269,96 @@ def test_optional_defaults_do_not_probe_environment_under_authority(
 
     with gateway.authorized(operations={"optional"}, environment=()):
         assert gateway("optional") == "default"
+
+
+def test_attenuated_scope_intersects_operations_and_environment(gateway, tmp_path):
+    gateway.security_path = tmp_path / "security.sqlite"
+    scopes = ScopeRegistry(gateway.security_path)
+    scopes.replace(
+        "narrow",
+        operations={"alpha", "gamma"},
+        environment={"VISIBLE", "EXTRA"},
+    )
+
+    with gateway.authorized(
+        operations={"alpha", "beta"},
+        environment={"VISIBLE", "HIDDEN"},
+        scopes={"narrow"},
+        kind="oauth",
+        principal="tester",
+        client_id="client",
+    ):
+        original = gateway.authorization
+        with gateway.attenuated_scope("narrow") as narrowed:
+            assert narrowed.operations == frozenset({"alpha"})
+            assert narrowed.environment == frozenset({"VISIBLE"})
+            assert narrowed.kind == "oauth"
+            assert narrowed.principal == "tester"
+            assert narrowed.client_id == "client"
+        assert gateway.authorization is original
+
+
+def test_attenuated_scope_handles_wildcards_monotonically(gateway, tmp_path):
+    gateway.security_path = tmp_path / "security.sqlite"
+    scopes = ScopeRegistry(gateway.security_path)
+    scopes.replace(
+        "bounded",
+        operations={"alpha", "beta"},
+        environment={"VISIBLE"},
+    )
+    scopes.replace(
+        "wild",
+        operations={"__all__"},
+        environment={"__all__"},
+    )
+
+    with gateway.authorized(
+        operations={"__all__"},
+        environment={"__all__"},
+        scopes={"bounded"},
+    ):
+        with gateway.attenuated_scope("bounded") as narrowed:
+            assert narrowed.operations == frozenset({"alpha", "beta"})
+            assert narrowed.environment == frozenset({"VISIBLE"})
+
+    with gateway.authorized(
+        operations={"alpha"},
+        environment={"VISIBLE"},
+        scopes={"wild"},
+    ):
+        with gateway.attenuated_scope("wild") as narrowed:
+            assert narrowed.operations == frozenset({"alpha"})
+            assert narrowed.environment == frozenset({"VISIBLE"})
+
+
+def test_attenuated_scope_rejects_unavailable_scope_name(gateway, tmp_path):
+    gateway.security_path = tmp_path / "security.sqlite"
+    ScopeRegistry(gateway.security_path).replace(
+        "other",
+        operations={"alpha"},
+        environment=(),
+    )
+
+    with gateway.authorized(operations={"alpha"}, scopes={"bound"}):
+        with pytest.raises(
+            AuthorizationError,
+            match="Security scope is not available",
+        ):
+            with gateway.attenuated_scope("other"):
+                pass
+
+
+def test_scope_inspection_authority_can_select_an_unbound_scope(gateway, tmp_path):
+    gateway.security_path = tmp_path / "security.sqlite"
+    ScopeRegistry(gateway.security_path).replace(
+        "other",
+        operations={"alpha"},
+        environment=(),
+    )
+
+    with gateway.authorized(
+        operations={"alpha", "security.scope.show"},
+        scopes={"bound"},
+    ):
+        with gateway.attenuated_scope("other") as narrowed:
+            assert narrowed.operations == frozenset({"alpha"})
