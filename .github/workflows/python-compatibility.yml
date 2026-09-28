@@ -23,8 +23,10 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           python -m pip install -e '.[dev,toml]'
-      - name: Run regression suite
-        run: timeout -s ABRT 300s python -X faulthandler -m pytest -q --durations=20
+      - name: Run project CI through Gway
+        env:
+          PYTHONFAULTHANDLER: '1'
+        run: timeout -s ABRT 300s python -m gway ci
 
   forward-compatibility:
     name: Compatibility (Python 3.13)
