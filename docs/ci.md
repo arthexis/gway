@@ -34,3 +34,9 @@ Matrices, forge status/labels, artifacts, auto-merge, deployment, Watchtower rec
 ## Structured results
 
 JSON is a generic recipe-execution envelope rather than a CI-specific format. A recipe invoked with `--json` returns its final `result` and chronological `results` history. Consequently `gway ci --json` is machine-readable while ordinary non-recipe JSON commands retain their existing output shape.
+
+## Result
+
+Gway now owns the Python 3.10 project's CI definition through the root `ci.rx` recipe. The GitHub runner supplies checkout, Python, dependency installation, timeout, and diagnostic process boundaries, then delegates project validation to `python -m gway ci`.
+
+The same root recipe is discoverable from a local checkout. Recipe JSON execution exposes both the final result and chronological result history, so `gway ci --json` uses the same execution contract without a GitHub-specific reporting path. Python 3.13 compatibility remains separately runner-defined and is outside this first migration chunk.
