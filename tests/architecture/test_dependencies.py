@@ -19,7 +19,6 @@ def test_core_package_has_no_requests_import():
         assert "import requests" not in path.read_text(encoding="utf-8")
 
 
-
 def test_core_package_does_not_depend_on_mcp_transport_implementation():
     root = repository_root() / "gway"
     violations = []
