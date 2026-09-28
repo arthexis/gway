@@ -77,7 +77,7 @@ class RemoteAccountApplication:
             "The bearer is verified and discarded.</p>"
             '<form method="post" action="/connect">'
             f'<input type="hidden" name="csrf" value="{context["csrf"]}">'
-            '<label>Bearer <input type="password" name="bearer" '
+            '<label for="bearer">Bearer</label><input id="bearer" type="password" name="bearer" '
             'autocomplete="off" autocapitalize="none" spellcheck="false" inputmode="text" required></label>'
             '<div class="actions"><button class="primary" type="submit">Connect securely</button></div></form>',
         )
