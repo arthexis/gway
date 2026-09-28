@@ -1,15 +1,15 @@
 from pathlib import Path
 
 
-def test_gway_main_dispatches_watchtower_deploy_directly() -> None:
+def test_legacy_watchtower_deploy_trigger_is_manual_only() -> None:
     workflow = Path(".github/workflows/watchtower-deploy-trigger.yml").read_text(
         encoding="utf-8"
     )
 
-    assert "push:" in workflow
-    assert "branches: [main]" in workflow
+    assert "workflow_dispatch:" in workflow
+    assert "push:" not in workflow
+    assert "branches: [main]" not in workflow
     assert "workflow_run:" not in workflow
-    assert 'workflows: ["python / Python compatibility"]' not in workflow
     assert "schedule:" not in workflow
     assert "WATCHTOWER_DEPLOY_TOKEN: ${{ secrets.WATCHTOWER_DEPLOY_TOKEN }}" in workflow
     assert (
@@ -18,6 +18,19 @@ def test_gway_main_dispatches_watchtower_deploy_directly() -> None:
     ) in workflow
     assert '"ref":"main"' in workflow
     assert 'echo "watchtower_deploy=dispatched"' in workflow
+
+
+def test_automatic_watchtower_candidate_flow_classifies_main_pushes() -> None:
+    workflow = Path(".github/workflows/watchtower-candidate.yml").read_text(
+        encoding="utf-8"
+    )
+
+    assert "push:" in workflow
+    assert "branches: [main]" in workflow
+    assert "Detect version-only rollover" in workflow
+    assert 'print("false" if version_only else "true")' in workflow
+    assert "if: needs.classify.outputs.deploy == 'true'" in workflow
+    assert "event_type='gway-candidate'" in workflow
 
 
 def test_cross_repo_trigger_uses_only_explicit_secret() -> None:

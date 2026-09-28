@@ -1,8 +1,6 @@
 name: Watchtower Deploy Trigger
 
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -14,13 +12,6 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Confirm main deployment source
-        if: github.event_name == 'push'
-        env:
-          GWAY_SHA: ${{ github.sha }}
-        run: |
-          echo "gway_sha=${GWAY_SHA}"
-
       - name: Dispatch Watchtower Deploy
         shell: bash
         env:
