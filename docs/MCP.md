@@ -114,6 +114,38 @@ The token resolves the union of both named scopes at authentication time. The
 changes, Sous Chef execution, installation changes, and security/token/OAuth
 administration.
 
+Arthexis deployments also receive two disjoint application-domain scopes.
+`arthexis-read` grants fleet/status commands plus explicit read-only ORM
+selection surfaces for OCPP, energy, cards, nodes, and events. `arthexis-write`
+grants only named domain mutations currently exposed by Arthexis:
+
+```toml
+[scopes.arthexis-write]
+operations = [
+  "ocpp.charger.reset",
+  "ocpp.charger.start",
+  "ocpp.charger.stop",
+  "arthexis.event",
+  "arthexis.ocpp_cutover",
+  "arthexis.ocpp_policy",
+  "arthexis.ocpp_recovery",
+]
+environment = []
+```
+
+The read scope intentionally excludes generic ORM create/update/delete methods.
+The write scope intentionally does not repeat any read operation. A normal
+remote Arthexis operator can therefore compose:
+
+```text
+gway security token create arthexis-operator \
+  logs-read operator-read arthexis-read
+```
+
+and add `arthexis-write` only when domain mutation is required. Neither
+Arthexis scope grants G-Way token/scope/OAuth administration, environment
+mutation, installation, deployment, or service lifecycle authority.
+
 G-Way Remote also maintains an explicit full-access scope:
 
 ```toml
