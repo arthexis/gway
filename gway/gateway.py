@@ -1258,6 +1258,35 @@ class Gateway(Resolver):
             self._capability_depth_var.reset(token)
 
     @contextmanager
+    def attenuated_scope(self, name):
+        """Temporarily narrow the active authority to one visible named scope."""
+        if name in (None, ""):
+            yield self.authorization
+            return
+
+        from .authorization import AuthorizationError, attenuate
+        from .security.scopes import ScopeRegistry
+
+        current = self.authorization
+        requested = str(name).strip()
+        if not requested:
+            raise ValueError("scope name must be a non-empty string")
+
+        if current is not None and requested not in current.scopes:
+            raise AuthorizationError(
+                f"Security scope is not available to current caller: {requested}"
+            )
+
+        scope = ScopeRegistry(self.security_path).require(requested, readonly=True)
+        narrowed = attenuate(current, scope)
+        stack = self._authorization_stack
+        token = self._authorization_stack_var.set((*stack, narrowed))
+        try:
+            yield narrowed
+        finally:
+            self._authorization_stack_var.reset(token)
+
+    @contextmanager
     def external_authority(self):
         """Re-enter the active caller authority from trusted implementation code."""
         from .authorization import AuthorizationError
