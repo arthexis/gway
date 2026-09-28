@@ -37,8 +37,9 @@ def _operation_callable(runtime, recipe, signature, doc):
 def register_recipe_operation(runtime, name, recipe, *, route_name, root):
     """Register one recipe as a normal Gway operation unless already claimed."""
     recipe = Path(recipe).expanduser().resolve()
-    signature, doc, companion = recipe_contract(recipe)
+    signature, doc, companion, help_meta = recipe_contract(recipe)
     callable_ = _operation_callable(runtime, recipe, signature, doc)
+    callable_.__gway_help__ = help_meta
 
     operation = IngestedOperation(
         tuple(part for part in str(name).replace(" ", ".").split(".") if part),
@@ -50,6 +51,7 @@ def register_recipe_operation(runtime, name, recipe, *, route_name, root):
             "companion": str(companion) if companion is not None else None,
             "route": str(route_name),
             "root": Path(root).expanduser().resolve(),
+            "help": help_meta,
         },
     )
 
