@@ -20,10 +20,12 @@ For a one-line released installation, use the public bootstrap:
 
    curl -fsSL https://install.arthexis.com/gway | sh
 
-On the first installation, the bootstrap persists ``~/.local/bin`` for future
-shells, but the already-open parent shell cannot inherit that PATH change; run
-``source ~/.local/bin/env`` once (or open a new shell) before invoking ``gway``
-directly in that session.
+On the first installation, the bootstrap asks ``uv`` to persist its configured
+tool executable directory for future shells, but the already-open parent shell
+cannot inherit that PATH change. With the default ``uv`` installer you can run
+``source ~/.local/bin/env`` once; the configuration-independent form is
+``export PATH="$(uv tool dir --bin):$PATH"``. Opening a new shell also applies
+successful persisted PATH configuration.
 
 Install GWAY with Python 3.13 or newer:
 
