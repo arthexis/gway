@@ -21,7 +21,10 @@ fi
 # Persist uv's configured tool executable directory for future shells before
 # exposing it to this child process. A piped shell cannot mutate its parent.
 TOOL_BIN="$("$UV" tool dir --bin)"
-"$UV" tool update-shell >/dev/null 2>&1 || true
+if ! "$UV" tool update-shell >/dev/null 2>&1; then
+    echo "gway bootstrap: warning: could not persist tool PATH for future shells" >&2
+    echo "gway bootstrap: for this shell run: export PATH=\"$TOOL_BIN:\$PATH\"" >&2
+fi
 export PATH="$TOOL_BIN:$PATH"
 
 if command -v gway >/dev/null 2>&1; then
