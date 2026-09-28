@@ -202,3 +202,193 @@ def test_ruleset_mutations_respect_no_mutate_before_network_access():
             raise AssertionError("ruleset mutation unexpectedly allowed")
 
     assert client.calls == []
+
+
+def complete_branch_protection_policy():
+    return {
+        "required_status_checks": {
+            "strict": True,
+            "contexts": ["python / Quality"],
+        },
+        "enforce_admins": True,
+        "required_pull_request_reviews": {
+            "dismiss_stale_reviews": True,
+            "require_code_owner_reviews": False,
+            "required_approving_review_count": 1,
+            "require_last_push_approval": True,
+        },
+        "restrictions": None,
+        "required_linear_history": True,
+        "allow_force_pushes": False,
+        "allow_deletions": False,
+        "block_creations": False,
+        "required_conversation_resolution": True,
+        "lock_branch": False,
+        "allow_fork_syncing": False,
+    }
+
+
+def test_branch_protection_mutations_require_complete_explicit_policy():
+    client = FakeClient(
+        responses=[
+            {"url": "https://api.github.test/protection"},
+            None,
+        ]
+    )
+    target = Controller(None, client=client)
+    policy = complete_branch_protection_policy()
+
+    updated = target.update_branch_protection(
+        "arthexis/gway",
+        "release/test",
+        policy,
+    )
+    deleted = target.delete_branch_protection(
+        "arthexis/gway",
+        "release/test",
+    )
+
+    assert updated["url"] == "https://api.github.test/protection"
+    assert deleted == {
+        "repository": "arthexis/gway",
+        "branch": "release/test",
+        "deleted": True,
+    }
+    assert client.calls == [
+        (
+            "PUT",
+            "/repos/arthexis/gway/branches/release%2Ftest/protection",
+            None,
+        ),
+        (
+            "DELETE",
+            "/repos/arthexis/gway/branches/release%2Ftest/protection",
+            None,
+        ),
+    ]
+    assert client.payloads == [policy, None]
+
+
+def test_branch_protection_rejects_partial_policy():
+    target = Controller(None, client=FakeClient())
+
+    try:
+        target.update_branch_protection(
+            "arthexis/gway",
+            "main",
+            {
+                "required_status_checks": None,
+                "enforce_admins": True,
+            },
+        )
+    except ValueError as error:
+        assert "missing required fields" in str(error)
+    else:
+        raise AssertionError("partial branch protection unexpectedly accepted")
+
+
+def test_branch_protection_mutations_respect_no_mutate_before_network_access():
+    client = FakeClient()
+    target = Controller(None, client=client)
+    policy = complete_branch_protection_policy()
+
+    for call in (
+        lambda: target.update_branch_protection(
+            "arthexis/gway",
+            "main",
+            policy,
+            mutate=False,
+        ),
+        lambda: target.delete_branch_protection(
+            "arthexis/gway",
+            "main",
+            mutate=False,
+        ),
+    ):
+        try:
+            call()
+        except PermissionError as error:
+            assert "branch protection mutation is disabled" in str(error)
+        else:
+            raise AssertionError("branch protection mutation unexpectedly allowed")
+
+    assert client.calls == []
+
+
+def test_branch_protection_rejects_partial_nested_policy_shapes():
+    target = Controller(None, client=FakeClient())
+    cases = (
+        (
+            "required_status_checks",
+            {"strict": True},
+            "missing required fields: contexts",
+        ),
+        (
+            "required_pull_request_reviews",
+            {"required_approving_review_count": 1},
+            "missing required fields",
+        ),
+        (
+            "restrictions",
+            {"users": []},
+            "missing required fields",
+        ),
+    )
+
+    for name, nested, message in cases:
+        policy = complete_branch_protection_policy()
+        policy[name] = nested
+        try:
+            target.update_branch_protection("arthexis/gway", "main", policy)
+        except ValueError as error:
+            assert message in str(error)
+        else:
+            raise AssertionError(f"partial nested {name} unexpectedly accepted")
+
+    assert target._client.calls == []
+
+
+def test_branch_protection_rejects_unsupported_nested_fields():
+    target = Controller(None, client=FakeClient())
+    policy = complete_branch_protection_policy()
+    policy["required_status_checks"]["checks"] = [
+        {"context": "python / Quality", "app_id": -1}
+    ]
+
+    try:
+        target.update_branch_protection("arthexis/gway", "main", policy)
+    except ValueError as error:
+        assert "required_status_checks contains unsupported fields: checks" in str(error)
+    else:
+        raise AssertionError("unsupported nested field unexpectedly accepted")
+
+    assert target._client.calls == []
+
+
+def test_branch_protection_validates_nested_value_types_before_network_access():
+    target = Controller(None, client=FakeClient())
+    cases = (
+        ("required_status_checks", "strict", "yes"),
+        (
+            "required_pull_request_reviews",
+            "required_approving_review_count",
+            True,
+        ),
+        ("restrictions", "users", ["alice", 7]),
+    )
+
+    for section, field, value in cases:
+        policy = complete_branch_protection_policy()
+        if section == "restrictions":
+            policy[section] = {"users": [], "teams": [], "apps": []}
+        policy[section][field] = value
+        try:
+            target.update_branch_protection("arthexis/gway", "main", policy)
+        except TypeError:
+            pass
+        else:
+            raise AssertionError(
+                f"invalid nested value {section}.{field} unexpectedly accepted"
+            )
+
+    assert target._client.calls == []

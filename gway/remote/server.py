@@ -131,6 +131,8 @@ class RemoteApplication(RemoteDiscoveryApplication):
                 "github.update_ruleset",
                 "github.delete_ruleset",
                 "github.branch_protection",
+                "github.update_branch_protection",
+                "github.delete_branch_protection",
                 "github.collaborators",
                 "github.collaborator_permission",
                 "github.webhooks",
