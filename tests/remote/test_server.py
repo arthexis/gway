@@ -221,6 +221,26 @@ def test_remote_runtime_converges_logs_read_scope(tmp_path):
     assert scope.environment == frozenset()
 
 
+
+def test_remote_runtime_converges_source_read_scope(tmp_path):
+    from gway.gateway import Gateway
+    from gway.security.scopes import ScopeRegistry
+
+    runtime = Gateway()
+    runtime.security_path = tmp_path / "security.sqlite"
+    metadata = RemoteOAuthMetadata.from_origin("https://remote.example.test")
+
+    RemoteApplication(metadata, runtime=runtime)
+
+    registry = ScopeRegistry(runtime.security_path)
+    source = registry.require("source-read")
+    logs = registry.require("logs-read")
+
+    assert source.operations == frozenset({"source", "search.source"})
+    assert source.environment == frozenset()
+    assert source.operations.isdisjoint(logs.operations)
+
+
 def test_remote_runtime_converges_operator_read_scope(tmp_path):
     from gway.gateway import Gateway
     from gway.security.scopes import ScopeRegistry
