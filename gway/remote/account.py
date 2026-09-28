@@ -11,7 +11,30 @@ from .session import RemoteSessionStore
 def _page(title, body):
     return (
         "<!doctype html><html><head><meta charset=\"utf-8\">"
-        f"<title>{escape(title)}</title></head><body>{body}</body></html>"
+        '<meta name="viewport" content="width=device-width, initial-scale=1">'
+        '<meta name="color-scheme" content="light dark">'
+        f"<title>{escape(title)}</title>"
+        "<style>"
+        ":root{font-family:system-ui,-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;"
+        "color-scheme:light dark}*{box-sizing:border-box}body{margin:0;min-height:100vh;"
+        "background:Canvas;color:CanvasText;font-size:18px;line-height:1.5}"
+        "main{width:min(100% - 32px,720px);margin:0 auto;padding:48px 0 64px}"
+        "h1{font-size:clamp(1.8rem,7vw,2.5rem);line-height:1.1;margin:0 0 24px}"
+        "h2{font-size:1.15rem;margin:32px 0 12px}p{margin:12px 0 20px}"
+        "form{display:grid;gap:16px;margin-top:24px}label{display:grid;gap:8px;font-weight:650}"
+        "input{width:100%;min-height:52px;padding:12px 14px;border:1px solid GrayText;"
+        "border-radius:10px;font:inherit;background:Field;color:FieldText}"
+        "button{min-height:52px;padding:12px 18px;border:0;border-radius:10px;"
+        "font:inherit;font-weight:700;cursor:pointer;background:Highlight;color:HighlightText}"
+        "button[value=deny],button.danger{background:transparent;color:CanvasText;"
+        "border:1px solid GrayText}code{overflow-wrap:anywhere;word-break:break-word}"
+        "ul{padding-left:24px}li{margin:12px 0}.muted{opacity:.72}"
+        ".actions{display:grid;grid-template-columns:1fr 1fr;gap:12px}"
+        "details{margin-top:8px}summary{cursor:pointer}"
+        "@media(max-width:520px){body{font-size:17px}main{width:min(100% - 24px,720px);"
+        "padding-top:28px}.actions{grid-template-columns:1fr}button{width:100%}}"
+        "</style></head><body><main>"
+        f"{body}</main></body></html>"
     )
 
 
