@@ -12,7 +12,7 @@ def test_http_operations_have_conservative_mutation_contract(gateway):
 
 def test_http_get_is_allowed_in_no_mutate_mode(gateway, monkeypatch):
     monkeypatch.setattr(
-        "gway.http_operations.transport_request",
+        "gway.httpops.controller.transport_request",
         lambda *_args, **_kwargs: type(
             "Response",
             (),
@@ -48,7 +48,7 @@ def test_http_get_accepts_json_query_mapping(gateway, monkeypatch):
             {"result": lambda self: {"status": 200, "result": "ok"}},
         )()
 
-    monkeypatch.setattr("gway.http_operations.transport_request", fake)
+    monkeypatch.setattr("gway.httpops.controller.transport_request", fake)
 
     gateway('http get https://example.test/items --params {"page":2}')
 
@@ -67,7 +67,7 @@ def test_http_post_decodes_json_body(gateway, monkeypatch):
             {"result": lambda self: {"status": 201, "result": "created"}},
         )()
 
-    monkeypatch.setattr("gway.http_operations.transport_request", fake)
+    monkeypatch.setattr("gway.httpops.controller.transport_request", fake)
 
     result = gateway(
         'http post https://example.test/items --json {"name":"Ada"}'
@@ -90,7 +90,7 @@ def test_http_operations_are_discoverable_with_documentation(gateway):
 
 def test_http_result_composes_through_gateway_chain(gateway, monkeypatch):
     monkeypatch.setattr(
-        "gway.http_operations.transport_request",
+        "gway.httpops.controller.transport_request",
         lambda *_args, **_kwargs: type(
             "Response",
             (),
