@@ -7,8 +7,11 @@ import errno
 import hashlib
 import ipaddress
 import json
+import os
 import re
 import secrets
+import signal
+import time
 import shutil
 import sqlite3
 import subprocess
@@ -457,6 +460,79 @@ def _restore_legacy_enrollment():
     return result is not None and result.returncode == 0
 
 
+_LISTENER_PID_RE = re.compile(r"pid=(\d+)")
+
+
+def _listener_pids(host, port):
+    """Return process IDs listening on the requested local TCP endpoint."""
+    ss = shutil.which("ss")
+    if ss is None:
+        raise RuntimeError("cannot identify enrollment listener: ss executable not found")
+    result = _run([ss, "-H", "-ltnp", f"sport = :{int(port)}"])
+    if result.returncode not in (0, 1):
+        raise RuntimeError(
+            result.stderr.strip() or "unable to inspect enrollment listener"
+        )
+    requested = str(host).strip()
+    pids = set()
+    for line in result.stdout.splitlines():
+        if requested not in {"0.0.0.0", "::"} and requested not in line:
+            continue
+        pids.update(int(value) for value in _LISTENER_PID_RE.findall(line))
+    return tuple(sorted(pids))
+
+
+def _process_cmdline(pid):
+    try:
+        raw = Path(f"/proc/{int(pid)}/cmdline").read_bytes()
+    except (FileNotFoundError, PermissionError, ProcessLookupError):
+        return ()
+    return tuple(
+        value.decode("utf-8", errors="replace")
+        for value in raw.split(b"\0")
+        if value
+    )
+
+
+def _process_cgroup(pid):
+    try:
+        return Path(f"/proc/{int(pid)}/cgroup").read_text(
+            encoding="utf-8", errors="replace"
+        )
+    except (FileNotFoundError, PermissionError, ProcessLookupError):
+        return ""
+
+
+def _is_wire_enrollment_command(argv):
+    values = [str(value) for value in argv]
+    joined = " ".join(values)
+    if not any("gway" in Path(value).name.lower() for value in values[:3]):
+        return False
+    return (
+        "wire server serve" in joined
+        or any(value.endswith("wire/enroll.rx") for value in values)
+    )
+
+
+def _listener_owner(host, port, *, unit="gway-wire-enroll.service"):
+    pids = _listener_pids(host, port)
+    if not pids:
+        return None
+    if len(pids) != 1:
+        raise RuntimeError(
+            f"enrollment endpoint {host}:{port} has multiple listener processes: "
+            + ", ".join(str(pid) for pid in pids)
+        )
+    pid = pids[0]
+    argv = _process_cmdline(pid)
+    return {
+        "pid": pid,
+        "argv": argv,
+        "managed": unit in _process_cgroup(pid),
+        "wire_enrollment": _is_wire_enrollment_command(argv),
+    }
+
+
 def _wg_values(output):
     values = {
         "public_key": None,
@@ -822,6 +898,53 @@ class Controller:
             "peer_applied": peer_applied,
         }
 
+    def reclaim_enrollment_listener(
+        self,
+        host="127.0.0.1",
+        port=8787,
+        *,
+        unit="gway-wire-enroll.service",
+        timeout=3.0,
+        mutate=True,
+    ):
+        """Reclaim one stale unmanaged Gway Wire enrollment listener safely."""
+        del mutate
+        owner = _listener_owner(host, port, unit=unit)
+        if owner is None:
+            return {"host": str(host), "port": int(port), "state": "free", "changed": False}
+        if owner["managed"]:
+            return {
+                "host": str(host),
+                "port": int(port),
+                "state": "managed",
+                "pid": owner["pid"],
+                "changed": False,
+            }
+        if not owner["wire_enrollment"]:
+            command = " ".join(owner["argv"]) or "unknown"
+            raise RuntimeError(
+                f"refusing to reclaim {host}:{port}; listener pid {owner['pid']} "
+                f"is not a Gway Wire enrollment process: {command}"
+            )
+
+        os.kill(owner["pid"], signal.SIGTERM)
+        deadline = time.monotonic() + float(timeout)
+        while time.monotonic() < deadline:
+            current = _listener_owner(host, port, unit=unit)
+            if current is None or current["pid"] != owner["pid"]:
+                return {
+                    "host": str(host),
+                    "port": int(port),
+                    "state": "reclaimed",
+                    "pid": owner["pid"],
+                    "changed": True,
+                }
+            time.sleep(0.1)
+        raise RuntimeError(
+            f"stale Gway Wire enrollment listener pid {owner['pid']} "
+            f"did not release {host}:{port} after SIGTERM"
+        )
+
     def serve_enrollment(
         self,
         host="127.0.0.1",
@@ -1176,6 +1299,12 @@ def register(gateway, *, runner=None, which=None):
         op="enroll",
         sub="client",
     )
+    enrollment_reclaim = gateway.wrap(
+        "wire.server.reclaim",
+        controller.reclaim_enrollment_listener,
+        op="reclaim",
+        sub="server",
+    )
     enrollment_serve = gateway.wrap(
         "wire.server.serve",
         controller.serve_enrollment,
@@ -1243,6 +1372,8 @@ def register(gateway, *, runner=None, which=None):
         "wg.server.token": token,
         "wireguard.client.enroll": enroll,
         "wg.client.enroll": enroll,
+        "wireguard.server.reclaim": enrollment_reclaim,
+        "wg.server.reclaim": enrollment_reclaim,
         "wireguard.server.serve": enrollment_serve,
         "wg.server.serve": enrollment_serve,
         "wireguard.server.activate": server_activate,
