@@ -246,6 +246,16 @@ class Gateway(Resolver):
         self._http_controller = HTTPController()
         ingest_python(self, self._http_controller, path=("http",))
 
+        from .githubops import Controller as GitHubController
+
+        self._github_controller = GitHubController(self)
+        ingest_python(self, self._github_controller, path=("github",))
+        for record in self.ops.records():
+            if record.name.startswith("github."):
+                metadata = dict(getattr(record.callable, "__gway_metadata__", {}) or {})
+                metadata["topics"] = tuple(dict.fromkeys((*metadata.get("topics", ()), "github", "source", "read")))
+                record.callable.__gway_metadata__ = metadata
+
         from .dns import Controller as DNSController
 
         self._dns_controller = DNSController(self)
