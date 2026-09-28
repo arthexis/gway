@@ -12,4 +12,4 @@ observe --section release -- node release status
 observe --section queue -- node queue status
 observe --section wire -- wire check
 observe --section errors -- log search "ERROR|CRITICAL" --all --limit 20
-observation collect node services deploy release queue wire errors --changed-at null --cursor null
+observation collect node services deploy release queue wire errors
