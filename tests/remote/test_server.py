@@ -272,3 +272,97 @@ def test_remote_runtime_permission_summary_expands_lazy_read_only_operation(tmp_
 
     assert summary["effective"]["mutation_capable"] is False
     assert callable(runtime.ops.resolve("log.read"))
+
+
+def test_remote_runtime_converges_arthexis_scopes(tmp_path):
+    from gway.gateway import Gateway
+    from gway.security.scopes import ScopeRegistry
+
+    runtime = Gateway()
+    runtime.security_path = tmp_path / "security.sqlite"
+    metadata = RemoteOAuthMetadata.from_origin("https://remote.example.test")
+
+    RemoteApplication(metadata, runtime=runtime)
+
+    registry = ScopeRegistry(runtime.security_path)
+    read_scope = registry.require("arthexis-read")
+    write_scope = registry.require("arthexis-write")
+
+    assert read_scope.operations == frozenset(
+        {
+            "arthexis.fleet",
+            "arthexis.ocpp_status",
+            "arthexis.ocpp_matrix",
+            "ocpp.charger",
+            "ocpp.charger.enabled",
+            "ocpp.charger.disabled",
+            "ocpp.charger.connected",
+            "ocpp.charger.disconnected",
+            "ocpp.charger.charging",
+            "ocpp.charger.idle",
+            "ocpp.charger.unresolved",
+            "ocpp.charger.historical",
+            "ocpp.connector.all",
+            "ocpp.connector.filter",
+            "ocpp.chargerconnection.all",
+            "ocpp.chargerconnection.filter",
+            "ocpp.ocpptransaction.all",
+            "ocpp.ocpptransaction.filter",
+            "ocpp.metervalue.all",
+            "ocpp.metervalue.filter",
+            "ocpp.meterreadingbatch.all",
+            "ocpp.meterreadingbatch.filter",
+            "ocpp.protocoloperation.all",
+            "ocpp.protocoloperation.filter",
+            "ocpp.reservation.all",
+            "ocpp.reservation.filter",
+            "ocpp.chargervariable.all",
+            "ocpp.chargervariable.filter",
+            "ocpp.notificationrecord.all",
+            "ocpp.notificationrecord.filter",
+            "ocpp.monitoringrecord.all",
+            "ocpp.monitoringrecord.filter",
+            "ocpp.compatibilityevidence.all",
+            "ocpp.compatibilityevidence.filter",
+            "ocpp.chargingprofile.all",
+            "ocpp.chargingprofile.filter",
+            "ocpp.certificaterecord.all",
+            "ocpp.certificaterecord.filter",
+            "ocpp.inboundprotocolrequest.all",
+            "ocpp.inboundprotocolrequest.filter",
+            "ocpp.operationalstatusrecord.all",
+            "ocpp.operationalstatusrecord.filter",
+            "ocpp.chargertimelineprogress.all",
+            "ocpp.chargertimelineprogress.filter",
+            "energy.customeraccount.all",
+            "energy.customeraccount.filter",
+            "energy.energytariff.all",
+            "energy.energytariff.filter",
+            "energy.ledgerentry.all",
+            "energy.ledgerentry.filter",
+            "cards.cardcredential.all",
+            "cards.cardcredential.filter",
+            "cards.authorizationattempt.all",
+            "cards.authorizationattempt.filter",
+            "nodes.node.all",
+            "nodes.node.filter",
+            "nodes.nodelink.all",
+            "nodes.nodelink.filter",
+            "events.eventenvelope.all",
+            "events.eventenvelope.filter",
+        }
+    )
+    assert write_scope.operations == frozenset(
+        {
+            "ocpp.charger.reset",
+            "ocpp.charger.start",
+            "ocpp.charger.stop",
+            "arthexis.event",
+            "arthexis.ocpp_cutover",
+            "arthexis.ocpp_policy",
+            "arthexis.ocpp_recovery",
+        }
+    )
+    assert read_scope.environment == frozenset()
+    assert write_scope.environment == frozenset()
+    assert read_scope.operations.isdisjoint(write_scope.operations)
