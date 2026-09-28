@@ -4,6 +4,8 @@ import pytest
 
 from gway import Gateway
 from gway.dispatch import resolve_operation
+from gway.documentation import describe
+from gway.mutation import MutationError
 from gway.tokens import tokenize
 
 
@@ -137,3 +139,145 @@ def test_same_route_rejects_file_and_directory_main_collision(tmp_path):
 
     with pytest.raises(LookupError, match="Ambiguous first-class recipe"):
         resolve_operation(gateway, tokenize("watch"))
+
+
+def test_recipe_operation_uses_normal_documentation_surface(tmp_path):
+    gateway, root = _root_gateway(tmp_path)
+    _write(root / "greet.rx", "version\n")
+    _write(
+        root / "greet.py",
+        '''
+def __main__(name: str, *, punctuation="!", mutate=False):
+    """Return a greeting.
+
+    Args:
+        name: Person to greet.
+        punctuation: Suffix for the greeting.
+    """
+''',
+    )
+
+    operation = resolve_operation(gateway, tokenize("greet")).callable
+    documentation = describe(operation)
+
+    assert documentation.summary == "Return a greeting."
+    assert documentation.source_kind == "recipe"
+    assert documentation.path == ("greet",)
+    assert tuple(documentation.signature.parameters) == ("name", "punctuation")
+    assert documentation.parameter("name").required is True
+    assert documentation.parameter("name").description == "Person to greet."
+    assert documentation.parameter("punctuation").default == "!"
+    assert documentation.parameter("punctuation").description == (
+        "Suffix for the greeting."
+    )
+    assert "Return a greeting." in gateway._command_help("greet", verbose=True)
+
+
+def test_recipe_operation_participates_in_normal_chaining(tmp_path):
+    gateway, root = _root_gateway(tmp_path)
+    _write(root / "greet.rx", "version\n")
+
+    gateway.wrap("echo", lambda value=None: value)
+    result = gateway("greet - echo")
+
+    assert result == gateway("version")
+
+
+def test_non_mutating_recipe_respects_outer_no_mutate_for_child_operations(tmp_path):
+    gateway, root = _root_gateway(tmp_path)
+    _write(root / "observe.rx", "danger\n")
+    _write(
+        root / "observe.py",
+        """
+def __main__(*, mutate=False):
+    \"\"\"Observe without mutation.\"\"\"
+""",
+    )
+    calls = []
+
+    def danger():
+        calls.append("danger")
+        return "changed"
+
+    gateway.wrap("danger", danger)
+
+    with pytest.raises(MutationError, match="does not support non-mutating execution"):
+        gateway.execute("observe", mutate=False)
+
+    assert calls == []
+
+
+def test_recipe_without_non_mutating_contract_is_conservatively_mutating(tmp_path):
+    gateway, root = _root_gateway(tmp_path)
+    _write(root / "legacy.rx", "version\n")
+
+    operation = resolve_operation(gateway, tokenize("legacy")).callable
+
+    assert operation.mutates is True
+
+
+def test_authorized_external_execution_accepts_recipe_operation_name(tmp_path):
+    gateway, root = _root_gateway(tmp_path)
+    _write(root / "observe.rx", "version\n")
+    _write(
+        root / "observe.py",
+        """
+def __main__(*, mutate=False):
+    \"\"\"Return an observation.\"\"\"
+""",
+    )
+
+    with gateway.authorized(operations={"observe"}):
+        assert gateway("observe") == gateway("version")
+
+
+def test_external_authority_cannot_configure_operation_roots(tmp_path):
+    gateway = Gateway()
+
+    with gateway.authorized(operations={"__all__"}):
+        assert gateway.ops.resolve("root") is None
+        assert gateway.ops.resolve("add.root") is None
+
+
+def test_registered_operation_precedes_explicit_root(tmp_path):
+    gateway, root = _root_gateway(tmp_path)
+    _write(root / "status.rx", "version\n")
+    gateway.wrap("status", lambda: "registered")
+
+    assert gateway("status") == "registered"
+
+
+def test_explicit_root_precedes_sampler_first_class_recipe(tmp_path, monkeypatch):
+    import gway.sampler as sampler
+
+    explicit = tmp_path / "explicit"
+    maintained = tmp_path / "sampler"
+    explicit.mkdir()
+    maintained.mkdir()
+    _write(explicit / "status.rx", "version\n")
+    _write(maintained / "status.rx", "version\n")
+
+    monkeypatch.setattr(sampler, "root", lambda: maintained)
+    gateway = Gateway()
+    gateway.add_operation_root(explicit)
+
+    operation = resolve_operation(gateway, tokenize("status")).callable
+
+    assert operation.__gway_metadata__["root"] == explicit.resolve()
+
+
+def test_first_explicit_root_precedes_later_root_for_recipe_operation(tmp_path):
+    first = tmp_path / "first"
+    second = tmp_path / "second"
+    first.mkdir()
+    second.mkdir()
+    _write(first / "status.rx", "version\n")
+    _write(second / "status.rx", "version\n")
+
+    gateway = Gateway()
+    gateway.add_operation_root(first)
+    gateway.add_operation_root(second)
+
+    operation = resolve_operation(gateway, tokenize("status")).callable
+
+    assert operation.__gway_metadata__["root"] == first.resolve()
