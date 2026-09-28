@@ -34,10 +34,15 @@ def test_bare_node_reports_active_role_and_operations(tmp_path, monkeypatch):
 
     result = gateway("node")
 
-    assert result == {
-        "role": "watchtower",
-        "family": "node/watchtower",
-        "operations": ["diagnose", "security audit"],
+    assert result["role"] == "watchtower"
+    assert result["family"] == "node/watchtower"
+    assert result["operations"] == ["diagnose", "security audit"]
+    assert result["runtime"]["version"]
+    assert result["runtime"]["managed"] is False
+    assert result["runtime"]["resolved_revision"] is None
+    assert result["project"] == {
+        "name": "demo",
+        "root": str(tmp_path.resolve()),
     }
 
 
@@ -256,3 +261,36 @@ def test_role_oriented_alias_authorizes_canonical_node_identity(
             match="node.watchtower.status",
         ):
             gateway("watchtower status")
+
+
+def test_bare_node_snapshot_uses_managed_runtime_identity(tmp_path, monkeypatch):
+    from gway.install.identity import RuntimeIdentity
+
+    gateway = _runtime(tmp_path, monkeypatch, "watchtower")
+    gateway.gway_identity = RuntimeIdentity(
+        source="https://github.com/arthexis/gway.git",
+        requested_ref="main",
+        resolved_revision="abc123",
+        install_path=tmp_path,
+        scope="user",
+    )
+
+    result = gateway("node")
+
+    assert result["runtime"] == {
+        "version": result["runtime"]["version"],
+        "managed": True,
+        "source": "https://github.com/arthexis/gway.git",
+        "requested_ref": "main",
+        "resolved_revision": "abc123",
+        "scope": "user",
+    }
+
+
+def test_bare_node_snapshot_is_non_mutating(tmp_path, monkeypatch):
+    gateway = _runtime(tmp_path, monkeypatch, "control")
+
+    result = gateway.execute("node", mutate=False)
+
+    assert result["role"] == "control"
+    assert gateway.ops.resolve("node").mutates is False
