@@ -24,10 +24,11 @@ def test_exact_operation_still_shadows_sampler_recipe():
     assert resolve_recipe_stage(runtime, tokens, pipeline=None) is None
 
 
-def test_project_root_recipe_resolves_as_bare_command(gateway, tmp_path, monkeypatch):
+def test_project_root_recipe_resolves_as_bare_command(tmp_path, monkeypatch):
     recipe = tmp_path / "ci.rx"
     recipe.write_text("echo project-ci\\n", encoding="utf-8")
     monkeypatch.chdir(tmp_path)
+    gateway = Gateway()
 
     tokens = tokenize("ci")
     resolved = resolve_recipe_stage(gateway, tokens, pipeline=None)
@@ -69,3 +70,57 @@ def test_python_310_workflow_delegates_regression_to_project_ci():
     assert "python -m pytest" in forward
     assert "push:" in workflow
     assert "branches: [main]" in workflow
+
+
+def test_registered_operation_still_shadows_project_bare_recipe(tmp_path, monkeypatch):
+    recipe = tmp_path / "status.rx"
+    recipe.write_text("version\n", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+    gateway = Gateway()
+    gateway.status = gateway.wrap("status", lambda: "registered")
+
+    assert resolve_recipe_stage(gateway, tokenize("status"), pipeline=None) is None
+
+
+def test_project_bare_recipe_shadows_maintained_recipe_operation(tmp_path, monkeypatch):
+    recipe = tmp_path / "ci.rx"
+    recipe.write_text("resolve '[site|local]'\n", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+    gateway = Gateway()
+
+    # Expand the maintained sampler root so its first-class ci recipe is registered.
+    gateway.operation_routes.expand(gateway, tokenize("ci"))
+    maintained = gateway.ops.resolve("ci")
+    assert maintained is not None
+    assert getattr(maintained, "__gway_source_kind__", None) == "recipe"
+
+    resolved = resolve_recipe_stage(gateway, tokenize("ci"), pipeline=None)
+
+    assert resolved is not None
+    path, arguments, remaining = resolved
+    assert path == recipe
+    assert arguments == []
+    assert remaining == []
+
+
+def test_semantic_pipeline_operation_shadows_project_bare_recipe(tmp_path, monkeypatch):
+    recipe = tmp_path / "save.rx"
+    recipe.write_text("version\n", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+    gateway = Gateway()
+    charger = object()
+    gateway.results.insert("charger", charger)
+
+    def save(charger):
+        return charger
+
+    gateway.save = gateway.wrap("save_charger", save, op="save", sub="charger")
+
+    assert (
+        resolve_recipe_stage(
+            gateway,
+            tokenize("save"),
+            pipeline=charger,
+        )
+        is None
+    )

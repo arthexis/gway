@@ -456,20 +456,6 @@ def test_service_list_status_and_inspect_support_non_mutating_execution(service_
     assert gateway.ops.resolve("service.inspect").mutates is False
 
 
-def test_service_status_remains_rejected_under_non_mutating_execution(
-    service_gateway,
-):
-    gateway, backend = service_gateway
-
-    with pytest.raises(
-        RuntimeError,
-        match="does not support non-mutating execution",
-    ):
-        gateway.execute("service status worker", mutate=False)
-
-    assert backend.calls == []
-
-
 def test_service_definition_supports_native_executable(
     tmp_path,
     monkeypatch,

@@ -14,7 +14,12 @@ class MutationError(RuntimeError):
 def mutation_parameter(callable_):
     """Return the reserved mutate parameter declared by a callable, if any."""
     try:
-        signature = inspect.signature(callable_)
+        signature = inspect.signature(callable_, eval_str=True)
+    except NameError:
+        try:
+            signature = inspect.signature(callable_)
+        except (TypeError, ValueError):
+            return None
     except (TypeError, ValueError):
         return None
 
@@ -41,15 +46,22 @@ def mutation_parameter(callable_):
 
 def supports_no_mutate(callable_):
     """Return whether a callable explicitly supports Gway's mutation contract."""
+    declared = getattr(callable_, "__gway_supports_no_mutate__", None)
+    if declared is not None:
+        return bool(declared)
     return mutation_parameter(callable_) is not None
 
 
 def mutates(callable_):
     """Return the callable's declared default mutation behavior.
 
-    Callables without the reserved mutation contract are conservatively treated
-    as mutating.
+    Wrapped operations retain their original mutation metadata even though the
+    reserved mutate parameter is hidden from the public signature. Callables
+    without an explicit contract remain conservatively classified as mutating.
     """
+    declared = getattr(callable_, "__gway_mutates__", None)
+    if declared is not None:
+        return bool(declared)
     parameter = mutation_parameter(callable_)
     if parameter is None or parameter.default is MUTATE_UNSET:
         return True
@@ -59,9 +71,12 @@ def mutates(callable_):
 def public_signature(callable_, *, receiver=False):
     """Return the user-facing signature with reserved mutation semantics hidden."""
     try:
-        signature = inspect.signature(callable_)
-    except (TypeError, ValueError):
-        return None
+        signature = inspect.signature(callable_, eval_str=True)
+    except (NameError, TypeError, ValueError):
+        try:
+            signature = inspect.signature(callable_)
+        except (TypeError, ValueError):
+            return None
 
     parameters = list(signature.parameters.values())
     if receiver and parameters:

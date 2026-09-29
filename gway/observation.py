@@ -10,6 +10,7 @@ from pathlib import Path
 from .authorization import AuthorizationError
 from .dispatch import OperationLookupError
 from .mutation import MutationError
+from .tokens import Token
 
 
 _CURSOR_VERSION = 1
@@ -129,7 +130,7 @@ class Controller:
     def __init__(self, gateway):
         self.gateway = gateway
 
-    def observe(self, *command, section=None, scope=None, mutate=False):
+    def observe(self, *command: Token, section=None, scope=None, mutate=False):
         """Execute one command read-only and return a structured observation envelope.
 
         Args:
@@ -221,9 +222,9 @@ class Controller:
         cursor=None,
         only=None,
         except_=None,
-        errors=None,
+        problems=None,
         changed=None,
-        published=None,
+        published: bool = False,
         scope=None,
         mutate=False,
         **values,
@@ -290,7 +291,7 @@ class Controller:
             status = envelope.get("status", "unavailable")
             if status == "unauthorized":
                 continue
-            if _enabled(errors):
+            if _enabled(problems):
                 has_log_errors = name == "errors" and bool(envelope.get("result"))
                 if status not in {"error", "blocked"} and not has_log_errors:
                     continue

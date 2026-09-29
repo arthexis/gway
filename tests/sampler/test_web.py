@@ -222,5 +222,6 @@ def test_web_expose_https_template_sets_safe_edge_defaults(sampler_path):
     assert 'add_header X-Content-Type-Options "nosniff" always;' in content
     assert 'add_header Referrer-Policy "same-origin" always;' in content
     assert "[response_headers|]" in content
-    location = content.split("    location / {", 1)[1]
+    tls_server = content.rsplit("server {", 1)[1]
+    location = tls_server.split("    location / {", 1)[1]
     assert "add_header" not in location

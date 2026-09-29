@@ -463,7 +463,8 @@ def test_cimd_fetch_installs_no_redirect_handler(monkeypatch):
             return b'{"client_id":"https://client.example/oauth/client.json"}'
 
     class Opener:
-        def open(self, _request, _timeout):
+        def open(self, _request, timeout=None):
+            assert timeout == 5
             return Response()
 
     def build(*handlers):

@@ -115,9 +115,19 @@ def convert_argument(token, parameter, runtime):
     literal = is_literal(token)
     value = token_value(token)
     annotation = parameter.annotation
+    if (
+        annotation is inspect.Parameter.empty
+        and parameter.default is not inspect.Parameter.empty
+        and parameter.default is not None
+        and type(parameter.default) in {str, int, float, bool}
+    ):
+        annotation = type(parameter.default)
 
     if literal or annotation is Literal:
         return Literal(value)
+
+    if annotation is Token:
+        return token if isinstance(token, Token) else Token(value)
 
     if isinstance(value, str) and Sigil._pattern.search(value):
         value = runtime.resolve(value)
@@ -237,6 +247,34 @@ def _next_positional(signature, filled):
         if parameter.name not in filled:
             return parameter
     return _variadic_parameter(signature)
+
+
+def _bind_positional_value(
+    signature,
+    parameter,
+    value,
+    converted_positional,
+    keywords,
+):
+    """Bind one semantic positional token without colliding with earlier keywords."""
+    if parameter is None:
+        converted_positional.append(value)
+        return
+
+    if parameter.kind is inspect.Parameter.VAR_POSITIONAL:
+        converted_positional.append(value)
+        return
+
+    positional = _positional_parameters(signature)
+    position = positional.index(parameter)
+    if (
+        parameter.kind is inspect.Parameter.POSITIONAL_OR_KEYWORD
+        and position > len(converted_positional)
+    ):
+        keywords[parameter.name] = value
+        return
+
+    converted_positional.append(value)
 
 
 def _initial_filled(signature, initial_args=(), initial_kwargs=None):
@@ -366,7 +404,7 @@ def pipeline_boundary(
         if greedy is not None and parameter is greedy:
             return None
 
-        if is_unquoted(raw) and token == "-":
+        if not literal_mode and is_unquoted(raw) and token == "-":
             return index
 
         if (
@@ -407,7 +445,13 @@ def bind_arguments(
         parameter = _next_positional(signature, filled)
 
         if isinstance(item, _PipelineValue):
-            converted_positional.append(item.value)
+            _bind_positional_value(
+                signature,
+                parameter,
+                item.value,
+                converted_positional,
+                keywords,
+            )
             if (
                 parameter is not None
                 and parameter.kind is not inspect.Parameter.VAR_POSITIONAL
@@ -450,7 +494,20 @@ def bind_arguments(
                 index += 1
                 continue
             if _is_boolean_parameter(keyword_parameter):
-                keywords[key] = not negated
+                value = not negated
+                if not negated and index + 1 < len(stream):
+                    value_item = stream[index + 1]
+                    if not isinstance(value_item, _PipelineValue):
+                        next_value = token_value(value_item)
+                        if (
+                            not is_literal(value_item)
+                            and isinstance(next_value, str)
+                            and next_value.lower()
+                            in {"0", "1", "false", "true", "no", "yes", "off", "on"}
+                        ):
+                            value = _convert_scalar(next_value, bool)
+                            index += 1
+                keywords[key] = value
                 filled.add(key)
                 index += 1
                 continue
@@ -509,14 +566,27 @@ def bind_arguments(
                     "a greedy string argument has started"
                 )
             parts = [convert_argument(part, greedy, runtime) for part in tail]
-            converted_positional.append(" ".join(str(part) for part in parts))
+            _bind_positional_value(
+                signature,
+                greedy,
+                " ".join(str(part) for part in parts),
+                converted_positional,
+                keywords,
+            )
             filled.add(greedy.name)
             break
 
         if parameter is None:
             converted_positional.append(token)
         else:
-            converted_positional.append(convert_argument(item, parameter, runtime))
+            converted = convert_argument(item, parameter, runtime)
+            _bind_positional_value(
+                signature,
+                parameter,
+                converted,
+                converted_positional,
+                keywords,
+            )
             if parameter.kind is not inspect.Parameter.VAR_POSITIONAL:
                 filled.add(parameter.name)
         index += 1

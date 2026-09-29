@@ -67,6 +67,21 @@ def split_operation(name):
     return simple, None
 
 
+def _command_words(name):
+    """Normalize public command spellings without rewriting special identities."""
+    words = []
+    for raw in str(name).replace(".", " ").split():
+        if raw.startswith("__") and raw.endswith("__"):
+            words.append(raw)
+            continue
+        if raw == "-" or raw.startswith("--"):
+            words.append(raw)
+            continue
+        for part in raw.replace("_", " ").split():
+            words.extend(piece for piece in part.replace("-", " ").split() if piece)
+    return tuple(words)
+
+
 class _Registry:
     def __init__(self):
         self.records = {}
@@ -107,6 +122,20 @@ class _Registry:
         record = self.records.get(canonical)
         if record is not None:
             return record.callable
+
+        requested_words = _command_words(name)
+        spelling_matches = {}
+        for identity, target in self.aliases.items():
+            if _command_words(identity) != requested_words:
+                continue
+            matched = self.records.get(target)
+            if matched is not None:
+                spelling_matches[target] = matched
+        for identity, matched in self.records.items():
+            if _command_words(identity) == requested_words:
+                spelling_matches[identity] = matched
+        if len(spelling_matches) == 1:
+            return next(iter(spelling_matches.values())).callable
 
         parts = tuple(part for part in str(name).replace(" ", ".").split(".") if part)
         if len(parts) < 2:

@@ -179,6 +179,24 @@ def test_bare_help_lists_all_local_operations(gateway):
     assert "security.token.list" in output
 
 
+def test_bare_help_does_not_expand_lazy_django_model_roots(gateway):
+    from gway.ingestion.base import remember_object
+    from gway.ingestion.django import ingest_model
+
+    model = object()
+    record = remember_object(
+        gateway,
+        model,
+        ("charger",),
+        expander=ingest_model,
+    )
+
+    output = gateway("help")
+
+    assert "Available operations:" in output
+    assert record.expanded is False
+
+
 def test_bare_help_lists_only_authorized_operations(gateway):
     with gateway.authorized(operations={"help", "log.read"}):
         output = gateway("help")

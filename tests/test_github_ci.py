@@ -21,6 +21,9 @@ class FakeClient:
             headers=response_headers,
         )
 
+    def download_redirect(self, path):
+        return self.request("GET", path)
+
 
 def test_runs_support_workflow_branch_and_status_filters():
     client = FakeClient([{"workflow_runs": [{"id": 7}]}])

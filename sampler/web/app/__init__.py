@@ -3,7 +3,7 @@
 from . import adapter, server
 from .adapter import HandlerNotFound, InMemoryAdapter, MethodNotAllowed, RouteNotFound
 from .application import register
-from .appspec import AppSpec, BindingSpec, RouteSpec, ViewSpec
+from .appspec import AppSpec, BindingSpec, HeaderSpec, RouteSpec, ViewSpec
 from .exposure import ExposureSpec, LocalAppService
 from .server import ApplicationHTTPAdapter, ApplicationRequest, build_app_server, build_server, serve_app
 
@@ -15,6 +15,7 @@ __all__ = [
     "BindingSpec",
     "ExposureSpec",
     "HandlerNotFound",
+    "HeaderSpec",
     "InMemoryAdapter",
     "LocalAppService",
     "MethodNotAllowed",

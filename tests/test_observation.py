@@ -254,7 +254,7 @@ def test_observation_collect_rejects_unknown_section():
         gateway("observation collect node wire --only mystery")
 
 
-def test_observation_collect_errors_keeps_failures_and_nonempty_error_logs():
+def test_observation_collect_problems_keeps_failures_and_nonempty_error_logs():
     gateway = Gateway()
     gateway.context.update(
         {
@@ -286,7 +286,7 @@ def test_observation_collect_errors_keeps_failures_and_nonempty_error_logs():
     )
 
     result = gateway(
-        "observation collect node wire errors deploy --errors true"
+        "observation collect node wire errors deploy --problems true"
     )
 
     assert set(result) == {
@@ -303,7 +303,7 @@ def test_observation_collect_errors_keeps_failures_and_nonempty_error_logs():
     }
 
 
-def test_observation_collect_errors_omits_empty_error_log_section():
+def test_observation_collect_problems_omits_empty_error_log_section():
     gateway = Gateway()
     gateway.context["errors"] = {
         "status": "ok",
@@ -312,7 +312,7 @@ def test_observation_collect_errors_omits_empty_error_log_section():
         "error": None,
     }
 
-    result = gateway("observation collect errors --errors true")
+    result = gateway("observation collect errors --problems true")
 
     assert set(result) == {"health", "changed_at", "cursor"}
     assert result["health"]["status"] == "ok"
@@ -369,3 +369,70 @@ def test_observation_cursor_unchanged_result_is_empty_surface():
     assert set(second) == {"health", "changed_at", "cursor"}
     assert second["health"]["sections"] == {}
     assert second["changed_at"] is None
+
+
+def test_observe_section_publishes_envelope_to_semantic_context():
+    gateway = Gateway()
+    gateway.wrap("probe", lambda *, mutate=False: {"ready": True})
+
+    result = gateway("observe --section node -- probe")
+
+    assert result["node"]["status"] == "ok"
+    assert gateway.context["node"] == result["node"]
+
+
+def test_observe_service_statuses_uses_canonical_authorized_operation():
+    gateway = Gateway()
+
+    with gateway.authorized(operations={"observe", "service.statuses"}):
+        result = gateway("observe --section services -- service statuses")
+
+    assert result["services"]["status"] == "ok", result["services"]["error"]
+
+
+def test_latest_explicit_wrap_replaces_same_canonical_operation():
+    gateway = Gateway()
+    calls = []
+    gateway.wrap(
+        "wire.check",
+        lambda *, mutate=False: calls.append("replacement") or {"ready": False},
+        op="check",
+        sub="wire",
+    )
+
+    result = gateway("wire check")
+
+    assert result == {"ready": False}
+    assert calls == ["replacement"]
+
+
+def test_observe_uses_latest_explicit_operation_replacement():
+    gateway = Gateway()
+
+    def fail(*, mutate=False):
+        raise ConnectionError("wire offline")
+
+    gateway.wrap("wire.check", fail, op="check", sub="wire")
+
+    result = gateway("observe --section wire -- wire check")
+
+    assert result["wire"]["status"] == "error"
+    assert result["wire"]["error"]["message"] == "wire offline"
+
+
+def test_observe_uses_latest_log_search_replacement():
+    gateway = Gateway()
+    calls = []
+
+    def search(pattern, *source, since=None, until=None, limit=100, all=False, mutate=False):
+        calls.append((pattern, source, since, limit, all, mutate))
+        return []
+
+    gateway.wrap("log.search", search, op="search", sub="log")
+
+    result = gateway(
+        'observe --section errors -- log search "ERROR|CRITICAL" --all --limit 20'
+    )
+
+    assert result["errors"]["status"] == "ok"
+    assert calls == [("ERROR|CRITICAL", (), None, 20, True, False)]
