@@ -348,10 +348,10 @@ def test_cli_structured_results_are_human_readable_without_json(tmp_path):
     )
 
     assert completed.returncode == 0, completed.stderr
-    assert "name: logs" in completed.stdout
-    assert "operations:" in completed.stdout
+    assert "Name: logs" in completed.stdout
+    assert "Operations" in completed.stdout
     assert "- log.read" in completed.stdout
-    assert "environment:" in completed.stdout
+    assert "Environment" in completed.stdout
     assert "- LOG_LEVEL" in completed.stdout
     assert '{"' not in completed.stdout
     assert "Scope(" not in completed.stdout
@@ -398,10 +398,9 @@ def test_cli_json_structured_results_remain_machine_readable(tmp_path):
     )
 
     assert completed.returncode == 0, completed.stderr
-    assert json.loads(completed.stdout) == [
-        {
-            "name": "logs",
-            "operations": ["log.read"],
-            "environment": ["LOG_LEVEL"],
-        }
-    ]
+    payload = json.loads(completed.stdout)
+    logs = next(item for item in payload if item["name"] == "logs")
+    assert logs["operations"] == ["log.read"]
+    assert logs["environment"] == ["LOG_LEVEL"]
+    assert logs["owner"] is None
+    assert any(item["name"] == "full-access" for item in payload)
