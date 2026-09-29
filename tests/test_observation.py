@@ -387,7 +387,7 @@ def test_observe_service_statuses_uses_canonical_authorized_operation():
     with gateway.authorized(operations={"observe", "service.statuses"}):
         result = gateway("observe --section services -- service statuses")
 
-    assert result["services"]["status"] == "ok"
+    assert result["services"]["status"] == "ok", result["services"]["error"]
 
 
 def test_latest_explicit_wrap_replaces_same_canonical_operation():
