@@ -56,7 +56,8 @@ role = "control"
     assert stderr == ""
     assert "Node" in stdout
     assert "Role: control" in stdout
-    assert "Status:" not in stdout
+    assert "Health" in stdout
+    assert "Status: ok" in stdout
     assert "Available:" not in stdout
     assert '"node"' not in stdout
 
