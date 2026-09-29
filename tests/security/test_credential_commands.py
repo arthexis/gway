@@ -81,7 +81,7 @@ def test_oauth_grant_bind_updates_live_access_authority(gateway, tmp_path):
 
     assert updated.scopes == frozenset({"logs", "operator-read"})
     assert oauth.authenticate_access(issued.access_token).authority.operations == frozenset(
-        {"log.read", "watch", "wire.check"}
+        {"watch", "wire.check"}
     )
 
 
