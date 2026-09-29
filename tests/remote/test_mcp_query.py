@@ -291,3 +291,51 @@ def test_mcp_tool_projection_is_conservative_without_capability_metadata():
     projected = server._project_tools(tools, {})
 
     assert [tool.name for tool in projected] == ["gway", "query"]
+
+
+def test_mcp_query_returns_watch_as_structured_mapping(gateway, tmp_path, monkeypatch):
+    (tmp_path / "pyproject.toml").write_text(
+        """
+[project]
+name = "demo"
+
+[tool.gway.variables]
+role = "control"
+""".lstrip(),
+        encoding="utf-8",
+    )
+    monkeypatch.chdir(tmp_path)
+    gateway.wrap(
+        "wire.check",
+        lambda *, mutate=False: {"ready": True},
+        op="check",
+        sub="wire",
+    )
+    gateway.wrap(
+        "log.search",
+        lambda pattern, *source, since=None, until=None, limit=100, all=False, mutate=False: [],
+        op="search",
+        sub="log",
+    )
+
+    server = _server_module()
+    server._gway_parent = gateway
+
+    async def run():
+        async with Client(server.mcp) as client:
+            result = await client.call_tool(
+                "query",
+                {"command": "watch --only node,wire"},
+            )
+            return result
+
+    result = asyncio.run(run())
+
+    assert result.structured_content["ok"] is True
+    assert result.structured_content["result_type"] == "mapping"
+    watch = result.structured_content["result"]
+    assert set(watch) == {"node", "wire", "health", "changed_at", "cursor"}
+    assert watch["node"]["status"] == "ok"
+    assert watch["wire"]["status"] == "ok"
+    assert isinstance(watch["cursor"], str)
+    assert result.structured_content["output"] == []
