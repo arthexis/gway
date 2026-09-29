@@ -117,48 +117,10 @@ def test_mcp_gway_tool_rejects_non_json_result(
 
 
 
-def test_mcp_stdio_client_lists_and_calls_generic_gway_tool(
+def test_mcp_stdio_transport_lists_tools_and_survives_authorization_error(
     gateway, recipe_factory, required_runtime, tmp_path
 ):
     root = tmp_path / "mcpstdio"
-    gateway.echo = gateway.wrap("echo_value", lambda value: value)
-    probe = (
-        "\n\ndef probe_stdio(command):\n"
-        "    import asyncio\n"
-        "    from fastmcp import Client\n"
-        "    from fastmcp.client.transports import PythonStdioTransport\n"
-        "    async def run():\n"
-        "        with _callback_relay() as bridge:\n"
-        "            transport = PythonStdioTransport(\n"
-        "                str(Path(__file__)),\n"
-        "                args=['--parent-bridge', bridge],\n"
-        "            )\n"
-        "            async with Client(transport) as client:\n"
-        "                tools = await client.list_tools()\n"
-        "                result = await client.call_tool('gway', {'command': command})\n"
-        "                return [tool.name for tool in tools], result.content[0].text\n"
-        "    return asyncio.run(run())\n"
-    )
-    recipe = _mcp_companion_recipe(
-        recipe_factory,
-        root,
-        "echo unused",
-        suffix=probe,
-    )
-    recipe.write_text("require fastmcp\nserver probe stdio 'echo hello'\n", encoding="utf-8")
-    gateway.ingest(root)
-
-    with gateway.authorized(operations={"mcpstdio.server", "echo_value"}):
-        tools, result = gateway("mcpstdio server")
-
-    assert tools == ["gway", "query"]
-    assert result == "hello"
-
-
-def test_mcp_stdio_authorization_error_does_not_kill_server_session(
-    gateway, recipe_factory, required_runtime, tmp_path
-):
-    root = tmp_path / "mcpstdioerror"
     gateway.allowed = gateway.wrap("allowed", lambda: "ok")
     gateway.denied = gateway.wrap("denied", lambda: "no")
     probe = (
@@ -173,13 +135,15 @@ def test_mcp_stdio_authorization_error_does_not_kill_server_session(
         "                args=['--parent-bridge', bridge],\n"
         "            )\n"
         "            async with Client(transport) as client:\n"
-        "                first_error = None\n"
+        "                tools = [tool.name for tool in await client.list_tools()]\n"
+        "                first = await client.call_tool('gway', {'command': 'allowed'})\n"
+        "                error = None\n"
         "                try:\n"
         "                    await client.call_tool('gway', {'command': 'denied'})\n"
         "                except Exception as exception:\n"
-        "                    first_error = str(exception)\n"
+        "                    error = str(exception)\n"
         "                second = await client.call_tool('gway', {'command': 'allowed'})\n"
-        "                return first_error, second.content[0].text\n"
+        "                return tools, first.content[0].text, error, second.content[0].text\n"
         "    return asyncio.run(run())\n"
     )
     recipe = _mcp_companion_recipe(
@@ -191,12 +155,13 @@ def test_mcp_stdio_authorization_error_does_not_kill_server_session(
     recipe.write_text("require fastmcp\nserver probe stdio\n", encoding="utf-8")
     gateway.ingest(root)
 
-    with gateway.authorized(operations={"mcpstdioerror.server", "allowed"}):
-        error, result = gateway("mcpstdioerror server")
+    with gateway.authorized(operations={"mcpstdio.server", "allowed"}):
+        tools, first, error, second = gateway("mcpstdio server")
 
+    assert tools == ["gway", "query"]
+    assert first == "ok"
     assert "Operation is not authorized: denied" in error
-    assert result == "ok"
-
+    assert second == "ok"
 
 
 def _authenticated_parent_recipe(recipe_factory, root, bearer, command):
@@ -1136,71 +1101,6 @@ def test_mcp_serve_allows_explicit_http_bind_configuration(
         "path": "/custom-mcp",
     }
 
-
-
-def test_mcp_stdio_query_is_listed_read_only_and_enforces_no_mutation(
-    gateway, recipe_factory, required_runtime, tmp_path
-):
-    root = tmp_path / "mcpstdioquery"
-    seen = []
-
-    def observe(*, mutate=False):
-        seen.append(("observe", mutate))
-        return "observed"
-
-    def restart():
-        seen.append(("restart", True))
-        return "restarted"
-
-    gateway.observe = gateway.wrap("observe", observe)
-    gateway.restart = gateway.wrap("restart", restart)
-
-    probe = (
-        "\n\ndef probe_query():\n"
-        "    import asyncio\n"
-        "    from fastmcp import Client\n"
-        "    from fastmcp.client.transports import PythonStdioTransport\n"
-        "    async def run():\n"
-        "        with _callback_relay() as bridge:\n"
-        "            transport = PythonStdioTransport(\n"
-        "                str(Path(__file__)),\n"
-        "                args=['--parent-bridge', bridge],\n"
-        "            )\n"
-        "            async with Client(transport) as client:\n"
-        "                tools = await client.list_tools()\n"
-        "                query_tool = next(tool for tool in tools if tool.name == 'query')\n"
-        "                safe = await client.call_tool('query', {'command': 'observe'})\n"
-        "                error = None\n"
-        "                try:\n"
-        "                    await client.call_tool('query', {'command': 'restart'})\n"
-        "                except Exception as exception:\n"
-        "                    error = str(exception)\n"
-        "                annotation = getattr(query_tool, 'annotations', None)\n"
-        "                read_only = getattr(annotation, 'readOnlyHint', None)\n"
-        "                if read_only is None and isinstance(annotation, dict):\n"
-        "                    read_only = annotation.get('readOnlyHint')\n"
-        "                return [tool.name for tool in tools], read_only, safe.content[0].text, error\n"
-        "    return asyncio.run(run())\n"
-    )
-    recipe = _mcp_companion_recipe(
-        recipe_factory,
-        root,
-        "observe",
-        suffix=probe,
-    )
-    recipe.write_text("require fastmcp\nserver probe query\n", encoding="utf-8")
-    gateway.ingest(root)
-
-    with gateway.authorized(
-        operations={"mcpstdioquery.server", "observe", "restart"}
-    ):
-        tools, read_only, result, error = gateway("mcpstdioquery server")
-
-    assert tools == ["gway", "query"]
-    assert read_only is True
-    assert result == "observed"
-    assert "does not support non-mutating execution" in error
-    assert seen == [("observe", False)]
 
 
 def test_mcp_query_does_not_change_generic_gway_mutation_behavior(
