@@ -2,6 +2,7 @@ import pytest
 
 from gway import Gateway
 from gway.config import project_scopes, project_watch
+from gway.security.scopes import ScopeRegistry
 
 
 def _document():
@@ -68,6 +69,8 @@ command = ["demo", "status"]
     assert gateway._published_scopes["demo-read"]["operations"] == frozenset(
         {"demo.status"}
     )
+    registered = ScopeRegistry(gateway.security_path).require("demo-read")
+    assert registered.operations == frozenset({"demo.status"})
     assert gateway._watch_contributors == (
         {
             "section": "demo",
