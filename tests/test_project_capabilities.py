@@ -2,6 +2,7 @@ import pytest
 
 from gway import Gateway
 from gway.config import project_scopes, project_watch
+from gway.security.defaults import converge_scope_registry
 from gway.security.scopes import ScopeRegistry
 
 
@@ -86,3 +87,90 @@ def test_project_watch_rejects_ambiguous_command_string():
 
     with pytest.raises(ValueError, match="string array"):
         project_watch(document)
+
+
+def test_published_scope_refuses_to_claim_user_managed_scope(tmp_path):
+    registry = ScopeRegistry(tmp_path / "security.sqlite")
+    registry.replace(
+        "demo-read",
+        operations={"manual.status"},
+        environment=(),
+    )
+
+    with pytest.raises(ValueError, match="user-managed"):
+        converge_scope_registry(
+            registry,
+            {
+                "demo-read": {
+                    "operations": frozenset({"demo.status"}),
+                    "environment": frozenset(),
+                    "source": "demo",
+                }
+            },
+        )
+
+    scope = registry.require("demo-read")
+    assert scope.owner is None
+    assert scope.operations == frozenset({"manual.status"})
+
+
+def test_retired_product_scope_is_removed_without_touching_user_scope(tmp_path):
+    registry = ScopeRegistry(tmp_path / "security.sqlite")
+    registry.replace("manual-read", operations={"manual.status"}, environment=())
+    converge_scope_registry(
+        registry,
+        {
+            "demo-read": {
+                "operations": frozenset({"demo.status"}),
+                "environment": frozenset(),
+                "source": "demo",
+            }
+        },
+    )
+    assert registry.require("demo-read").owner == "project:demo"
+
+    converge_scope_registry(registry, {})
+
+    with pytest.raises(LookupError, match="demo-read"):
+        registry.require("demo-read")
+    manual = registry.require("manual-read")
+    assert manual.owner is None
+    assert manual.operations == frozenset({"manual.status"})
+
+
+def test_duplicate_publishers_cannot_share_scope_name(tmp_path, monkeypatch):
+    first = tmp_path / "first"
+    second = tmp_path / "second"
+    first.mkdir()
+    second.mkdir()
+    for root, project, operation in (
+        (first, "first", "first.status"),
+        (second, "second", "second.status"),
+    ):
+        (root / "pyproject.toml").write_text(
+            f"""
+[project]
+name = "{project}"
+
+[tool.gway.scopes.shared-read]
+operations = ["{operation}"]
+environment = []
+""".lstrip(),
+            encoding="utf-8",
+        )
+
+    from gway.config import _publish_project_capabilities
+    from gway import toml
+
+    gateway = Gateway()
+    _publish_project_capabilities(
+        gateway,
+        toml.load(first / "pyproject.toml"),
+        source="first",
+    )
+    with pytest.raises(ValueError, match="collision"):
+        _publish_project_capabilities(
+            gateway,
+            toml.load(second / "pyproject.toml"),
+            source="second",
+        )
