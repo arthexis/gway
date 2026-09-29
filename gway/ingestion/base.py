@@ -136,6 +136,9 @@ def register_operation(gateway, operation):
     wrapped.mutates = operation.mutates
     wrapped.__gway_mutates__ = operation.mutates
     wrapped.__gway_supports_no_mutate__ = operation.supports_no_mutate
+    rollback = getattr(operation.callable, "__gway_rollback__", None)
+    if rollback is not None:
+        wrapped.__gway_rollback__ = rollback
 
     root = operation.metadata.get("root")
     if root is None and isinstance(operation.source, str):

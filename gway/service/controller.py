@@ -157,6 +157,95 @@ class Controller:
             )
         ]
 
+    def statuses(self, project=None, *, timeout: float = None, mutate=False):
+        """Return runtime status for all installed managed services.
+
+        Args:
+            project: Optional project name filter.
+            timeout: Maximum seconds for each systemd status probe.
+        """
+        del mutate
+        timeout = self._timeout(timeout)
+
+        from ..install.service import ServiceInstallState, get as get_backend
+        from ..launchable import Launchable
+
+        rows = []
+        for system in (False, True):
+            paths = self.gateway.install_paths(system=system)
+            state = ServiceInstallState(paths.root / "services-installed")
+            try:
+                records = state.all()
+            except (OSError, PermissionError):
+                continue
+
+            for record in records:
+                if project is not None and record.project != project:
+                    continue
+
+                preset = self.gateway._service_presets.get(
+                    (record.project, record.service)
+                )
+                if preset is not None:
+                    definition = replace(preset)
+                else:
+                    installation = getattr(
+                        self.gateway,
+                        "_installed",
+                        {},
+                    ).get(record.project)
+                    root = getattr(installation, "install_path", None) or Path.cwd()
+                    command = tuple(record.command) or ("true",)
+                    launchable = Launchable(
+                        name=f"{record.project}.{record.service}",
+                        kind="service",
+                        command=command,
+                        root=root,
+                        metadata={
+                            "project": record.project,
+                            "service": record.service,
+                        },
+                    )
+                    definition = Service.from_launchable(
+                        record.project,
+                        record.service,
+                        root,
+                        launchable,
+                    )
+
+                backend = get_backend(record.backend)
+                runtime = getattr(backend, "runtime", None)
+                if runtime is None:
+                    raise RuntimeError(
+                        f"Service backend {record.backend!r} has no runtime adapter"
+                    )
+                runtime_kwargs = {
+                    "record": record,
+                    "installations": getattr(self.gateway, "_installed", {}),
+                    "state_root": paths.root / "services",
+                }
+                if record.backend == "systemd" and timeout is not None:
+                    runtime_kwargs["timeout"] = timeout
+                status = runtime(**runtime_kwargs).status(definition)
+                rows.append(
+                    {
+                        "project": record.project,
+                        "service": record.service,
+                        "backend": record.backend,
+                        "system": bool(record.system),
+                        **dict(status),
+                    }
+                )
+
+        return sorted(
+            rows,
+            key=lambda item: (
+                item["project"],
+                item["service"],
+                item["system"],
+            ),
+        )
+
     def inspect(self, *target, mutate=False):
         """Inspect service policy inferred for an operation or recipe invocation."""
         definition = self._definition(target)

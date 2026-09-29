@@ -191,3 +191,132 @@ def test_repeated_query_does_not_accumulate_gateway_bookkeeping(gateway):
     assert gateway.context == initial_context
     assert gateway.results.get_results() == initial_results
     assert gateway.results.history == initial_history
+
+
+def _watch_gateway(gateway, tmp_path, monkeypatch, *, role="control"):
+    (tmp_path / "pyproject.toml").write_text(
+        f"""
+[project]
+name = "demo"
+
+[tool.gway.variables]
+role = "{role}"
+""".lstrip(),
+        encoding="utf-8",
+    )
+    monkeypatch.chdir(tmp_path)
+    gateway.wrap(
+        "wire.check",
+        lambda *, mutate=False: {"ready": True},
+        op="check",
+        sub="wire",
+    )
+    gateway.wrap(
+        "log.search",
+        lambda pattern, *source, since=None, until=None, limit=100, all=False, mutate=False: [],
+        op="search",
+        sub="log",
+    )
+    return gateway
+
+
+def test_remote_query_executes_first_class_watch_under_no_mutate(
+    gateway,
+    tmp_path,
+    monkeypatch,
+):
+    _watch_gateway(gateway, tmp_path, monkeypatch)
+    application, bearer = _remote(
+        gateway,
+        operations={
+            "watch",
+            "node",
+            "service.statuses",
+            "wire.check",
+            "log.search",
+        },
+    )
+
+    status, headers, payload = _get(application, bearer, "watch --only node,wire")
+
+    assert status == 200
+    assert headers["cache-control"] == "no-store"
+    result = payload["result"]
+    assert set(result) == {"node", "wire", "health", "changed_at", "cursor"}
+    assert result["node"]["status"] == "ok"
+    assert result["wire"]["status"] == "ok"
+    assert result["health"]["status"] == "ok"
+    assert isinstance(result["cursor"], str)
+    assert result["cursor"]
+
+
+def test_remote_watch_reduces_output_to_component_scope(
+    gateway,
+    tmp_path,
+    monkeypatch,
+):
+    _watch_gateway(gateway, tmp_path, monkeypatch)
+    application, bearer = _remote(
+        gateway,
+        operations={"watch", "node"},
+    )
+
+    status, _, payload = _get(application, bearer, "watch")
+
+    assert status == 200
+    result = payload["result"]
+    assert set(result) == {"node", "health", "changed_at", "cursor"}
+    assert result["node"]["status"] == "ok"
+    assert result["health"]["sections"] == {"node": "ok"}
+
+
+def test_remote_watch_blocks_mutating_component_without_side_effect(
+    gateway,
+    tmp_path,
+    monkeypatch,
+):
+    _watch_gateway(gateway, tmp_path, monkeypatch)
+    calls = []
+
+    def mutate_wire():
+        calls.append("mutated")
+        return {"ready": True}
+
+    gateway.wrap("wire.check", mutate_wire, op="check", sub="wire")
+    application, bearer = _remote(
+        gateway,
+        operations={"watch", "wire.check"},
+    )
+
+    status, _, payload = _get(application, bearer, "watch --only wire")
+
+    assert status == 200
+    result = payload["result"]
+    assert result["wire"]["status"] == "blocked"
+    assert result["health"]["status"] == "degraded"
+    assert result["health"]["degraded"] == ["wire"]
+    assert calls == []
+
+
+def test_remote_watch_missing_component_scope_is_not_transport_error(
+    gateway,
+    tmp_path,
+    monkeypatch,
+):
+    _watch_gateway(gateway, tmp_path, monkeypatch)
+    application, bearer = _remote(
+        gateway,
+        operations={"watch"},
+    )
+
+    status, _, payload = _get(application, bearer, "watch")
+
+    assert status == 200
+    result = payload["result"]
+    assert set(result) == {"health", "changed_at", "cursor"}
+    assert result["health"] == {
+        "status": "ok",
+        "sections": {},
+        "counts": {},
+        "degraded": [],
+    }

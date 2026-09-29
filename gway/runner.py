@@ -5,6 +5,27 @@ import contextvars
 import inspect
 import threading
 import time
+from contextlib import contextmanager
+
+
+@contextmanager
+def timed(runtime, label):
+    """Emit one diagnostic wall-clock timing when timed mode is enabled."""
+    if not getattr(runtime, "timed_enabled", False):
+        yield
+        return
+
+    start = time.perf_counter()
+    try:
+        yield
+    finally:
+        logger = getattr(runtime, "logger", None)
+        if logger is not None:
+            logger.info(
+                "[timed] %s %.6fs",
+                label,
+                time.perf_counter() - start,
+            )
 
 
 async def _await_result(awaitable):
@@ -57,21 +78,8 @@ def invoke(runtime, name, func, args=(), kwargs=None):
         raise TypeError(f"{name!r} is not callable")
 
     kwargs = {} if kwargs is None else kwargs
-    start = time.perf_counter() if getattr(runtime, "timed_enabled", False) else None
-
-    try:
+    with timed(runtime, f"operation {name}"):
         result = func(*args, **kwargs)
         if inspect.isawaitable(result):
             result = _run_awaitable(result)
         return result
-    finally:
-        if (
-            start is not None
-            and hasattr(runtime, "logger")
-            and getattr(runtime, "mutation_allowed", True)
-        ):
-            runtime.logger.info(
-                "[timed] %s took %.3fs",
-                name,
-                time.perf_counter() - start,
-            )

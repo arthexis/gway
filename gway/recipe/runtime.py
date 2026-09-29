@@ -5,11 +5,17 @@ from pathlib import Path
 from .. import log as gway_log
 from ..environment import process_environment
 from ..logs import recipe_identity
+from ..runner import timed
 from ..tokens import statements
 from .frame import RecipeFrame
 from .loading import load_recipe
 from .path import companion_path
 from .require import collect_recipe_requirements, prepare_required_companion
+
+
+def _recipe_label(path):
+    """Return the public recipe label for direct and directory entry recipes."""
+    return path.parent.name if path.stem == "__main__" else path.stem
 
 
 _NO_PIPELINE = object()
@@ -44,6 +50,7 @@ def execute_recipe(
 ):
     """Execute one recipe in the caller's runtime and return its internal results."""
     path = Path(recipe_filename).expanduser().resolve()
+    label = _recipe_label(path)
     runtime.launchables.recipe(
         path,
         metadata={"recipe": str(path)},
@@ -69,10 +76,13 @@ def execute_recipe(
             if context:
                 runtime.context.update(context)
 
-            commands, _ = load_recipe(path, section=section)
-            statement_list = []
-            for command in commands:
-                statement_list.extend(statements(command.get("tokens", ())))
+            with timed(runtime, f"recipe {label} load"):
+                commands, _ = load_recipe(path, section=section)
+
+            with timed(runtime, f"recipe {label} parse"):
+                statement_list = []
+                for command in commands:
+                    statement_list.extend(statements(command.get("tokens", ())))
 
             if not statement_list:
                 return [], None
@@ -97,14 +107,19 @@ def execute_recipe(
 
             from ..dispatch import dispatch_program
 
-            if pipeline is _NO_PIPELINE:
-                return dispatch_program(runtime, statement_list, recipe_frame=frame)
-            return dispatch_program(
-                runtime,
-                statement_list,
-                pipeline=pipeline,
-                recipe_frame=frame,
-            )
+            with timed(runtime, f"recipe {label} execute"):
+                if pipeline is _NO_PIPELINE:
+                    return dispatch_program(
+                        runtime,
+                        statement_list,
+                        recipe_frame=frame,
+                    )
+                return dispatch_program(
+                    runtime,
+                    statement_list,
+                    pipeline=pipeline,
+                    recipe_frame=frame,
+                )
     finally:
         if frame is not None and frame.companion_worker is not None:
             from .companion import unregister_worker_operations

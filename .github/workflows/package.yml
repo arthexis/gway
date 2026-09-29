@@ -15,6 +15,7 @@ permissions:
 jobs:
   package:
     name: python / Package
+    if: ${{ github.event_name != 'pull_request' || (!contains(github.event.pull_request.labels.*.name, 'on-hold') && !contains(github.event.pull_request.labels.*.name, 'on hold')) }}
     runs-on: ubuntu-latest
     env:
       VERSION_PR: ${{ github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'version-only') }}
