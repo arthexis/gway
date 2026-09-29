@@ -1,5 +1,3 @@
 # Complete public remote exposure without mutating DNS.
-# Validate identifiers before either nested recipe can mutate nginx state.
-expose validate site [site]
 ./http.rx
 ./https.rx
