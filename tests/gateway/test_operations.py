@@ -87,3 +87,15 @@ def test_multiword_subject_resolves_from_space_separated_cli_spelling():
     ops.register("github.set_actions_permissions", set_actions_permissions)
 
     assert ops.resolve("github set actions permissions") is set_actions_permissions
+
+
+def test_operation_spelling_does_not_hide_pipeline_or_option_tokens():
+    ops = Operations()
+
+    def probe():
+        return "ok"
+
+    ops.register("probe", probe)
+
+    assert ops.resolve("probe -") is None
+    assert ops.resolve("probe --status") is None
