@@ -24,6 +24,18 @@ class Controller:
         """Return safe metadata for all OAuth grants."""
         return self.registry.grants(readonly=not mutate)
 
+    def set(self, grant_id: int, *scopes):
+        """Replace the complete scope binding set for one OAuth grant."""
+        return self.registry.replace_grant_scopes(grant_id, scopes)
+
+    def bind(self, grant_id: int, scope):
+        """Bind one additional scope to an OAuth grant."""
+        return self.registry.bind_grant_scope(grant_id, scope)
+
+    def unbind(self, grant_id: int, scope):
+        """Remove one scope binding from an OAuth grant."""
+        return self.registry.unbind_grant_scope(grant_id, scope)
+
     def revoke(self, grant_id: int):
         """Revoke one OAuth grant and invalidate its credentials."""
         return self.registry.revoke_grant(grant_id)
