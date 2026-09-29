@@ -99,3 +99,14 @@ def test_operation_spelling_does_not_hide_pipeline_or_option_tokens():
 
     assert ops.resolve("probe -") is None
     assert ops.resolve("probe --status") is None
+
+
+def test_operation_spelling_keeps_dunder_identities_opaque():
+    ops = Operations()
+
+    def help_operation():
+        return "help"
+
+    ops.register("help", help_operation)
+
+    assert ops.resolve("__help__") is None
