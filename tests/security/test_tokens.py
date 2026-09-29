@@ -92,7 +92,10 @@ def test_token_authentication_resolves_bound_scope_authority(tmp_path):
     authenticated = tokens.authenticate(issued.bearer)
 
     assert isinstance(authenticated, AuthenticatedToken)
-    assert authenticated.token == issued.token
+    assert authenticated.token.name == issued.token.name
+    assert authenticated.token.public_id == issued.token.public_id
+    assert authenticated.token.scopes == issued.token.scopes
+    assert authenticated.token.last_used_at is not None
     assert authenticated.authority.operations == frozenset({"log.read", "status"})
     assert authenticated.authority.environment == frozenset({"LOG_LEVEL", "SITE"})
 
