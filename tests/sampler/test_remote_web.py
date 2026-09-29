@@ -1,4 +1,5 @@
 from pathlib import Path
+import runpy
 
 import pytest
 
@@ -472,3 +473,46 @@ def test_remote_no_store_policy_is_declared_at_server_scope():
     tls_server = "server {" + content.rsplit("server {", 1)[1]
     for block in tls_server.split("\n    location ")[1:]:
         assert "add_header" not in block
+
+
+def test_remote_expose_validates_site_before_nested_mutations():
+    rendered = _commands("expose.rx")
+
+    assert rendered[0] == "expose validate site [site]"
+    assert rendered[1:] == ["./http.rx", "./https.rx"]
+
+
+@pytest.mark.parametrize(
+    "site",
+    (
+        "remote.arthexis.com",
+        "remote-arthexis-com",
+        "9remote",
+        "remote/site",
+        "",
+    ),
+)
+def test_remote_expose_rejects_unsafe_nginx_site_identifiers(site):
+    namespace = runpy.run_path(str(remote_root() / "expose.py"))
+
+    with pytest.raises(ValueError, match="nginx-safe identifier"):
+        namespace["validate_site"](site)
+
+
+@pytest.mark.parametrize(
+    "site",
+    ("remote_arthexis_com", "remote", "_remote", "remote2"),
+)
+def test_remote_expose_accepts_nginx_safe_site_identifiers(site):
+    namespace = runpy.run_path(str(remote_root() / "expose.py"))
+
+    assert namespace["validate_site"](site) == site
+
+
+def test_remote_production_style_identifier_renders_valid_nginx_variable_names():
+    content = _template("nginx-https-[site].conf")
+    rendered = content.replace("[site]", "remote_arthexis_com")
+
+    assert "$gway_remote_cache_control_remote_arthexis_com" in rendered
+    assert "zone=gway_remote_auth_remote_arthexis_com:10m" in rendered
+    assert "remote.arthexis.com" not in rendered
