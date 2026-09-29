@@ -232,7 +232,7 @@ class Controller:
         """Add or replace one semantic response header on the current application.
 
         Args:
-            app: Current AppSpec supplied through the semantic app receiver.
+            app: Current AppSpec supplied through semantic context or pipeline adaptation.
             name: HTTP response header name.
             value: HTTP response header value.
         """
