@@ -15,7 +15,7 @@ class Controller:
 
     def show(self, name, *, mutate=True):
         """Return safe metadata for one OAuth link."""
-        link = self.registry.get_link(name)
+        link = self.registry.get_link(name, readonly=not mutate)
         if link is None:
             raise LookupError(f"Unknown OAuth link: {name}")
         return link
