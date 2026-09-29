@@ -221,7 +221,7 @@ class Controller:
         cursor=None,
         only=None,
         except_=None,
-        errors=None,
+        problems=None,
         changed=None,
         published=None,
         scope=None,
@@ -290,7 +290,7 @@ class Controller:
             status = envelope.get("status", "unavailable")
             if status == "unauthorized":
                 continue
-            if _enabled(errors):
+            if _enabled(problems):
                 has_log_errors = name == "errors" and bool(envelope.get("result"))
                 if status not in {"error", "blocked"} and not has_log_errors:
                     continue
