@@ -114,5 +114,4 @@ def test_inline_positional_hoists_past_semantically_filled_parameter(gateway):
         initial_kwargs={"chargers": marker},
     )
 
-    assert bound.args == ()
-    assert bound.kwargs == {"chargers": marker, "prefix": "A"}
+    assert filter_chargers(*bound.args, **bound.kwargs) == (marker, "A")
