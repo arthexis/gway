@@ -15,6 +15,7 @@ permissions:
 jobs:
   regression:
     name: Tests (Python 3.10)
+    if: ${{ github.event_name != 'pull_request' || (!contains(github.event.pull_request.labels.*.name, 'on-hold') && !contains(github.event.pull_request.labels.*.name, 'on hold')) }}
     env:
       VERSION_PR: ${{ github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'version-only') }}
       BASE_SHA: ${{ github.event.pull_request.base.sha || '' }}
@@ -56,6 +57,7 @@ jobs:
 
   forward-compatibility:
     name: Compatibility (Python 3.13)
+    if: ${{ github.event_name != 'pull_request' || (!contains(github.event.pull_request.labels.*.name, 'on-hold') && !contains(github.event.pull_request.labels.*.name, 'on hold')) }}
     env:
       VERSION_PR: ${{ github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'version-only') }}
       BASE_SHA: ${{ github.event.pull_request.base.sha || '' }}
@@ -101,7 +103,7 @@ jobs:
   compatibility:
     name: python / Python compatibility
     needs: [regression, forward-compatibility]
-    if: always()
+    if: ${{ always() && (github.event_name != 'pull_request' || (!contains(github.event.pull_request.labels.*.name, 'on-hold') && !contains(github.event.pull_request.labels.*.name, 'on hold'))) }}
     runs-on: ubuntu-latest
     steps:
       - name: Require baseline regression and forward compatibility
