@@ -50,7 +50,7 @@ def test_security_state_migrates_v4_to_v6_without_losing_existing_policy(tmp_pat
     assert scopes.require("logs").operations == frozenset({"log.read"})
     assert tokens.require("reader") == issued.token
     with sqlite3.connect(path) as connection:
-        assert connection.execute("PRAGMA user_version").fetchone()[0] == 6
+        assert connection.execute("PRAGMA user_version").fetchone()[0] == 7
         tables = {
             row[0]
             for row in connection.execute(
