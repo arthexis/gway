@@ -53,5 +53,6 @@ select = ["E4", "E7", "E9", "F"]
 
 [tool.pytest.ini_options]
 markers = [
+    "workflow: tests that validate GitHub Actions workflow behavior",
     "xdist_group(name): serialize integration tests sharing external process/service resources",
 ]
