@@ -131,7 +131,7 @@ def test_partial_copy_failure_preserves_unsealed_journal_at_boundary(
     recovery = rollback_error_for(primary)
     assert isinstance(recovery, RollbackError)
     assert recovery.failures[0].sequence == 1
-    assert "post-mutation fingerprint is unavailable" in str(recovery.failures[0].error)
+    assert "post-mutation state is unavailable" in str(recovery.failures[0].error)
 
 
 def test_link_conflict_is_rejected_before_journal_entry(gateway, tmp_path):
