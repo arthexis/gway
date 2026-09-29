@@ -345,3 +345,30 @@ def test_semantic_sigil_argument_does_not_become_pipeline_selector(gateway):
     gateway.view_app = gateway.wrap("view_app", view_app)
 
     assert dispatch(gateway, "setup app - view app [label]") == ("health", marker)
+
+
+@pytest.mark.parametrize(
+    "source",
+    [".", "..", "./project", "../project", "/tmp/project", "owner/project"],
+)
+def test_operation_resolution_preserves_path_like_first_argument(gateway, source):
+    def deploy(source):
+        return source
+
+    gateway.deploy = gateway.wrap("deploy", deploy)
+
+    resolution = resolve_operation(gateway, ["deploy", source])
+
+    assert resolution.candidate == "deploy"
+    assert [str(token) for token in resolution.arguments] == [source]
+    assert dispatch(gateway, f"deploy {source}") == source
+
+
+@pytest.mark.parametrize("source", ["./project", "owner/project"])
+def test_namespace_fallback_does_not_swallow_path_like_argument(gateway, source):
+    # Register only a child operation so "deploy" remains a namespace, not a callable.
+    gateway.wrap("deploy.start", lambda: "started")
+
+    assert gateway.ops.is_namespace("deploy")
+    with pytest.raises(LookupError, match="Unable to resolve operation"):
+        resolve_operation(gateway, ["deploy", source])

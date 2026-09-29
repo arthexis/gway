@@ -540,12 +540,20 @@ def _expand_candidate(runtime, candidate):
     return expanded
 
 
+def _is_path_like_operation_token(token):
+    """Return whether a token should remain argument data during operation lookup."""
+    value = token_value(token)
+    return value in {".", ".."} or "/" in value or "\\" in value
+
+
 def _operation_candidate_tokens(tokens):
     """Return operation-name token values without consuming structural syntax."""
     values = []
     for token in tokens:
         value = token_value(token)
         if value == "-" or value == "--" or value.startswith("--"):
+            break
+        if _is_path_like_operation_token(token):
             break
         values.append(value)
     return values
@@ -632,7 +640,11 @@ def resolve_operation(runtime, tokens, *, pipeline=_MISSING):
                     return _resolved(value, tokens[len(values):], candidate)
 
     namespace = " ".join(values)
-    if runtime.ops.is_namespace(namespace):
+    stopped_at_path_argument = (
+        len(values) < len(tokens)
+        and _is_path_like_operation_token(tokens[len(values)])
+    )
+    if not stopped_at_path_argument and runtime.ops.is_namespace(namespace):
         def inspect_namespace():
             return runtime.namespace(*values)
 
