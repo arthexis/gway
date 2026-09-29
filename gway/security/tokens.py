@@ -206,6 +206,14 @@ class TokenRegistry:
             cursor = connection.execute("DELETE FROM tokens WHERE name = ?", (name,))
         return bool(cursor.rowcount)
 
+    def clear(self):
+        """Permanently revoke and delete every named token."""
+        if not self.path.is_file():
+            return 0
+        with self.state.connect() as connection:
+            cursor = connection.execute("DELETE FROM tokens")
+        return int(cursor.rowcount)
+
     def disable(self, name):
         """Disable authentication while preserving token policy and metadata."""
         return self._set_disabled(name, True)
