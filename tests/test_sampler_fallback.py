@@ -116,7 +116,10 @@ def test_sampler_fallback_rejects_equally_relevant_routes(tmp_path, monkeypatch)
 
     gateway = Gateway()
 
-    with pytest.raises(LookupError, match="Ambiguous sampler fallback"):
+    with pytest.raises(
+        LookupError,
+        match=r"Ambiguous operation-route fallback.*alpha/widget, beta/widget",
+    ):
         gateway("inspect widget value")
 
 
