@@ -377,11 +377,11 @@ class OAuthRegistry:
                 raise
         return self.get_link(name)
 
-    def get_link(self, name):
+    def get_link(self, name, *, readonly=False):
         if not self.path.is_file():
             return None
         name = self._text(name, "OAuth link name")
-        with self.state.connect() as connection:
+        with self.state.connect(readonly=readonly) as connection:
             row = connection.execute(
                 """
                 SELECT oauth_links.name, tokens.name AS token_name,
@@ -406,7 +406,7 @@ class OAuthRegistry:
             rows = connection.execute(
                 "SELECT name FROM oauth_links ORDER BY name"
             ).fetchall()
-        return [self.get_link(row["name"]) for row in rows]
+        return [self.get_link(row["name"], readonly=readonly) for row in rows]
 
     def revoke_link(self, name):
         name = self._text(name, "OAuth link name")
@@ -454,10 +454,10 @@ class OAuthRegistry:
             row["revoked_at"],
         )
 
-    def get_grant(self, grant_id):
+    def get_grant(self, grant_id, *, readonly=False):
         if not self.path.is_file():
             return None
-        with self.state.connect() as connection:
+        with self.state.connect(readonly=readonly) as connection:
             row = connection.execute(
                 """
                 SELECT oauth_grants.id, oauth_links.name AS link_name,
