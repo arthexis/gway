@@ -2,6 +2,8 @@
 
 from dataclasses import dataclass
 
+from .runner import timed
+
 
 @dataclass(frozen=True)
 class OperationRoute:
@@ -20,7 +22,8 @@ class OperationRoute:
 
     def try_expand(self, runtime, tokens):
         """Try to expand this route for one unresolved command."""
-        return bool(self.expand(runtime, tokens))
+        with timed(runtime, f"route {self.name} discovery"):
+            return bool(self.expand(runtime, tokens))
 
 
 class OperationRoutes:
