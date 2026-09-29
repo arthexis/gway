@@ -53,7 +53,7 @@ class ExposureSpec:
         object.__setattr__(self, "headers", headers)
 
 
-def _nginx_header_directives(headers):
+def nginx_header_directives(headers):
     """Render semantic response headers as server-scoped NGINX directives."""
     directives = []
     for header in headers:
@@ -83,6 +83,6 @@ def apply_exposure(gateway, exposure):
         host=exposure.service.host,
         port=exposure.service.port,
         email=exposure.email,
-        response_headers=_nginx_header_directives(exposure.headers),
+        response_headers=nginx_header_directives(exposure.headers),
     )
     return exposure
