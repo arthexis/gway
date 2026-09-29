@@ -106,7 +106,7 @@ def converge_scope_registry(registry, published=(), *, retire_missing=True):
             owner=owner,
             operations=definition.get("operations", ()),
             environment=definition.get("environment", ()),
-            allow_claim_matching_unowned=True,
+            allow_claim_unowned=True,
         )
         active_product_names.add(name)
 
