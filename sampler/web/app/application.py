@@ -101,9 +101,9 @@ class Controller:
 
     def view_app(
         self,
-        app: AppSpec,
         handler: object = None,
         *,
+        app: AppSpec,
         route=None,
         methods: tuple[str, ...] = (),
         method=None,
@@ -218,10 +218,10 @@ class Controller:
 
     def header_app(
         self,
-        app: AppSpec,
         name,
         value,
         *,
+        app: AppSpec,
         mutate=False,
     ):
         """Add or replace one semantic response header on the current application.
@@ -332,7 +332,6 @@ def register(gateway):
         controller.view_app,
         op="view",
         sub="app",
-        receiver="app",
     )
     gateway.ops.register_alias("view", gateway.view_app)
     gateway.header_app = gateway.wrap(
@@ -340,7 +339,6 @@ def register(gateway):
         controller.header_app,
         op="header",
         sub="app",
-        receiver="app",
     )
     gateway.ops.register_alias("header", gateway.header_app)
     gateway.serve_app = gateway.wrap(
