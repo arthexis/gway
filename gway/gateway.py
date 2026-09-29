@@ -280,6 +280,10 @@ class Gateway(Resolver):
                     topics = (*topics, "admin")
                 metadata["topics"] = tuple(dict.fromkeys(topics))
                 record.callable.__gway_metadata__ = metadata
+                record.callable.mutates = access == "write"
+                record.callable.__gway_mutates__ = record.callable.mutates
+                if access == "read":
+                    record.callable.__gway_supports_no_mutate__ = True
 
         from .dns import Controller as DNSController
         from .network import Controller as NetworkController
@@ -1577,7 +1581,12 @@ class Gateway(Resolver):
                 raise TypeError(f"{func_name!r} resolved to a non-callable target")
             mutation_policy = self.mutation_policy
             supports_mutation_policy = supports_no_mutate(current)
-            if mutation_policy is False and not supports_mutation_policy:
+            declared_non_mutating = getattr(wrapped, "__gway_mutates__", True) is False
+            if (
+                mutation_policy is False
+                and not supports_mutation_policy
+                and not declared_non_mutating
+            ):
                 raise MutationError(
                     f"{func_name!r} does not support non-mutating execution"
                 )
