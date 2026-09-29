@@ -68,12 +68,14 @@ def split_operation(name):
 
 
 def _command_words(name):
-    """Normalize canonical and CLI spellings to comparable command words."""
-    return tuple(
-        part
-        for part in str(name).replace(".", " ").replace("_", " ").replace("-", " ").split()
-        if part
-    )
+    """Normalize canonical and CLI spellings without hiding structural tokens."""
+    words = []
+    for part in str(name).replace(".", " ").replace("_", " ").split():
+        if part == "-" or part.startswith("--"):
+            words.append(part)
+            continue
+        words.extend(piece for piece in part.replace("-", " ").split() if piece)
+    return tuple(words)
 
 
 class _Registry:
