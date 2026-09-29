@@ -1,0 +1,377 @@
+"""Structured observation boundaries for read-only composition."""
+
+import base64
+import binascii
+import hashlib
+import json
+from datetime import datetime, timezone
+from pathlib import Path
+
+from .authorization import AuthorizationError
+from .dispatch import OperationLookupError
+from .mutation import MutationError
+
+
+_CURSOR_VERSION = 1
+
+
+def _stable_value(value):
+    """Normalize ordinary structured results for deterministic fingerprinting."""
+    if isinstance(value, dict):
+        return {
+            str(key): _stable_value(item)
+            for key, item in sorted(value.items(), key=lambda pair: str(pair[0]))
+        }
+    if isinstance(value, (list, tuple)):
+        return [_stable_value(item) for item in value]
+    if isinstance(value, (set, frozenset)):
+        normalized = [_stable_value(item) for item in value]
+        return sorted(
+            normalized,
+            key=lambda item: json.dumps(item, sort_keys=True, default=str),
+        )
+    if isinstance(value, Path):
+        return str(value)
+    if hasattr(value, "isoformat") and callable(value.isoformat):
+        try:
+            return value.isoformat()
+        except (TypeError, ValueError):
+            pass
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+    return str(value)
+
+
+def _fingerprint(value):
+    payload = json.dumps(
+        _stable_value(value),
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+    ).encode("utf-8")
+    return hashlib.sha256(payload).hexdigest()
+
+
+def _encode_cursor(sections, observed_at):
+    document = {
+        "v": _CURSOR_VERSION,
+        "at": observed_at,
+        "sections": {
+            name: _fingerprint(value)
+            for name, value in sorted(sections.items())
+        },
+    }
+    raw = json.dumps(
+        document,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    return base64.urlsafe_b64encode(raw).rstrip(b"=").decode("ascii")
+
+
+def _decode_cursor(value):
+    if value in (None, ""):
+        return None
+    try:
+        encoded = str(value).encode("ascii")
+        padding = b"=" * (-len(encoded) % 4)
+        document = json.loads(base64.urlsafe_b64decode(encoded + padding))
+    except (
+        UnicodeEncodeError,
+        ValueError,
+        TypeError,
+        json.JSONDecodeError,
+        binascii.Error,
+    ) as exc:
+        raise ValueError("Invalid observation cursor") from exc
+    if document.get("v") != _CURSOR_VERSION:
+        raise ValueError("Unsupported observation cursor version")
+    sections = document.get("sections")
+    if not isinstance(sections, dict):
+        raise ValueError("Invalid observation cursor")
+    return document
+
+
+def _error(exception):
+    return {
+        "type": type(exception).__name__,
+        "message": str(exception),
+    }
+
+
+def _section_filter(value):
+    """Normalize one comma/space separated section filter."""
+    if value in (None, "", ()):
+        return ()
+    if isinstance(value, str):
+        parts = value.replace(",", " ").split()
+    else:
+        parts = []
+        for item in value:
+            parts.extend(str(item).replace(",", " ").split())
+    return tuple(dict.fromkeys(part.strip() for part in parts if part.strip()))
+
+
+def _enabled(value):
+    """Normalize bool-like recipe context values."""
+    if isinstance(value, bool):
+        return value
+    if value in (None, "", 0):
+        return False
+    if isinstance(value, str):
+        return value.casefold() in {"1", "true", "yes", "on"}
+    return bool(value)
+
+
+class Controller:
+    """Execute one command observationally and capture bounded failure metadata."""
+
+    def __init__(self, gateway):
+        self.gateway = gateway
+
+    def observe(self, *command, section=None, scope=None, mutate=False):
+        """Execute one command read-only and return a structured observation envelope.
+
+        Args:
+            command: Command tokens to execute under the existing caller authority.
+            section: Optional context key used to publish the observation for composition.
+            scope: Optional named security scope used only to narrow caller authority.
+        """
+        del mutate
+        if not command:
+            raise TypeError("observe requires a command")
+
+        target = (
+            command[0]
+            if len(command) == 1 and isinstance(command[0], str)
+            else list(command)
+        )
+        with self.gateway.attenuated_scope(scope):
+            try:
+                if self.gateway.authorization is not None:
+                    with self.gateway.external_authority():
+                        result = self.gateway.execute(target, mutate=False)
+                else:
+                    result = self.gateway.execute(target, mutate=False)
+            except AuthorizationError as exception:
+                envelope = {
+                    "status": "unauthorized",
+                    "available": False,
+                    "result": None,
+                    "error": _error(exception),
+                }
+                if section is not None:
+                    return {str(section): envelope}
+                return envelope
+            except (OperationLookupError, LookupError, FileNotFoundError) as exception:
+                envelope = {
+                    "status": "unavailable",
+                    "available": False,
+                    "result": None,
+                    "error": _error(exception),
+                }
+                if section is not None:
+                    return {str(section): envelope}
+                return envelope
+            except MutationError as exception:
+                envelope = {
+                    "status": "blocked",
+                    "available": False,
+                    "result": None,
+                    "error": _error(exception),
+                }
+                if section is not None:
+                    return {str(section): envelope}
+                return envelope
+            except Exception as exception:
+                envelope = {
+                    "status": "error",
+                    "available": True,
+                    "result": None,
+                    "error": _error(exception),
+                }
+                if section is not None:
+                    return {str(section): envelope}
+                return envelope
+
+        envelope = {
+            "status": "ok",
+            "available": True,
+            "result": result,
+            "error": None,
+        }
+        if section is not None:
+            return {str(section): envelope}
+        return envelope
+
+
+    def validate(self, *, changed=None, cursor=None, mutate=False):
+        """Validate incremental observation arguments before probe work."""
+        del mutate
+        if _enabled(changed) and cursor in (None, ""):
+            raise ValueError("watch --changed requires --cursor")
+        if cursor not in (None, ""):
+            _decode_cursor(cursor)
+        return None
+
+    def collect(
+        self,
+        *section,
+        changed_at=None,
+        cursor=None,
+        only=None,
+        except_=None,
+        errors=None,
+        changed=None,
+        mutate=False,
+        **values,
+    ):
+        """Collect visible observation sections and synthesize their health summary.
+
+        Unauthorized observation envelopes are omitted from the returned mapping.
+        Authorized but unavailable sections remain visible, while runtime failures
+        contribute to degraded health. Additional keyword values are copied into
+        the result so recipes can reserve stable aggregate fields.
+        """
+        del mutate
+        names = tuple(str(name) for name in section)
+        if not names:
+            raise TypeError("observation collect requires at least one section")
+
+        only_sections = _section_filter(only)
+        except_sections = _section_filter(except_)
+        if only_sections and except_sections:
+            raise ValueError("observation collect accepts only one of --only or --except")
+
+        known = frozenset(names)
+        requested = frozenset((*only_sections, *except_sections))
+        unknown = sorted(requested - known)
+        if unknown:
+            raise ValueError(
+                "Unknown observation section(s): " + ", ".join(unknown)
+            )
+
+        selected = set(names)
+        if only_sections:
+            selected &= set(only_sections)
+        elif except_sections:
+            selected -= set(except_sections)
+
+        result = {}
+        states = {}
+        degraded = []
+        counts = {}
+
+        for name in names:
+            if name not in selected:
+                continue
+            envelope = self.gateway.context.get(name)
+            if not isinstance(envelope, dict):
+                continue
+            status = envelope.get("status", "unavailable")
+            if status == "unauthorized":
+                continue
+            if _enabled(errors):
+                has_log_errors = name == "errors" and bool(envelope.get("result"))
+                if status not in {"error", "blocked"} and not has_log_errors:
+                    continue
+            result[name] = envelope
+            states[name] = status
+            counts[status] = counts.get(status, 0) + 1
+            if status in {"error", "blocked"}:
+                degraded.append(name)
+
+        visible_sections = dict(result)
+        observed_at = datetime.now(timezone.utc).isoformat()
+        baseline = _decode_cursor(cursor)
+        if _enabled(changed):
+            previous = baseline["sections"]
+            changed_names = {
+                name
+                for name, envelope in visible_sections.items()
+                if previous.get(name) != _fingerprint(envelope)
+            }
+            result = {
+                name: envelope
+                for name, envelope in visible_sections.items()
+                if name in changed_names
+            }
+            states = {
+                name: status
+                for name, status in states.items()
+                if name in changed_names
+            }
+            degraded = [
+                name for name in degraded if name in changed_names
+            ]
+            counts = {}
+            for status in states.values():
+                counts[status] = counts.get(status, 0) + 1
+            changed_at = observed_at if changed_names else None
+
+        result["health"] = {
+            "status": "degraded" if degraded else "ok",
+            "sections": states,
+            "counts": counts,
+            "degraded": degraded,
+        }
+        result.update(values)
+        result["changed_at"] = changed_at
+        result["cursor"] = _encode_cursor(visible_sections, observed_at)
+        return result
+
+    def status(self, *section, mutate=False):
+        """Summarize named observation envelopes already present in semantic context."""
+        del mutate
+        names = tuple(str(name) for name in section)
+        if not names:
+            raise TypeError("observation status requires at least one section")
+
+        states = {}
+        degraded = []
+        counts = {}
+        for name in names:
+            envelope = self.gateway.context.get(name)
+            status = (
+                envelope.get("status")
+                if isinstance(envelope, dict)
+                else "unavailable"
+            )
+            states[name] = status
+            counts[status] = counts.get(status, 0) + 1
+            if status in {"error", "blocked", "unauthorized"}:
+                degraded.append(name)
+
+        return {
+            "health": {
+                "status": "degraded" if degraded else "ok",
+                "sections": states,
+                "counts": counts,
+                "degraded": degraded,
+            }
+        }
+
+
+def register(gateway):
+    controller = Controller(gateway)
+    gateway._observation_controller = controller
+    gateway.wrap("observe", controller.observe)
+    gateway.wrap(
+        "observation.status",
+        controller.status,
+        op="status",
+        sub="observation",
+    )
+    gateway.wrap(
+        "observation.validate",
+        controller.validate,
+        op="validate",
+        sub="observation",
+    )
+    gateway.wrap(
+        "observation.collect",
+        controller.collect,
+        op="collect",
+        sub="observation",
+    )
+    return controller

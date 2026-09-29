@@ -2,6 +2,7 @@ import asyncio
 import json
 import os
 from pathlib import Path
+from types import SimpleNamespace
 import socket
 import subprocess
 import time
@@ -12,7 +13,7 @@ from fastmcp import Client
 from fastmcp.client.auth import BearerAuth
 
 from gway import Gateway
-from gway.install.service import ServiceInstallState
+from gway.install.service import ServiceInstallRecord, ServiceInstallState
 from gway.sampler import root as sampler_root
 from gway.security.scopes import ScopeRegistry
 from gway.security.tokens import TokenRegistry
@@ -588,3 +589,160 @@ def test_relative_executable_keeps_existing_path_resolution(
     )
 
     assert definition.launchable.kind != "executable"
+
+
+def test_service_statuses_reports_all_installed_services_read_only(
+    tmp_path,
+    monkeypatch,
+):
+    gateway = Gateway()
+    user_root = tmp_path / "user"
+    system_root = tmp_path / "system"
+
+    def paths(*, system=False, root=None):
+        selected = system_root if system else user_root
+        return SimpleNamespace(root=selected, scope="system" if system else "user")
+
+    monkeypatch.setattr(gateway, "install_paths", paths)
+
+    ServiceInstallState(user_root / "services-installed").put(
+        "gway",
+        [
+            ServiceInstallRecord(
+                project="gway",
+                service="alpha",
+                backend_id="alpha",
+                backend="process",
+                system=False,
+                command=("python", "-V"),
+            )
+        ],
+    )
+    ServiceInstallState(system_root / "services-installed").put(
+        "arthexis",
+        [
+            ServiceInstallRecord(
+                project="arthexis",
+                service="web",
+                backend_id="arthexis-web.service",
+                backend="systemd",
+                system=True,
+                command=("python", "-m", "arthexis"),
+            )
+        ],
+    )
+
+    calls = []
+
+    class Runtime:
+        def __init__(self, **kwargs):
+            self.kwargs = kwargs
+
+        def status(self, service):
+            calls.append((service.identity, self.kwargs))
+            return {
+                "project": service.project,
+                "service": service.name,
+                "running": service.name == "web",
+                "pid": 42 if service.name == "alpha" else None,
+                "started_at": None,
+                "stale": False,
+            }
+
+    backend = SimpleNamespace(runtime=Runtime)
+    monkeypatch.setattr("gway.install.service.get", lambda name: backend)
+
+    result = gateway.execute("service statuses", mutate=False)
+
+    assert result == [
+        {
+            "project": "arthexis",
+            "service": "web",
+            "backend": "systemd",
+            "system": True,
+            "running": True,
+            "pid": None,
+            "started_at": None,
+            "stale": False,
+        },
+        {
+            "project": "gway",
+            "service": "alpha",
+            "backend": "process",
+            "system": False,
+            "running": False,
+            "pid": 42,
+            "started_at": None,
+            "stale": False,
+        },
+    ]
+    assert gateway.ops.resolve("service.statuses").mutates is False
+    assert {identity for identity, _ in calls} == {
+        ("gway", "alpha"),
+        ("arthexis", "web"),
+    }
+
+
+def test_service_statuses_filters_project(tmp_path, monkeypatch):
+    gateway = Gateway()
+    user_root = tmp_path / "user"
+    system_root = tmp_path / "system"
+
+    monkeypatch.setattr(
+        gateway,
+        "install_paths",
+        lambda *, system=False, root=None: SimpleNamespace(
+            root=system_root if system else user_root,
+            scope="system" if system else "user",
+        ),
+    )
+
+    state = ServiceInstallState(user_root / "services-installed")
+    state.put(
+        "gway",
+        [
+            ServiceInstallRecord(
+                project="gway",
+                service="alpha",
+                backend_id="alpha",
+                backend="process",
+                command=("python", "-V"),
+            )
+        ],
+    )
+    state.put(
+        "demo",
+        [
+            ServiceInstallRecord(
+                project="demo",
+                service="worker",
+                backend_id="worker",
+                backend="process",
+                command=("python", "-V"),
+            )
+        ],
+    )
+
+    class Runtime:
+        def __init__(self, **kwargs):
+            pass
+
+        def status(self, service):
+            return {
+                "project": service.project,
+                "service": service.name,
+                "running": False,
+                "pid": None,
+                "started_at": None,
+                "stale": False,
+            }
+
+    monkeypatch.setattr(
+        "gway.install.service.get",
+        lambda name: SimpleNamespace(runtime=Runtime),
+    )
+
+    result = gateway("service statuses --project demo")
+
+    assert [item["project"] for item in result] == ["demo"]
+    assert [item["service"] for item in result] == ["worker"]
