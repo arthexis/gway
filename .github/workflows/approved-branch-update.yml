@@ -4,7 +4,7 @@ on:
   push:
     branches: [main]
   pull_request_target:
-    types: [opened, reopened, synchronize, ready_for_review]
+    types: [opened, reopened, synchronize, ready_for_review, unlabeled]
   workflow_dispatch:
     inputs:
       pr_number:
@@ -32,6 +32,8 @@ jobs:
           BRANCH_UPDATE_TOKEN: ${{ secrets.BRANCH_UPDATE_TOKEN }}
           REPOSITORY: ${{ github.repository }}
           EVENT_NAME: ${{ github.event_name }}
+          EVENT_ACTION: ${{ github.event.action }}
+          EVENT_LABEL: ${{ github.event.label.name }}
           EVENT_PR_NUMBER: ${{ github.event.pull_request.number }}
           INPUT_PR_NUMBER: ${{ inputs.pr_number }}
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
@@ -111,7 +113,7 @@ jobs:
                 echo
                 echo 'GitHub could not automatically update this branch from the default branch.'
                 echo
-                echo 'The work claim was released; manual conflict resolution may be required.'
+                echo 'Manual conflict resolution may be required.'
               } >> "$GITHUB_STEP_SUMMARY"
               return
             fi
@@ -126,6 +128,16 @@ jobs:
 
           case "$EVENT_NAME" in
             pull_request_target)
+              if [[ "$EVENT_ACTION" == "unlabeled" ]]; then
+                case "${EVENT_LABEL,,}" in
+                  on-hold|"on hold")
+                    ;;
+                  *)
+                    echo "PR #$EVENT_PR_NUMBER: removed label does not release a hold; skipping."
+                    exit 0
+                    ;;
+                esac
+              fi
               update_pr "$EVENT_PR_NUMBER"
               ;;
             workflow_dispatch)
