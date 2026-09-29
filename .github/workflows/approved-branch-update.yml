@@ -4,7 +4,7 @@ on:
   push:
     branches: [main]
   pull_request_target:
-    types: [opened, reopened, synchronize, ready_for_review, labeled, unlabeled]
+    types: [opened, reopened, synchronize, ready_for_review]
   workflow_dispatch:
     inputs:
       pr_number:
@@ -69,10 +69,6 @@ jobs:
               return
             fi
 
-            if jq -e '[.labels[].name | ascii_downcase] | any(. == "in-progress")' <<< "$pr_json" >/dev/null; then
-              echo "PR #$pr_number: already in progress; another worker owns it."
-              return
-            fi
 
             head_sha="$(jq -r '.head.sha' <<< "$pr_json")"
             live_base_sha="$(gh api "repos/$REPOSITORY/git/ref/heads/$base_ref" --jq '.object.sha')"
@@ -92,14 +88,12 @@ jobs:
               return
             fi
 
-            if jq -e '[.labels[].name | ascii_downcase] | any(. == "on-hold" or . == "on hold" or . == "in-progress")' <<< "$current_json" >/dev/null; then
-              echo "PR #$pr_number: became unavailable before claim; skipping."
+            if jq -e '[.labels[].name | ascii_downcase] | any(. == "on-hold" or . == "on hold")' <<< "$current_json" >/dev/null; then
+              echo "PR #$pr_number: became on-hold before update; skipping."
               return
             fi
 
-            gh api "repos/$REPOSITORY/issues/$pr_number/labels"               --method POST               -f 'labels[]=in-progress' >/dev/null
-
-            echo "PR #$pr_number: claimed; updating branch ($behind_by commit(s) behind)."
+            echo "PR #$pr_number: updating branch ($behind_by commit(s) behind) with expected head $head_sha."
 
             set +e
             update_output="$(
@@ -108,10 +102,9 @@ jobs:
             update_status=$?
             set -e
 
-            gh api "repos/$REPOSITORY/issues/$pr_number/labels/in-progress"               --method DELETE >/dev/null 2>&1 || true
 
             if (( update_status != 0 )); then
-              echo "PR #$pr_number: branch update failed; claim released."
+              echo "PR #$pr_number: branch update failed; update attempt finished."
               echo "$update_output"
               {
                 echo "### PR #$pr_number branch update failed"
@@ -123,7 +116,7 @@ jobs:
               return
             fi
 
-            echo "PR #$pr_number: branch update requested successfully; claim released."
+            echo "PR #$pr_number: branch update requested successfully; update attempt finished."
           }
 
           if [[ -z "${BRANCH_UPDATE_TOKEN:-}" ]]; then
