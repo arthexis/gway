@@ -13,6 +13,7 @@ class Scope:
     name: str
     operations: frozenset[str] = frozenset()
     environment: frozenset[str] = frozenset()
+    owner: str | None = None
 
 
 @dataclass(frozen=True)
@@ -77,7 +78,7 @@ class ScopeRegistry:
                 (scope_id,),
             )
         )
-        return Scope(row["name"], operations, environment)
+        return Scope(row["name"], operations, environment, row["owner"])
 
     def get(self, name, *, readonly=False):
         """Return one scope, or None without creating state."""
@@ -86,7 +87,7 @@ class ScopeRegistry:
         name = self._name(name)
         with self.state.connect(readonly=readonly) as connection:
             row = connection.execute(
-                "SELECT id, name FROM scopes WHERE name = ?",
+                "SELECT id, name, owner FROM scopes WHERE name = ?",
                 (name,),
             ).fetchone()
             return self._row_scope(connection, row)
@@ -104,7 +105,7 @@ class ScopeRegistry:
             return []
         with self.state.connect(readonly=readonly) as connection:
             rows = connection.execute(
-                "SELECT id, name FROM scopes ORDER BY name"
+                "SELECT id, name, owner FROM scopes ORDER BY name"
             ).fetchall()
             return [self._row_scope(connection, row) for row in rows]
 
@@ -121,6 +122,88 @@ class ScopeRegistry:
                     raise ValueError(f"Security scope already exists: {name}") from None
                 raise
         return self.require(name)
+
+    def replace_owned(
+        self,
+        name,
+        *,
+        owner,
+        operations=(),
+        environment=(),
+        allow_claim_unowned=False,
+    ):
+        """Create or replace a scope only when its durable owner matches."""
+        name = self._name(name)
+        owner = str(owner).strip()
+        if not owner:
+            raise ValueError("scope owner must be a non-empty string")
+        operations = self._grants(operations, label="operation")
+        environment = self._grants(environment, label="environment")
+
+        with self.state.connect() as connection:
+            row = connection.execute(
+                "SELECT id, owner FROM scopes WHERE name = ?",
+                (name,),
+            ).fetchone()
+            if row is None:
+                connection.execute(
+                    "INSERT INTO scopes (name, owner) VALUES (?, ?)",
+                    (name, owner),
+                )
+                row = connection.execute(
+                    "SELECT id, owner FROM scopes WHERE name = ?",
+                    (name,),
+                ).fetchone()
+            elif row["owner"] is None:
+                if not allow_claim_unowned:
+                    raise ValueError(
+                        f"Security scope {name} is user-managed and cannot be claimed by {owner}"
+                    )
+                connection.execute(
+                    "UPDATE scopes SET owner = ? WHERE id = ?",
+                    (owner, row["id"]),
+                )
+            elif row["owner"] != owner:
+                raise ValueError(
+                    f"Security scope {name} is owned by {row['owner']}, not {owner}"
+                )
+
+            scope_id = row["id"]
+            connection.execute(
+                "DELETE FROM scope_operations WHERE scope_id = ?", (scope_id,)
+            )
+            connection.execute(
+                "DELETE FROM scope_environment WHERE scope_id = ?", (scope_id,)
+            )
+            connection.executemany(
+                "INSERT INTO scope_operations (scope_id, operation) VALUES (?, ?)",
+                ((scope_id, operation) for operation in sorted(operations)),
+            )
+            connection.executemany(
+                "INSERT INTO scope_environment (scope_id, variable_name) VALUES (?, ?)",
+                ((scope_id, variable) for variable in sorted(environment)),
+            )
+        return self.require(name)
+
+    def remove_owned_missing(self, *, owner_prefix, active_names):
+        """Remove owned scopes under a namespace that are no longer published."""
+        owner_prefix = str(owner_prefix)
+        active_names = frozenset(self._name(name) for name in active_names)
+        removed = []
+        if not self.path.is_file():
+            return removed
+        with self.state.connect() as connection:
+            rows = connection.execute(
+                "SELECT name FROM scopes WHERE owner LIKE ?",
+                (owner_prefix + "%",),
+            ).fetchall()
+            for row in rows:
+                name = row["name"]
+                if name in active_names:
+                    continue
+                connection.execute("DELETE FROM scopes WHERE name = ?", (name,))
+                removed.append(name)
+        return removed
 
     def replace(self, name, *, operations=(), environment=()):
         """Atomically create or replace one complete scope definition."""
