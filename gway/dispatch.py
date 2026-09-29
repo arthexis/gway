@@ -540,6 +540,36 @@ def _expand_candidate(runtime, candidate):
     return expanded
 
 
+def _operation_candidate_tokens(tokens):
+    """Return operation-name token values without consuming structural syntax."""
+    values = []
+    for token in tokens:
+        value = token_value(token)
+        if is_unquoted(token) and (value == "-" or value == "--" or value.startswith("--")):
+            break
+        values.append(value)
+    return values
+
+
+def _operation_spelling_candidates(values):
+    """Return normal, underscore, and dotted spellings for operation-name words."""
+    if not values:
+        return ()
+    normalized = tuple(
+        token if token == "-" or token.startswith("--") else token.replace("-", "_")
+        for token in values
+    )
+    return tuple(
+        dict.fromkeys(
+            (
+                " ".join(values),
+                "_".join(normalized),
+                ".".join(normalized),
+            )
+        )
+    )
+
+
 def _semantic_pipeline_operation(runtime, tokens, pipeline):
     """Resolve a bare operation against the semantic subject of a pipeline value."""
     subject = runtime.results.subject(pipeline)
@@ -547,14 +577,9 @@ def _semantic_pipeline_operation(runtime, tokens, pipeline):
         return None
 
     expand_path(runtime, (subject,))
-    values = [token_value(token) for token in tokens]
+    values = _operation_candidate_tokens(tokens)
     for size in range(len(values), 0, -1):
-        candidates = (
-            " ".join(values[:size]),
-            "_".join(token.replace("-", "_") for token in values[:size]),
-            ".".join(token.replace("-", "_") for token in values[:size]),
-        )
-        for candidate in candidates:
+        for candidate in _operation_spelling_candidates(values[:size]):
             value = runtime.ops.resolve_pair(candidate, subject)
             if callable(value):
                 return _resolved(value, tokens[size:], candidate)
@@ -563,14 +588,9 @@ def _semantic_pipeline_operation(runtime, tokens, pipeline):
 
 def resolve_operation(runtime, tokens, *, pipeline=_MISSING):
     """Resolve the longest leading token sequence to an executable operation."""
-    values = [token_value(token) for token in tokens]
+    values = _operation_candidate_tokens(tokens)
     for size in range(len(values), 0, -1):
-        candidates = (
-            " ".join(values[:size]),
-            "_".join(token.replace("-", "_") for token in values[:size]),
-            ".".join(token.replace("-", "_") for token in values[:size]),
-        )
-        for candidate in candidates:
+        for candidate in _operation_spelling_candidates(values[:size]):
             value = runtime.ops.resolve(candidate)
             if callable(value):
                 return _resolved(value, tokens[size:], candidate)
@@ -611,8 +631,9 @@ def resolve_operation(runtime, tokens, *, pipeline=_MISSING):
         inspect_namespace.__gway_subject__ = None
         return _resolved(inspect_namespace, [], namespace)
 
-    query = namespace
-    raise OperationLookupError(query, _operation_suggestions(runtime, values))
+    query_values = [token_value(token) for token in tokens]
+    query = " ".join(query_values)
+    raise OperationLookupError(query, _operation_suggestions(runtime, query_values))
 
 
 
