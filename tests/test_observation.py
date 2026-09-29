@@ -404,3 +404,35 @@ def test_latest_explicit_wrap_replaces_same_canonical_operation():
 
     assert result == {"ready": False}
     assert calls == ["replacement"]
+
+
+def test_observe_uses_latest_explicit_operation_replacement():
+    gateway = Gateway()
+
+    def fail(*, mutate=False):
+        raise ConnectionError("wire offline")
+
+    gateway.wrap("wire.check", fail, op="check", sub="wire")
+
+    result = gateway("observe --section wire -- wire check")
+
+    assert result["wire"]["status"] == "error"
+    assert result["wire"]["error"]["message"] == "wire offline"
+
+
+def test_observe_uses_latest_log_search_replacement():
+    gateway = Gateway()
+    calls = []
+
+    def search(pattern, *source, since=None, until=None, limit=100, all=False, mutate=False):
+        calls.append((pattern, source, since, limit, all, mutate))
+        return []
+
+    gateway.wrap("log.search", search, op="search", sub="log")
+
+    result = gateway(
+        'observe --section errors -- log search "ERROR|CRITICAL" --all --limit 20'
+    )
+
+    assert result["errors"]["status"] == "ok"
+    assert calls == [("ERROR|CRITICAL", (), None, 20, True, False)]
