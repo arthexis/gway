@@ -1,4 +1,4 @@
-def __main__(scope=None, only=None, except_=None, since=None, errors=False, changed=False, cursor=None, *, mutate=False):
+def __main__(scope=None, only=None, except_=None, since=None, problems=False, changed=False, cursor=None, *, mutate=False):
     """Inspect the current node through bounded read-only observations."""
 
 
@@ -15,7 +15,7 @@ def __help__(topic=None):
             "gway watch --only node,services",
             "gway watch --except errors,wire",
             "gway watch --since \"10 minutes ago\"",
-            "gway watch --errors",
+            "gway watch --problems",
             "gway watch --changed --cursor <cursor>",
             "gway --json watch",
         ],
@@ -24,7 +24,7 @@ def __help__(topic=None):
             "--scope can only reduce the caller's existing authority.",
             "--only and --except reduce the visible section set after authorization.",
             "--since currently constrains time-aware observations such as recent errors.",
-            "--errors keeps only problematic observations and non-empty recent-error logs.",
+            "--problems keeps only problematic observations and non-empty recent-error logs.",
             "Every watch response includes an opaque cursor for later comparison.",
             "--changed requires --cursor and returns only currently visible changed sections.",
         ],
@@ -61,14 +61,14 @@ def __help__(topic=None):
             ),
             "examples": ["gway watch --since \"10 minutes ago\""],
         },
-        "--errors": {
+        "--problems": {
             "summary": "Show only problematic observations",
             "description": (
                 "Keep sections whose observation status is error or blocked, plus the "
                 "recent errors section when it contains records. Optional unavailable "
                 "capabilities are not treated as errors."
             ),
-            "examples": ["gway watch --errors"],
+            "examples": ["gway watch --problems"],
         },
         "--changed": {
             "summary": "Show only changed observations",

@@ -134,7 +134,7 @@ def inspect_source(
 
     resolution = resolve_operation(gateway, tokenize(" ".join(map(str, operation))))
     canonical = resolution.candidate
-    if not gateway._operation_visible(canonical):
+    if not gateway._source_operation_visible(canonical):
         from .authorization import AuthorizationError
 
         raise AuthorizationError("Operation is not authorized for source inspection")
@@ -209,7 +209,7 @@ def search_source_corpus(
     results = []
 
     for record in sorted(gateway.ops.records(), key=lambda item: item.name):
-        if not gateway._operation_visible(record.name):
+        if not gateway._source_operation_visible(record.name):
             continue
         callable_ = record.callable
         source_kind = getattr(callable_, "__gway_source_kind__", None) or "python"

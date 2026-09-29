@@ -99,3 +99,19 @@ def test_star_excludes_indices_selected_later_in_same_snapshot(gateway):
     )
 
     assert bound.args == ("A", "C", "B")
+
+
+def test_inline_positional_hoists_past_semantically_filled_parameter(gateway):
+    marker = object()
+
+    def filter_chargers(chargers, prefix):
+        return chargers, prefix
+
+    bound = bind_arguments(
+        filter_chargers,
+        [Token("A")],
+        runtime=gateway,
+        initial_kwargs={"chargers": marker},
+    )
+
+    assert filter_chargers(*bound.args, **bound.kwargs) == (marker, "A")

@@ -140,7 +140,7 @@ def test_remote_http_acme_challenge_is_filesystem_owned_not_proxied():
 
 def test_remote_https_redirect_server_preserves_acme_before_redirect():
     content = _template("nginx-https-[site].conf")
-    first_server = content.split("\n}\n\nserver {", 1)[0]
+    first_server = content.split("server {", 1)[1].split("\n}\n\nserver {", 1)[0]
 
     assert "location ^~ /.well-known/acme-challenge/ {" in first_server
     assert "root [acme_webroot|/var/www/gway-acme];" in first_server
@@ -377,7 +377,7 @@ def test_remote_https_public_contract_has_one_mcp_route_and_explicit_auth_routes
 
 def test_remote_https_contract_denies_unknown_application_paths():
     content = _template("nginx-https-[site].conf")
-    tls_server = content.split("\n}\n\nserver {", 1)[1]
+    tls_server = "server {" + content.rsplit("server {", 1)[1]
     fallback = _block(tls_server, "location / {")
 
     assert "return 404;" in fallback
@@ -469,6 +469,6 @@ def test_remote_no_store_policy_is_declared_at_server_scope():
         "add_header Cache-Control $gway_remote_cache_control_[site] always;"
         in content
     )
-    tls_server = content.split("\n}\n\nserver {", 1)[1]
+    tls_server = "server {" + content.rsplit("server {", 1)[1]
     for block in tls_server.split("\n    location ")[1:]:
         assert "add_header" not in block

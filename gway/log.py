@@ -364,7 +364,7 @@ critical.__doc__ = "Log a CRITICAL diagnostic when that level is enabled."
 exception.__doc__ = "Log an ERROR diagnostic with the current exception traceback."
 
 
-def __main__(message, *args, level=_logging.INFO, **kwargs):
+def __main__(message, *args, level: str = "INFO", **kwargs):
     """Log one message through the Gway logger.
 
     Args:
