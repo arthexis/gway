@@ -341,7 +341,12 @@ def ingest_python(gateway, source, *, path=None, **kwargs):
 
     wrapped = []
 
-    if callable(source):
+    has_class_main = (
+        inspect.isclass(source)
+        and callable(getattr(source, _ENTRY_SPECIAL_METHOD, None))
+    )
+
+    if callable(source) and not has_class_main:
         operation = IngestedOperation(
             root,
             source,
