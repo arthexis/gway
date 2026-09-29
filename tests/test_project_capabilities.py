@@ -64,6 +64,8 @@ command = ["demo", "status"]
         encoding="utf-8",
     )
     monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("GWAY_DATA_DIR", str(tmp_path / "data"))
+    monkeypatch.setenv("GWAY_CACHE_DIR", str(tmp_path / "cache"))
 
     gateway = Gateway()
 
