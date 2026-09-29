@@ -310,6 +310,65 @@ def test_remote_watch_blocks_mutating_component_without_side_effect(
     assert calls == []
 
 
+def test_remote_watch_aggregates_authorized_published_contributor(
+    gateway,
+    tmp_path,
+    monkeypatch,
+):
+    _watch_gateway(gateway, tmp_path, monkeypatch)
+
+    def product_status(*, mutate=False):
+        return {"ready": True}
+
+    gateway.wrap("demo.status", product_status, op="status", sub="demo")
+    gateway._watch_contributors = (
+        {
+            "section": "demo",
+            "command": ("demo", "status"),
+            "source": "demo",
+        },
+    )
+    application, bearer = _remote(
+        gateway,
+        operations={"watch", "demo.status"},
+    )
+
+    status, _, payload = _get(application, bearer, "watch --only demo")
+
+    assert status == 200
+    result = payload["result"]
+    assert result["demo"]["status"] == "ok"
+    assert result["demo"]["result"] == {"ready": True}
+    assert result["health"]["sections"] == {"demo": "ok"}
+
+
+def test_remote_watch_omits_unauthorized_published_contributor(
+    gateway,
+    tmp_path,
+    monkeypatch,
+):
+    _watch_gateway(gateway, tmp_path, monkeypatch)
+    gateway.wrap(
+        "demo.status",
+        lambda *, mutate=False: {"ready": True},
+        op="status",
+        sub="demo",
+    )
+    gateway._watch_contributors = (
+        {
+            "section": "demo",
+            "command": ("demo", "status"),
+            "source": "demo",
+        },
+    )
+    application, bearer = _remote(gateway, operations={"watch"})
+
+    status, _, payload = _get(application, bearer, "watch")
+
+    assert status == 200
+    assert "demo" not in payload["result"]
+
+
 def test_remote_watch_missing_component_scope_is_not_transport_error(
     gateway,
     tmp_path,
