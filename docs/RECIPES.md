@@ -766,6 +766,13 @@ sampler before a change can advance to Watchtower acceptance.
 
 ## Installed sampler recipes
 
+The maintained sampler's inventory, operation roots, first-class recipe conventions,
+and capability reference now live in [SAMPLER.md](SAMPLER.md).
+
+This document remains authoritative for the recipe language and execution semantics.
+Sampler recipes use the same language described above.
+
+
 Gway ships maintained sampler recipes from the repository's top-level `sampler/`
 directory. The same sampler files are installed with the wheel so they remain
 available without a source checkout. Run them through the generic `recipe`
