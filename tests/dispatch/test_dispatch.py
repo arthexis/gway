@@ -366,6 +366,7 @@ def test_operation_resolution_preserves_path_like_first_argument(gateway, source
 
 @pytest.mark.parametrize("source", ["./project", "owner/project"])
 def test_namespace_fallback_does_not_swallow_path_like_argument(gateway, source):
+    # Register only a child operation so "deploy" remains a namespace, not a callable.
     gateway.wrap("deploy.start", lambda: "started")
 
     assert gateway.ops.is_namespace("deploy")
