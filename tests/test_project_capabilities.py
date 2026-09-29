@@ -119,6 +119,55 @@ def test_published_scope_refuses_to_claim_user_managed_scope(tmp_path):
     assert scope.operations == frozenset({"manual.status"})
 
 
+
+def test_published_scope_claims_matching_legacy_unowned_scope(tmp_path):
+    registry = ScopeRegistry(tmp_path / "security.sqlite")
+    registry.replace(
+        "demo-read",
+        operations={"demo.status"},
+        environment=(),
+    )
+
+    converge_scope_registry(
+        registry,
+        {
+            "demo-read": {
+                "operations": frozenset({"demo.status"}),
+                "environment": frozenset(),
+                "source": "demo",
+            }
+        },
+    )
+
+    scope = registry.require("demo-read")
+    assert scope.owner == "project:demo"
+    assert scope.operations == frozenset({"demo.status"})
+
+
+def test_published_scope_refuses_to_claim_nonmatching_legacy_unowned_scope(tmp_path):
+    registry = ScopeRegistry(tmp_path / "security.sqlite")
+    registry.replace(
+        "demo-read",
+        operations={"demo.status", "manual.extra"},
+        environment=(),
+    )
+
+    with pytest.raises(ValueError, match="user-managed"):
+        converge_scope_registry(
+            registry,
+            {
+                "demo-read": {
+                    "operations": frozenset({"demo.status"}),
+                    "environment": frozenset(),
+                    "source": "demo",
+                }
+            },
+        )
+
+    scope = registry.require("demo-read")
+    assert scope.owner is None
+    assert scope.operations == frozenset({"demo.status", "manual.extra"})
+
 def test_retired_product_scope_is_removed_without_touching_user_scope(tmp_path):
     registry = ScopeRegistry(tmp_path / "security.sqlite")
     registry.replace("manual-read", operations={"manual.status"}, environment=())
