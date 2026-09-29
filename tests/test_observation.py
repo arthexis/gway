@@ -379,3 +379,28 @@ def test_observe_section_publishes_envelope_to_semantic_context():
 
     assert result["node"]["status"] == "ok"
     assert gateway.context["node"] == result["node"]
+
+
+def test_observe_service_statuses_uses_canonical_authorized_operation():
+    gateway = Gateway()
+
+    with gateway.authorized(operations={"observe", "service.statuses"}):
+        result = gateway("observe --section services -- service statuses")
+
+    assert result["services"]["status"] == "ok"
+
+
+def test_latest_explicit_wrap_replaces_same_canonical_operation():
+    gateway = Gateway()
+    calls = []
+    gateway.wrap(
+        "wire.check",
+        lambda *, mutate=False: calls.append("replacement") or {"ready": False},
+        op="check",
+        sub="wire",
+    )
+
+    result = gateway("wire check")
+
+    assert result == {"ready": False}
+    assert calls == ["replacement"]
