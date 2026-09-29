@@ -87,6 +87,10 @@ def test_arthexis_roles_share_one_installer_template(sampler_path):
     script = sampler_path("bootstrap/arthexis.sh").read_text(encoding="utf-8")
 
     assert 'curl -fsSL "https://[domain]/gway" | sh' in script
+    assert 'TOOL_BIN="$("$UV" tool dir --bin)"' in script
+    assert 'if test -x "$TOOL_BIN/gway"; then' in script
+    assert 'GWAY="$TOOL_BIN/gway"' in script
+    assert 'command -v gway' not in script
     assert '"$GWAY" install arthexis/arthexis' in script
     assert '"$GWAY" arthexis migrate --noinput' in script
     assert '"$GWAY" arthexis seed' in script
@@ -106,5 +110,8 @@ def test_bootstrap_https_site_serves_ui_and_exact_installer_paths(sampler_path):
     assert "location = /satellite" in nginx
     assert "location = /control" in nginx
     assert nginx.count('Cache-Control "no-store"') == 4
+    assert nginx.count('Strict-Transport-Security "max-age=31536000" always') == 5
+    assert nginx.count('X-Content-Type-Options "nosniff" always') == 5
+    assert nginx.count('Referrer-Policy "same-origin" always') == 5
     assert "location / {" in nginx
     assert "return 404;" in nginx
