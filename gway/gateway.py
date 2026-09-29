@@ -1222,6 +1222,16 @@ class Gateway(Resolver):
 
         if operation is None:
             requested = " ".join(values)
+            authority = self.authorization
+            if authority is not None and authority.kind is not None:
+                from .authorization import AuthorizationError
+
+                candidate = f"{family}." + ".".join(
+                    value.replace(" ", ".") for value in values if value
+                )
+                raise AuthorizationError(
+                    f"Operation is not authorized: {candidate}"
+                )
             raise LookupError(
                 f"Role {role!r} does not expose node operation {requested!r}"
             )
