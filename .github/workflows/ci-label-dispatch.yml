@@ -1,0 +1,83 @@
+name: CI Label Dispatch
+
+on:
+  pull_request_target:
+    types: [labeled, unlabeled]
+
+permissions:
+  actions: write
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: ci-label-dispatch-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  dispatch:
+    name: Dispatch affected CI
+    runs-on: ubuntu-latest
+    steps:
+      - name: Dispatch only workflows affected by the changed label
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          ACTION: ${{ github.event.action }}
+          CHANGED_LABEL: ${{ github.event.label.name }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          label="$(printf '%s' "$CHANGED_LABEL" | tr '[:upper:]' '[:lower:]')"
+          case "$label" in
+            workflow|integration|version-only|on-hold|"on hold")
+              ;;
+            *)
+              echo "Label '$CHANGED_LABEL' does not affect CI; no required checks will be created."
+              exit 0
+              ;;
+          esac
+
+          # Holding a PR only disarms merge automation. Releasing a hold must
+          # revalidate the current head because commits may have landed while held.
+          if [[ "$ACTION" == "labeled" && ( "$label" == "on-hold" || "$label" == "on hold" ) ]]; then
+            echo "PR #$PR_NUMBER is now on hold; CI dispatch is unnecessary."
+            exit 0
+          fi
+
+          pr_json="$(gh api "repos/$REPOSITORY/pulls/$PR_NUMBER")"
+          head_ref="$(jq -r '.head.ref' <<< "$pr_json")"
+          head_repo="$(jq -r '.head.repo.full_name // empty' <<< "$pr_json")"
+          base_sha="$(jq -r '.base.sha' <<< "$pr_json")"
+          head_sha="$(jq -r '.head.sha' <<< "$pr_json")"
+          version_pr="$(jq -r '[.labels[].name | ascii_downcase] | any(. == "version-only")' <<< "$pr_json")"
+          workflow_pr="$(jq -r '[.labels[].name | ascii_downcase] | any(. == "workflow")' <<< "$pr_json")"
+          integration_pr="$(jq -r '[.labels[].name | ascii_downcase] | any(. == "integration")' <<< "$pr_json")"
+
+          dispatch() {
+            local workflow="$1"
+            echo "Dispatching $workflow for PR #$PR_NUMBER at $head_sha"
+            gh workflow run "$workflow" \
+              --repo "$REPOSITORY" \
+              --ref "$base_ref" \
+              -f pr_number="$PR_NUMBER" \
+              -f base_sha="$base_sha" \
+              -f head_sha="$head_sha" \
+              -f head_repo="$head_repo" \
+              -f version_pr="$version_pr" \
+              -f workflow_pr="$workflow_pr" \
+              -f integration_pr="$integration_pr"
+          }
+
+          case "$label" in
+            workflow|integration)
+              dispatch python-compatibility.yml
+              ;;
+            version-only|on-hold|"on hold")
+              dispatch package.yml
+              dispatch quality.yml
+              dispatch python-compatibility.yml
+              dispatch secret-scan.yml
+              ;;
+          esac

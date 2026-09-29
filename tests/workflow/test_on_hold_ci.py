@@ -5,23 +5,38 @@ import pytest
 
 pytestmark = pytest.mark.workflow
 
-CORE_WORKFLOWS = {
-    "package.yml": 1,
-    "quality.yml": 1,
-    "secret-scan.yml": 1,
-    "python-compatibility.yml": 3,
-}
-
-ON_HOLD_GUARD = (
-    "!contains(github.event.pull_request.labels.*.name, 'on-hold') && "
-    "!contains(github.event.pull_request.labels.*.name, 'on hold')"
+CORE_WORKFLOWS = (
+    "package.yml",
+    "quality.yml",
+    "secret-scan.yml",
+    "python-compatibility.yml",
 )
 
 
-@pytest.mark.parametrize(("workflow", "expected_guards"), CORE_WORKFLOWS.items())
-def test_putting_pr_on_hold_skips_core_ci(workflow: str, expected_guards: int) -> None:
+@pytest.mark.parametrize("workflow", CORE_WORKFLOWS)
+def test_core_ci_does_not_subscribe_to_generic_label_changes(workflow: str) -> None:
     text = (Path(".github/workflows") / workflow).read_text(encoding="utf-8")
 
-    assert "labeled" in text
-    assert text.count(ON_HOLD_GUARD) == expected_guards
-    assert "github.event.label.name != 'on-hold'" not in text
+    assert "types: [opened, synchronize, reopened]" in text
+    assert "labeled" not in text
+    assert "unlabeled" not in text
+
+
+def test_ci_label_dispatch_handles_hold_transitions_without_creating_hold_checks() -> None:
+    text = Path(".github/workflows/ci-label-dispatch.yml").read_text(encoding="utf-8")
+
+    assert "types: [labeled, unlabeled]" in text
+    assert 'workflow|integration|version-only|on-hold|"on hold"' in text
+    assert (
+        'if [[ "$ACTION" == "labeled" && '
+        '( "$label" == "on-hold" || "$label" == "on hold" ) ]]'
+    ) in text
+    assert "CI dispatch is unnecessary" in text
+
+
+def test_ci_label_dispatch_ignores_ordinary_state_labels() -> None:
+    text = Path(".github/workflows/ci-label-dispatch.yml").read_text(encoding="utf-8")
+
+    assert "Label '$CHANGED_LABEL' does not affect CI" in text
+    assert "approved" not in text
+    assert "in-progress" not in text
