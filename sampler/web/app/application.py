@@ -101,9 +101,9 @@ class Controller:
 
     def view_app(
         self,
+        app: AppSpec,
         handler: object = None,
         *,
-        app: AppSpec,
         route=None,
         methods: tuple[str, ...] = (),
         method=None,
@@ -216,6 +216,26 @@ class Controller:
         )
         return app.replace(view) if replace else app.add(view)
 
+    def header_app(
+        self,
+        app: AppSpec,
+        name,
+        value,
+        *,
+        mutate=False,
+    ):
+        """Add or replace one semantic response header on the current application.
+
+        Args:
+            app: Current AppSpec supplied through the semantic app receiver.
+            name: HTTP response header name.
+            value: HTTP response header value.
+        """
+        del mutate
+        if not isinstance(app, AppSpec):
+            raise TypeError("header app requires an AppSpec")
+        return app.with_header(name, value)
+
     def expose_app(
         self,
         domain,
@@ -312,8 +332,17 @@ def register(gateway):
         controller.view_app,
         op="view",
         sub="app",
+        receiver="app",
     )
     gateway.ops.register_alias("view", gateway.view_app)
+    gateway.header_app = gateway.wrap(
+        "header.app",
+        controller.header_app,
+        op="header",
+        sub="app",
+        receiver="app",
+    )
+    gateway.ops.register_alias("header", gateway.header_app)
     gateway.serve_app = gateway.wrap(
         "serve.app",
         controller.serve_app,
