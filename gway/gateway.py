@@ -1517,6 +1517,7 @@ class Gateway(Resolver):
         """Authenticate one bearer and execute under its current authority."""
         from .security.authentication import authenticate_bearer
 
+        self.converge_security_scopes()
         identity = authenticate_bearer(
             bearer,
             resource=resource,
