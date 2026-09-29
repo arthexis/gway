@@ -61,6 +61,24 @@ def test_dispatch_stage_accepts_pipeline_before_inline_arguments(gateway):
     assert result == ["A"]
 
 
+def test_explicit_semantic_option_precedes_pipeline_adaptation(gateway):
+    piped = ["A", "B"]
+    gateway.results.insert("chargers", piped)
+
+    def summarize(prefix, chargers):
+        return prefix, chargers
+
+    gateway.summarize = gateway.wrap("summarize", summarize)
+
+    result = dispatch_stage(
+        gateway,
+        ["summarize", "--chargers", "manual"],
+        pipeline=piped,
+    )
+
+    assert result == (piped, "manual")
+
+
 def test_native_arguments_still_reject_inline_tokens(gateway):
     def echo(value):
         return value
@@ -291,3 +309,39 @@ def test_exact_plural_subject_wins_over_inferred_singular(gateway):
     assert resolution.callable is not singular_wrapped
     assert resolution.subject == "chargers"
     assert resolution.cardinality is Cardinality.ONE
+
+
+def test_operation_resolution_does_not_consume_structural_pipeline_dash(gateway):
+    gateway.probe = gateway.wrap("probe", lambda: "ready")
+
+    def consume(value):
+        return f"seen:{value}"
+
+    gateway.consume = gateway.wrap("consume", consume)
+
+    assert dispatch(gateway, "probe - consume") == "seen:ready"
+
+
+def test_quoted_dash_remains_operation_argument_data(gateway):
+    def echo(value):
+        return value
+
+    gateway.echo = gateway.wrap("echo", echo)
+
+    assert dispatch(gateway, 'echo "-"') == "-"
+
+
+def test_semantic_sigil_argument_does_not_become_pipeline_selector(gateway):
+    marker = object()
+    gateway.context["label"] = "health"
+
+    def setup_app():
+        return marker
+
+    def view_app(handler, *, app):
+        return handler, app
+
+    gateway.setup_app = gateway.wrap("setup_app", setup_app)
+    gateway.view_app = gateway.wrap("view_app", view_app)
+
+    assert dispatch(gateway, "setup app - view app [label]") == ("health", marker)
