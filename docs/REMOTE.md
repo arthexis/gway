@@ -61,6 +61,43 @@ That database is outside replaceable application code and outside the generated
 systemd unit. Reinstalling the service or upgrading Gway therefore does not
 reissue or discard OAuth state.
 
+Credential state is inspectable through the same security command surface. Bare
+plural namespaces default to their singular `list` operation when no explicit
+plural operation exists:
+
+```text
+gway security tokens
+gway security oauth clients
+gway security oauth links
+gway security oauth grants
+gway security oauth tokens
+```
+
+OAuth grant scopes can be managed without recreating the connection:
+
+```text
+gway security oauth grant show <grant-id>
+gway security oauth grant bind <grant-id> operator-read
+gway security oauth grant unbind <grant-id> operator-read
+gway security oauth grant set <grant-id> logs-read operator-read
+```
+
+A grant can never exceed the scopes bound to its linked native Gway token.
+
+Native and OAuth token listings include `last_used_at` when a credential has
+successfully authenticated. OAuth access also counts as use of its linked native
+security token because that token remains the effective policy ceiling. Usage
+telemetry is kept separately from the versioned authorization database so it
+cannot make an older Gway runtime reject the security schema during rollback.
+
+The OAuth token listing exposes only safe metadata and public ids; bearer
+secrets remain one-time material and are never persisted in plaintext.
+`security oauth token clear` revokes all issued OAuth access and refresh
+credentials while preserving clients, links, and grants. `security token clear`
+deletes every native Gway security token and therefore intentionally cascades
+through OAuth links, grants, and issued credentials tied to those tokens while
+leaving scopes and OAuth client registrations intact.
+
 Remote/MCP configuration follows the same topic hierarchy as other semantic
 values. With active topics `remote` and `mcp`, a subject such as
 `endpoint` may resolve through:

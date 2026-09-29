@@ -8,6 +8,7 @@ import secrets
 from ..cache import default_root
 from .scopes import EffectiveScope, ScopeRegistry
 from .state import SecurityState
+from .usage import CredentialUsage
 
 
 class AuthenticationError(PermissionError):
@@ -27,6 +28,7 @@ class Token:
     disabled: bool
     created_at: str
     expires_at: str | None = None
+    last_used_at: str | None = None
 
 
 @dataclass(frozen=True)
@@ -52,6 +54,7 @@ class TokenRegistry:
         path = default_root() / "security" / "state.sqlite" if path is None else path
         self.state = SecurityState(path)
         self.scopes = ScopeRegistry(path)
+        self.usage = CredentialUsage(path)
 
     @property
     def path(self):
@@ -111,6 +114,19 @@ class TokenRegistry:
             expires_at=row["expires_at"],
         )
 
+    def _with_usage(self, token):
+        if token is None:
+            return None
+        return Token(
+            name=token.name,
+            public_id=token.public_id,
+            scopes=token.scopes,
+            disabled=token.disabled,
+            created_at=token.created_at,
+            expires_at=token.expires_at,
+            last_used_at=self.usage.get("token", token.public_id),
+        )
+
     def get(self, name, *, readonly=False):
         """Return safe token metadata without exposing credential material."""
         if not self.path.is_file():
@@ -125,7 +141,8 @@ class TokenRegistry:
                 """,
                 (name,),
             ).fetchone()
-            return self._from_row(connection, row)
+            token = self._from_row(connection, row)
+        return self._with_usage(token)
 
     def require(self, name, *, readonly=False):
         """Return safe metadata or fail when the named token does not exist."""
@@ -146,7 +163,8 @@ class TokenRegistry:
                 ORDER BY name
                 """
             ).fetchall()
-            return [self._from_row(connection, row) for row in rows]
+            tokens = [self._from_row(connection, row) for row in rows]
+        return [self._with_usage(token) for token in tokens]
 
     @staticmethod
     def _expiry(value):
@@ -205,6 +223,14 @@ class TokenRegistry:
         with self.state.connect() as connection:
             cursor = connection.execute("DELETE FROM tokens WHERE name = ?", (name,))
         return bool(cursor.rowcount)
+
+    def clear(self):
+        """Permanently revoke and delete every named token."""
+        if not self.path.is_file():
+            return 0
+        with self.state.connect() as connection:
+            cursor = connection.execute("DELETE FROM tokens")
+        return int(cursor.rowcount)
 
     def disable(self, name):
         """Disable authentication while preserving token policy and metadata."""
@@ -307,4 +333,15 @@ class TokenRegistry:
             token = self._from_row(connection, row)
 
         authority = self.scopes.resolve(token.scopes, readonly=readonly)
+        used_at = self.usage.touch("token", token.public_id)
+        if used_at is not None:
+            token = Token(
+                name=token.name,
+                public_id=token.public_id,
+                scopes=token.scopes,
+                disabled=token.disabled,
+                created_at=token.created_at,
+                expires_at=token.expires_at,
+                last_used_at=used_at,
+            )
         return AuthenticatedToken(token, authority)

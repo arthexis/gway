@@ -617,6 +617,20 @@ def resolve_operation(runtime, tokens, *, pipeline=_MISSING):
     if runtime.operation_routes.expand(runtime, tokens):
         return resolve_operation(runtime, tokens, pipeline=pipeline)
 
+    # A bare plural namespace defaults to the corresponding singular list
+    # operation when one exists. Explicit plural operations have already had the
+    # opportunity to resolve above, so this is only a namespace fallback.
+    if values:
+        singular = singularize(values[-1])
+        if singular is not None:
+            list_values = [*values[:-1], singular, "list"]
+            list_query = " ".join(list_values)
+            _expand_candidate(runtime, list_query)
+            for candidate in _operation_spelling_candidates(list_values):
+                value = runtime.ops.resolve(candidate)
+                if callable(value):
+                    return _resolved(value, tokens[len(values):], candidate)
+
     namespace = " ".join(values)
     if runtime.ops.is_namespace(namespace):
         def inspect_namespace():

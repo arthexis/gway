@@ -53,6 +53,10 @@ class Controller:
         """Permanently revoke and remove one named token."""
         return self.registry.remove(name)
 
+    def clear(self):
+        """Permanently revoke and remove every named token."""
+        return self.registry.clear()
+
     def disable(self, name):
         """Disable one token without removing its scope bindings."""
         return self.registry.disable(name)
