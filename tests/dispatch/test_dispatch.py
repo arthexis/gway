@@ -362,3 +362,12 @@ def test_operation_resolution_preserves_path_like_first_argument(gateway, source
     assert resolution.candidate == "deploy"
     assert [str(token) for token in resolution.arguments] == [source]
     assert dispatch(gateway, f"deploy {source}") == source
+
+
+@pytest.mark.parametrize("source", ["./project", "owner/project"])
+def test_namespace_fallback_does_not_swallow_path_like_argument(gateway, source):
+    gateway.deploy_start = gateway.wrap("deploy_start", lambda: "started")
+
+    assert gateway.ops.is_namespace("deploy")
+    with pytest.raises(LookupError, match="Unable to resolve operation"):
+        resolve_operation(gateway, ["deploy", source])
