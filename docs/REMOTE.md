@@ -84,6 +84,12 @@ gway security oauth grant set <grant-id> logs-read operator-read
 
 A grant can never exceed the scopes bound to its linked native Gway token.
 
+Native and OAuth token listings include `last_used_at` when a credential has
+successfully authenticated. OAuth access also counts as use of its linked native
+security token because that token remains the effective policy ceiling. Usage
+telemetry is kept separately from the versioned authorization database so it
+cannot make an older Gway runtime reject the security schema during rollback.
+
 The OAuth token listing exposes only safe metadata and public ids; bearer
 secrets remain one-time material and are never persisted in plaintext.
 `security oauth token clear` revokes all issued OAuth access and refresh
