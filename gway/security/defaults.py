@@ -81,7 +81,7 @@ CORE_SCOPE_DEFINITIONS = {
 CORE_SCOPE_NAMES = frozenset(CORE_SCOPE_DEFINITIONS)
 
 
-def converge_scope_registry(registry, published=()):
+def converge_scope_registry(registry, published=(), *, retire_missing=True):
     """Converge Gway-owned and product-published scopes into one registry."""
     published = dict(published)
     for name, definition in CORE_SCOPE_DEFINITIONS.items():
@@ -109,10 +109,11 @@ def converge_scope_registry(registry, published=()):
         )
         active_product_names.add(name)
 
-    registry.remove_owned_missing(
-        owner_prefix="project:",
-        active_names=active_product_names,
-    )
+    if retire_missing:
+        registry.remove_owned_missing(
+            owner_prefix="project:",
+            active_names=active_product_names,
+        )
     return {
         **CORE_SCOPE_DEFINITIONS,
         **published,
