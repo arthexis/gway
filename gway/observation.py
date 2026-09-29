@@ -223,6 +223,8 @@ class Controller:
         except_=None,
         errors=None,
         changed=None,
+        published=None,
+        scope=None,
         mutate=False,
         **values,
     ):
@@ -234,9 +236,24 @@ class Controller:
         the result so recipes can reserve stable aggregate fields.
         """
         del mutate
-        names = tuple(str(name) for name in section)
+        names = [str(name) for name in section]
         if not names:
             raise TypeError("observation collect requires at least one section")
+
+        published_envelopes = {}
+        if _enabled(published):
+            for contributor in getattr(self.gateway, "_watch_contributors", ()):
+                name = str(contributor["section"])
+                if name in names or name in published_envelopes:
+                    raise ValueError(f"Watch section collision: {name}")
+                observed = self.observe(
+                    *contributor["command"],
+                    section=name,
+                    scope=scope,
+                )
+                published_envelopes[name] = observed[name]
+                names.append(name)
+        names = tuple(names)
 
         only_sections = _section_filter(only)
         except_sections = _section_filter(except_)
@@ -265,7 +282,9 @@ class Controller:
         for name in names:
             if name not in selected:
                 continue
-            envelope = self.gateway.context.get(name)
+            envelope = published_envelopes.get(name)
+            if envelope is None:
+                envelope = self.gateway.context.get(name)
             if not isinstance(envelope, dict):
                 continue
             status = envelope.get("status", "unavailable")
