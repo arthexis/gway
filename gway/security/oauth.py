@@ -11,6 +11,7 @@ from ..cache import default_root
 from .scopes import EffectiveScope, ScopeRegistry
 from .state import SecurityState
 from .tokens import TokenRegistry
+from .usage import CredentialUsage
 
 
 class OAuthAuthenticationError(PermissionError):
@@ -89,6 +90,7 @@ class OAuthCredential:
     expires_at: str
     revoked_at: str | None
     rotated_at: str | None = None
+    last_used_at: str | None = None
 
 
 class OAuthRegistry:
@@ -99,6 +101,7 @@ class OAuthRegistry:
         self.state = SecurityState(path)
         self.scopes = ScopeRegistry(path)
         self.tokens = TokenRegistry(path)
+        self.usage = CredentialUsage(path)
 
     @property
     def path(self):
@@ -613,7 +616,8 @@ class OAuthRegistry:
                    oauth_grants.client_id, oauth_grants.resource,
                    oauth_grants.created_at, oauth_grants.revoked_at,
                    oauth_links.revoked_at AS link_revoked_at,
-                   tokens.name AS token_name, tokens.disabled AS token_disabled,
+                   tokens.name AS token_name, tokens.public_id AS token_public_id,
+                   tokens.disabled AS token_disabled,
                    tokens.expires_at AS token_expires_at
             FROM oauth_grants
             JOIN oauth_links ON oauth_links.id = oauth_grants.link_id
@@ -795,6 +799,7 @@ class OAuthRegistry:
             else:
                 raise OAuthAuthenticationError()
             active = self._active_grant(connection, row["grant_id"])
+            token_public_id = active["token_public_id"]
             if client_id is not None and active["client_id"] != client_id:
                 raise OAuthAuthenticationError()
             if resource is not None and active["resource"] != resource:
@@ -882,6 +887,9 @@ class OAuthRegistry:
             ):
                 raise OAuthAuthenticationError()
             grant, authority = self._effective_grant(connection, row["grant_id"])
+            active = self._active_grant(connection, row["grant_id"])
+        self.usage.touch("oauth-access", public_id)
+        self.usage.touch("token", active["token_public_id"])
         return AuthenticatedOAuthToken(grant, authority)
 
     def rotate_refresh(
@@ -933,14 +941,15 @@ class OAuthRegistry:
             if cursor.rowcount != 1:
                 raise OAuthAuthenticationError()
             grant_id = row["grant_id"]
+        self.usage.touch("oauth-refresh", public_id)
+        self.usage.touch("token", token_public_id)
         return self.issue_tokens(
             grant_id,
             access_lifetime_seconds=access_lifetime_seconds,
             refresh_lifetime_seconds=refresh_lifetime_seconds,
         )
 
-    @staticmethod
-    def _credential_from_row(kind, row):
+    def _credential_from_row(self, kind, row):
         if row is None:
             return None
         return OAuthCredential(
@@ -951,6 +960,7 @@ class OAuthRegistry:
             row["expires_at"],
             row["revoked_at"],
             row["rotated_at"] if kind == "refresh" else None,
+            self.usage.get(f"oauth-{kind}", row["public_id"]),
         )
 
     def credentials(self, *, readonly=False):
