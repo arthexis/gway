@@ -189,6 +189,11 @@ def _option_details(signature, token):
     if parameter is not None:
         return key, parameter, False, False
 
+    escaped = f"{key}_"
+    parameter = signature.parameters.get(escaped)
+    if parameter is not None:
+        return escaped, parameter, False, False
+
     for name, candidate in signature.parameters.items():
         if not _sequence_annotation(candidate.annotation):
             continue

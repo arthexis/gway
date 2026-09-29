@@ -60,3 +60,40 @@ class Authorization:
         if "__all__" in allowed:
             return dict(values)
         return {name: values[name] for name in allowed if name in values}
+
+
+def _intersect_grants(current, requested):
+    """Return the monotonic intersection of two wildcard-capable grant sets."""
+    current = frozenset(current)
+    requested = frozenset(requested)
+    if "__all__" in current:
+        return requested
+    if "__all__" in requested:
+        return current
+    return current & requested
+
+
+def attenuate(authority, scope):
+    """Return authority narrowed to one named scope without changing identity."""
+    if authority is None:
+        return Authorization.create(
+            operations=scope.operations,
+            environment=scope.environment,
+            scopes={scope.name},
+        )
+
+    operations = _intersect_grants(authority.operations, scope.operations)
+    current_environment = authority.environment
+    if current_environment is None:
+        environment = frozenset()
+    else:
+        environment = _intersect_grants(current_environment, scope.environment)
+
+    return Authorization.create(
+        operations=operations,
+        environment=environment,
+        kind=authority.kind,
+        principal=authority.principal,
+        client_id=authority.client_id,
+        scopes=authority.scopes,
+    )

@@ -44,21 +44,55 @@ def _structured_value(value):
     return value
 
 
+def _label(value):
+    """Return a human label without changing the structured key itself."""
+    return str(value).replace("_", " ").strip().capitalize()
+
+
+def _scalar_text(value):
+    if value is None:
+        return "—"
+    if isinstance(value, bool):
+        return "yes" if value else "no"
+    return str(value)
+
+
+def _result_envelope(value):
+    """Return (status, result, error) for a generic observation/result envelope."""
+    if not isinstance(value, Mapping):
+        return None
+    if not {"status", "result", "error"}.issubset(value):
+        return None
+    return value.get("status"), value.get("result"), value.get("error")
+
+
 def _human_lines(value, *, indent=0):
-    """Render one structured result for a human-oriented CLI surface."""
+    """Render one structured result for a concise human-oriented CLI surface."""
     value = _structured_value(value)
     prefix = " " * indent
+
+    envelope = _result_envelope(value)
+    if envelope is not None:
+        status, result, error = envelope
+        if status == "ok":
+            return _human_lines(result, indent=indent)
+        message = error.get("message") if isinstance(error, Mapping) else None
+        detail = f": {message}" if message else ""
+        return [f"{prefix}{status}{detail}"]
 
     if isinstance(value, Mapping):
         if not value:
             return [f"{prefix}(none)"]
         lines = []
-        for key, item in value.items():
-            if isinstance(item, (Mapping, list)):
-                lines.append(f"{prefix}{key}:")
+        for index, (key, item) in enumerate(value.items()):
+            nested = isinstance(item, (Mapping, list))
+            if nested:
+                if lines and indent == 0:
+                    lines.append("")
+                lines.append(f"{prefix}{_label(key)}")
                 lines.extend(_human_lines(item, indent=indent + 2))
             else:
-                lines.append(f"{prefix}{key}: {item}")
+                lines.append(f"{prefix}{_label(key)}: {_scalar_text(item)}")
         return lines
 
     if isinstance(value, list):
@@ -66,14 +100,23 @@ def _human_lines(value, *, indent=0):
             return [f"{prefix}(none)"]
         lines = []
         for item in value:
-            if isinstance(item, (Mapping, list)):
+            if isinstance(item, Mapping) and all(
+                not isinstance(entry, (Mapping, list))
+                for entry in item.values()
+            ):
+                summary = " · ".join(
+                    f"{_label(key)}: {_scalar_text(entry)}"
+                    for key, entry in item.items()
+                )
+                lines.append(f"{prefix}- {summary}")
+            elif isinstance(item, (Mapping, list)):
                 lines.append(f"{prefix}-")
                 lines.extend(_human_lines(item, indent=indent + 2))
             else:
-                lines.append(f"{prefix}- {item}")
+                lines.append(f"{prefix}- {_scalar_text(item)}")
         return lines
 
-    return [f"{prefix}{value}"]
+    return [f"{prefix}{_scalar_text(value)}"]
 
 
 def _human_output(value):
@@ -110,7 +153,7 @@ def _extract_mutation_policy(argv):
 
 
 _COMMAND_HELP_VALUE_OPTIONS = {
-    "-L", "--log-level", "--logfile", "-r", "--recipe",
+    "-L", "--log-level", "--logfile", "-r", "--recipe", "-R", "--root",
     "--resume",
 }
 _COMMAND_HELP_MODE_OPTIONS = {"-r", "--recipe", "--resume"}
@@ -176,6 +219,13 @@ def cli_main():
     parser.add_argument("-L", "--log-level")
     parser.add_argument("--logfile")
     parser.add_argument("-r", "--recipe")
+    parser.add_argument(
+        "-R",
+        "--root",
+        action="append",
+        default=[],
+        help="add a local operation root for this invocation; repeat for precedence",
+    )
     parser.add_argument("-t", "--timed", action="store_true")
     parser.add_argument("-v", "--verbose", action="store_true")
     parser.add_argument("-z", "--silent", action="store_true")
@@ -208,6 +258,11 @@ def cli_main():
         verbose=args.verbose,
         silent=args.silent,
     )
+    try:
+        for root in args.root:
+            runtime.add_operation_root(root)
+    except ValueError as exception:
+        parser.error(str(exception))
 
     from . import log as gway_log
 

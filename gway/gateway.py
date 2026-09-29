@@ -50,6 +50,12 @@ class Gateway(Resolver):
             setattr(self, level_name, level)
         self.ops, self.subs = registry_views()
 
+        from .routes import OperationRoutes
+        from .sampler import expand as expand_sampler
+
+        self.operation_routes = OperationRoutes()
+        self.operation_routes.register("sampler", expand_sampler)
+
         from .launchable import Launchables
 
         self.launchables = Launchables()
@@ -256,6 +262,14 @@ class Gateway(Resolver):
 
         self._github_controller = GitHubController(self)
         ingest_python(self, self._github_controller, path=("github",))
+
+        from .watchtower import register as register_watchtower
+
+        register_watchtower(self)
+
+        from .observation import register as register_observation
+
+        register_observation(self)
         for record in self.ops.records():
             if record.name.startswith("github."):
                 operation = record.name.removeprefix("github.")
@@ -1022,37 +1036,59 @@ class Gateway(Resolver):
             return self._namespace_help(candidate.replace(".", " "))
         return render(target, verbose=verbose)
 
-    def _help(self, *operation: str, verbose=False, mutate=False):
-        """Return documentation for one Gway operation or command group.
+    def _help(
+        self,
+        *operation: str,
+        verbose=False,
+        mutate=False,
+        **help_topics,
+    ):
+        """Return documentation for one Gway operation, group, topic, or parameter.
 
         Args:
-            operation: Operation or command-group name parts.
-            verbose: Include the full docstring and merged parameter details.
+            operation: Operation name parts followed by an optional help topic.
+            verbose: Include full documentation and merged parameter details.
         """
         del mutate
-        from .documentation import render
+        from .documentation import render, render_topic
         from .dispatch import resolve_operation
-        from .tokens import tokenize
+        from .tokens import tokenize, token_value
 
-        if not operation:
+        if not operation and not help_topics:
             catalog = self._operation_catalog()
             lines = ["Available operations:", ""]
             width = max((len(name) for name, _ in catalog), default=0)
             for name, summary in catalog:
                 lines.append(f"  {name:<{width}}  {summary}".rstrip())
             return "\n".join(lines)
-        name = " ".join(operation)
-        if self.ops.is_namespace(name):
+
+        values = list(operation)
+        query_flags = [
+            f"--{str(name).replace('_', '-')}"
+            for name in help_topics
+            if name not in {"verbose", "mutate"}
+        ]
+        name = " ".join(values)
+        if name and self.ops.is_namespace(name) and not query_flags:
             return self._namespace_help(name)
 
         target, remaining, candidate = resolve_operation(self, tokenize(name))
-        if remaining:
-            raise LookupError(f"Unable to resolve operation: {name}")
-        if self.ops.is_namespace(candidate):
+        if self.ops.is_namespace(candidate) and not remaining and not query_flags:
             return self._namespace_help(candidate.replace(".", " "))
         canonical = self.ops.canonical_name(target, candidate)
         if not self._operation_visible(canonical):
             raise LookupError(f"Operation is not available to current scope: {name}")
+
+        query = [token_value(item) for item in remaining]
+        query.extend(query_flags)
+        if query:
+            rendered = render_topic(target, *query)
+            if rendered:
+                return rendered
+            requested = " ".join(str(item) for item in query)
+            raise LookupError(
+                f"No help topic {requested!r} for operation {canonical!r}"
+            )
         return render(target, verbose=verbose)
 
     def _guide(self, *task: str, mutate=False):
@@ -1107,12 +1143,41 @@ class Gateway(Resolver):
             available.append(record.name[len(prefix):].replace(".", " "))
 
         if not parts:
+            from . import builtin
             from .publication import ResultOnlyMapping
+
+            project = None
+            project_path = getattr(self, "_project_path", None)
+            if project_path is not None:
+                try:
+                    from .install.source import project_name
+
+                    project = {
+                        "name": project_name(project_path.parent),
+                        "root": str(project_path.parent.resolve()),
+                    }
+                except (OSError, ValueError):
+                    project = {
+                        "name": None,
+                        "root": str(project_path.parent.resolve()),
+                    }
+
+            identity = self.gway_identity
+            runtime = {
+                "version": builtin.version(),
+                "managed": identity is not None,
+                "source": getattr(identity, "source", None),
+                "requested_ref": getattr(identity, "requested_ref", None),
+                "resolved_revision": getattr(identity, "resolved_revision", None),
+                "scope": getattr(identity, "scope", None),
+            }
 
             return ResultOnlyMapping(
                 {
                     "role": role,
                     "family": family.replace(".", "/"),
+                    "project": project,
+                    "runtime": runtime,
                     "operations": sorted(available),
                 }
             )
@@ -1145,6 +1210,24 @@ class Gateway(Resolver):
         self.authorize_operation(canonical, args=arguments)
         with self.invocation_authority(operation):
             return operation(*arguments)
+
+    def add_operation_root(self, path):
+        """Add one local, request-scoped operation root ahead of sampler fallback."""
+        from pathlib import Path
+        from .sampler import expand_root
+
+        root = Path(path).expanduser().resolve()
+        if not root.is_dir():
+            raise ValueError(f"Operation root is not a directory: {root}")
+        name = f"root:{root}"
+        if any(route.name == name for route in self.operation_routes.routes):
+            return root
+
+        def expand(runtime, tokens, *, _root=root, _name=name):
+            return expand_root(runtime, tokens, _root, route_name=_name)
+
+        self.operation_routes.register(name, expand, before="sampler")
+        return root
 
     @property
     def last(self):
@@ -1223,6 +1306,40 @@ class Gateway(Resolver):
             yield
         finally:
             self._capability_depth_var.reset(token)
+
+    @contextmanager
+    def attenuated_scope(self, name):
+        """Temporarily narrow the active authority to one visible named scope."""
+        if name in (None, ""):
+            yield self.authorization
+            return
+
+        from .authorization import AuthorizationError, attenuate
+        from .security.scopes import ScopeRegistry
+
+        current = self.authorization
+        requested = str(name).strip()
+        if not requested:
+            raise ValueError("scope name must be a non-empty string")
+
+        if current is not None:
+            can_inspect_scopes = (
+                "__all__" in current.operations
+                or "security.scope.show" in current.operations
+            )
+            if requested not in current.scopes and not can_inspect_scopes:
+                raise AuthorizationError(
+                    f"Security scope is not available to current caller: {requested}"
+                )
+
+        scope = ScopeRegistry(self.security_path).require(requested, readonly=True)
+        narrowed = attenuate(current, scope)
+        stack = self._authorization_stack
+        token = self._authorization_stack_var.set((*stack, narrowed))
+        try:
+            yield narrowed
+        finally:
+            self._authorization_stack_var.reset(token)
 
     @contextmanager
     def external_authority(self):
