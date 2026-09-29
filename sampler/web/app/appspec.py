@@ -56,6 +56,24 @@ class BindingSpec:
 
 
 @dataclass(frozen=True)
+class HeaderSpec:
+    """Describe one semantic HTTP response header."""
+
+    name: str
+    value: str
+
+    def __post_init__(self):
+        name = str(self.name).strip().lower()
+        value = str(self.value).strip()
+        if not name:
+            raise ValueError("header name cannot be empty")
+        if not value:
+            raise ValueError("header value cannot be empty")
+        object.__setattr__(self, "name", name)
+        object.__setattr__(self, "value", value)
+
+
+@dataclass(frozen=True)
 class RouteSpec:
     """Describe one concrete HTTP route mapping."""
 
@@ -158,6 +176,7 @@ class AppSpec:
     topic: str | None = None
     route: str = "/"
     views: tuple[ViewSpec, ...] = ()
+    headers: tuple[HeaderSpec, ...] = ()
     templates: str | None = None
     template: str | None = None
 
@@ -187,6 +206,17 @@ class AppSpec:
                 occupied.add(key)
             unique_views.append(view)
         object.__setattr__(self, "views", tuple(unique_views))
+
+        normalized_headers = []
+        seen_headers = set()
+        for header in reversed(tuple(self.headers)):
+            if not isinstance(header, HeaderSpec):
+                raise TypeError("app headers must be HeaderSpec instances")
+            if header.name in seen_headers:
+                continue
+            seen_headers.add(header.name)
+            normalized_headers.append(header)
+        object.__setattr__(self, "headers", tuple(reversed(normalized_headers)))
 
     def _routes_for(self, view: ViewSpec) -> tuple[RouteSpec, ...]:
         return tuple(
@@ -223,6 +253,7 @@ class AppSpec:
             topic=self.topic,
             route=self.route,
             views=(*self.views, view),
+            headers=self.headers,
             templates=self.templates,
             template=self.template,
         )
@@ -272,6 +303,21 @@ class AppSpec:
             topic=self.topic,
             route=self.route,
             views=(*retained, view),
+            headers=self.headers,
+            templates=self.templates,
+            template=self.template,
+        )
+
+    def with_header(self, name, value):
+        """Return a copy with one semantic response header added or replaced."""
+        header = HeaderSpec(name, value)
+        retained = tuple(existing for existing in self.headers if existing.name != header.name)
+        return AppSpec(
+            name=self.name,
+            topic=self.topic,
+            route=self.route,
+            views=self.views,
+            headers=(*retained, header),
             templates=self.templates,
             template=self.template,
         )
