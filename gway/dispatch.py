@@ -545,7 +545,7 @@ def _operation_candidate_tokens(tokens):
     values = []
     for token in tokens:
         value = token_value(token)
-        if is_unquoted(token) and (value == "-" or value == "--" or value.startswith("--")):
+        if value == "-" or value == "--" or value.startswith("--"):
             break
         values.append(value)
     return values
