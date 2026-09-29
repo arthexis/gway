@@ -239,6 +239,34 @@ def _next_positional(signature, filled):
     return _variadic_parameter(signature)
 
 
+def _bind_positional_value(
+    signature,
+    parameter,
+    value,
+    converted_positional,
+    keywords,
+):
+    """Bind one semantic positional token without colliding with earlier keywords."""
+    if parameter is None:
+        converted_positional.append(value)
+        return
+
+    if parameter.kind is inspect.Parameter.VAR_POSITIONAL:
+        converted_positional.append(value)
+        return
+
+    positional = _positional_parameters(signature)
+    position = positional.index(parameter)
+    if (
+        parameter.kind is inspect.Parameter.POSITIONAL_OR_KEYWORD
+        and position > len(converted_positional)
+    ):
+        keywords[parameter.name] = value
+        return
+
+    converted_positional.append(value)
+
+
 def _initial_filled(signature, initial_args=(), initial_kwargs=None):
     bound = signature.bind_partial(
         *tuple(initial_args),
@@ -407,7 +435,13 @@ def bind_arguments(
         parameter = _next_positional(signature, filled)
 
         if isinstance(item, _PipelineValue):
-            converted_positional.append(item.value)
+            _bind_positional_value(
+                signature,
+                parameter,
+                item.value,
+                converted_positional,
+                keywords,
+            )
             if (
                 parameter is not None
                 and parameter.kind is not inspect.Parameter.VAR_POSITIONAL
@@ -516,7 +550,14 @@ def bind_arguments(
         if parameter is None:
             converted_positional.append(token)
         else:
-            converted_positional.append(convert_argument(item, parameter, runtime))
+            converted = convert_argument(item, parameter, runtime)
+            _bind_positional_value(
+                signature,
+                parameter,
+                converted,
+                converted_positional,
+                keywords,
+            )
             if parameter.kind is not inspect.Parameter.VAR_POSITIONAL:
                 filled.add(parameter.name)
         index += 1
