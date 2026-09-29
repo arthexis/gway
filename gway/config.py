@@ -566,10 +566,7 @@ def _publish_project_capabilities(runtime, data, *, source):
     scopes = dict(getattr(runtime, "_published_scopes", {}))
     for name, definition in project_scopes(data, source=source).items():
         existing = scopes.get(name)
-        if existing is not None and (
-            existing["operations"] != definition["operations"]
-            or existing["environment"] != definition["environment"]
-        ):
+        if existing is not None and existing.get("source") != definition.get("source"):
             raise ValueError(f"Published security scope collision: {name}")
         scopes[name] = definition
 
