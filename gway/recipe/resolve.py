@@ -43,7 +43,12 @@ def resolve_recipe_stage(runtime, tokens, *, pipeline):
                 pass
         if bare is not None:
             existing = runtime.ops.resolve(str(source).replace(" ", "."))
-            if existing is None:
+            maintained_recipe = (
+                existing is not None
+                and getattr(existing, "__gway_source_kind__", None) == "recipe"
+                and getattr(existing, "__gway_metadata__", {}).get("route") == "sampler"
+            )
+            if existing is None or maintained_recipe:
                 stage, remaining = split_recipe_stage(tokens)
                 return bare, stage[1:], remaining
 
