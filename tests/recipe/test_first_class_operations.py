@@ -287,7 +287,7 @@ def test_first_explicit_root_precedes_later_root_for_recipe_operation(tmp_path):
 def test_leading_recipe_comments_become_help_without_companion(tmp_path):
     gateway, root = _root_gateway(tmp_path)
     _write(
-        root / "snapshot.rx",
+        root / "inspect.rx",
         """# Inspect the current node.
 #
 # Returns a bounded observation snapshot.
@@ -306,9 +306,9 @@ version
 
 def test_companion_main_docstring_overrides_leading_recipe_help(tmp_path):
     gateway, root = _root_gateway(tmp_path)
-    _write(root / "snapshot.rx", "# Recipe comment help.\nversion\n")
+    _write(root / "inspect.rx", "# Recipe comment help.\nversion\n")
     _write(
-        root / "snapshot.py",
+        root / "inspect.py",
         '''
 def __main__(*, mutate=False):
     """Companion main help."""
