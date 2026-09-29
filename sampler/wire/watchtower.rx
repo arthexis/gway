@@ -50,11 +50,6 @@ service start
 --server-endpoint [server_endpoint]
 
 ../web/expose/expose
---site [site]
---domain [domain]
---host [host]
---port [port]
---email [email]
 
 wire server check
 --domain [domain]
