@@ -311,3 +311,19 @@ def test_quoted_dash_remains_operation_argument_data(gateway):
     gateway.echo = gateway.wrap("echo", echo)
 
     assert dispatch(gateway, 'echo "-"') == "-"
+
+
+def test_semantic_sigil_argument_does_not_become_pipeline_selector(gateway):
+    marker = object()
+    gateway.context["label"] = "health"
+
+    def setup_app():
+        return marker
+
+    def view_app(handler, *, app):
+        return handler, app
+
+    gateway.setup_app = gateway.wrap("setup_app", setup_app)
+    gateway.view_app = gateway.wrap("view_app", view_app)
+
+    assert dispatch(gateway, "setup app - view app [label]") == ("health", marker)
