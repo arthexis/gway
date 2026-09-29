@@ -114,7 +114,9 @@ def test_watchtower_queue_status_preserves_queue_policy():
                     "head": "def",
                     "base": "main",
                     "deploy": False,
-                    "approved": False,
+                    "approved": True,
+                    "auto_merge": False,
+                    "authorized": True,
                 }
             ],
             "queued_count": 1,
