@@ -1,13 +1,11 @@
 from urllib.parse import urlencode
 
-import pytest
 
 from gway.remote.metadata import RemoteOAuthMetadata
 from gway.remote.server import MAX_QUERY_COMMAND_BYTES, RemoteApplication
 from gway.security.scopes import ScopeRegistry
 from gway.security.tokens import TokenRegistry
 
-pytestmark = pytest.mark.xdist_group("process-integration")
 
 
 RESOURCE = "https://remote.example.test/mcp"
