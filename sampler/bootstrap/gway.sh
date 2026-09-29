@@ -16,11 +16,10 @@ else
     fi
 fi
 
-# Gway's active release line is 0.x. An obsolete 1.0.1 release exists on the
-# package index and compares newer under PEP 440, so an unconstrained upgrade
-# can install the wrong lineage. Reconcile the managed tool back to the
-# certified 0.x release line even when another Gway is already installed.
-"$UV" tool install --force --upgrade "gway<1"
+# Gway 1.0.x is an obsolete package-index release from the previous lineage.
+# Exclude only that version so bootstrap remains safe before 1.1.0 reaches
+# PyPI while allowing the active 1.1.x release line once it is published.
+"$UV" tool install --force --upgrade "gway!=1.0.*"
 
 # Persist uv's configured tool executable directory for future shells before
 # exposing it to this child process. A piped shell cannot mutate its parent.
