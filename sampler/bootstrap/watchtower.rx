@@ -1,4 +1,4 @@
-# Publish the certified Gway bootstrap at https://install.arthexis.com/gway.
+# Publish the certified installer surface at https://install.arthexis.com/.
 default
 --domain install.arthexis.com
 --site install-arthexis-com
@@ -16,8 +16,29 @@ ingest [certbot_executable|certbot] --kind proc --sudo
 mkdir -p [root]
 mkdir -p [acme_webroot]
 
+watchtower catalog
+render installer.html
+--to [root]/index.html
+--as root
+--mode 0644
+--rollback gway-bootstrap
+
 render gway.sh
 --to [root]/gway
+--as root
+--mode 0644
+--rollback gway-bootstrap
+
+watchtower installer satellite
+render arthexis.sh
+--to [root]/[installer]
+--as root
+--mode 0644
+--rollback gway-bootstrap
+
+watchtower installer control
+render arthexis.sh
+--to [root]/[installer]
 --as root
 --mode 0644
 --rollback gway-bootstrap
