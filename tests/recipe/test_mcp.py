@@ -345,14 +345,17 @@ def probe_http(bearer, command, second_bearer=None, second_command=None, tool="g
                 process.wait(timeout=5)
 
 
-def probe_challenge(credential="__missing__"):
+def probe_token_http(reader_bearer, alpha_bearer, beta_bearer, invalid_bearer):
+    import asyncio
     import http.client
     import json
-    import os
     import socket
     import subprocess
     import sys
     import time
+
+    from fastmcp import Client
+    from fastmcp.client.auth import BearerAuth
 
     def free_port():
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as listener:
@@ -370,6 +373,56 @@ def probe_challenge(credential="__missing__"):
             except OSError:
                 time.sleep(0.05)
         raise RuntimeError("MCP HTTP server did not become ready")
+
+    async def call(url, credential, command):
+        try:
+            async with Client(url, auth=BearerAuth(credential)) as client:
+                tools = await client.list_tools()
+                try:
+                    result = await client.call_tool("gway", {"command": command})
+                except Exception as exception:
+                    return [tool.name for tool in tools], None, str(exception)
+                return [tool.name for tool in tools], result.content[0].text, None
+        except Exception as exception:
+            return [], None, str(exception)
+
+    async def run(url):
+        allowed, denied = await asyncio.gather(
+            call(url, reader_bearer, "allowed"),
+            call(url, reader_bearer, "denied"),
+        )
+        concurrent = await asyncio.gather(
+            call(url, alpha_bearer, "alpha"),
+            call(url, beta_bearer, "beta"),
+        )
+        return allowed, denied, concurrent
+
+    def challenge(port):
+        connection = http.client.HTTPConnection("127.0.0.1", port, timeout=2)
+        headers = {
+            "Content-Type": "application/json",
+            "Accept": "application/json, text/event-stream",
+            "Authorization": f"Bearer {invalid_bearer}",
+        }
+        body = json.dumps(
+            {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "initialize",
+                "params": {
+                    "protocolVersion": "2025-03-26",
+                    "capabilities": {},
+                    "clientInfo": {"name": "test", "version": "1"},
+                },
+            }
+        )
+        connection.request("POST", "/mcp", body=body, headers=headers)
+        response = connection.getresponse()
+        status = response.status
+        www_authenticate = response.getheader("WWW-Authenticate")
+        response.read()
+        connection.close()
+        return status, www_authenticate
 
     port = free_port()
     with _callback_relay() as bridge:
@@ -395,32 +448,11 @@ def probe_challenge(credential="__missing__"):
         )
         try:
             wait_ready(port, process)
-            connection = http.client.HTTPConnection("127.0.0.1", port, timeout=2)
-            headers = {
-                "Content-Type": "application/json",
-                "Accept": "application/json, text/event-stream",
-            }
-            if credential != "__missing__":
-                headers["Authorization"] = f"Bearer {credential}"
-            body = json.dumps(
-                {
-                    "jsonrpc": "2.0",
-                    "id": 1,
-                    "method": "initialize",
-                    "params": {
-                        "protocolVersion": "2025-03-26",
-                        "capabilities": {},
-                        "clientInfo": {"name": "test", "version": "1"},
-                    },
-                }
+            allowed, denied, concurrent = asyncio.run(
+                run(f"http://127.0.0.1:{port}/mcp")
             )
-            connection.request("POST", "/mcp", body=body, headers=headers)
-            response = connection.getresponse()
-            status = response.status
-            challenge = response.getheader("WWW-Authenticate")
-            response.read()
-            connection.close()
-            return status, challenge
+            status, www_authenticate = challenge(port)
+            return allowed, denied, concurrent, status, www_authenticate
         finally:
             process.terminate()
             try:
@@ -442,34 +474,56 @@ def _mcp_http_recipe(recipe_factory, root):
     return recipe
 
 
-def test_mcp_http_bearer_scope_allows_and_denies_operations(
+def test_mcp_http_token_registry_acceptance_shares_one_server(
     gateway, recipe_factory, required_runtime, tmp_path, monkeypatch
 ):
-    _, _, issued = _issued_token(
-        tmp_path,
-        monkeypatch,
-        token="http-client",
-    )
+    path = tmp_path / "security.sqlite"
+    scopes = ScopeRegistry(path)
+    tokens = TokenRegistry(path)
+    scopes.replace("reader", operations={"allowed"})
+    scopes.replace("alpha-scope", operations={"alpha"})
+    scopes.replace("beta-scope", operations={"beta"})
+    reader = tokens.create("http-client", scopes={"reader"})
+    alpha = tokens.create("alpha-client", scopes={"alpha-scope"})
+    beta = tokens.create("beta-client", scopes={"beta-scope"})
+    monkeypatch.setattr(companion_runtime, "TokenRegistry", lambda path=None: tokens)
 
     gateway.allowed = gateway.wrap("allowed", lambda: "ok")
     gateway.denied = gateway.wrap("denied", lambda: "no")
+    gateway.alpha = gateway.wrap("alpha", lambda: "alpha-ok")
+    gateway.beta = gateway.wrap("beta", lambda: "beta-ok")
+
     recipe = _mcp_http_recipe(recipe_factory, tmp_path / "mcphttp")
     recipe.write_text(
         "require fastmcp\n"
-        f"server probe http {issued.bearer!r} allowed "
-        f"{issued.bearer!r} denied\n",
+        f"server probe token http {reader.bearer!r} {alpha.bearer!r} "
+        f"{beta.bearer!r} gwt_missing_wrong\n",
         encoding="utf-8",
     )
     gateway.ingest(recipe.parent)
 
     with gateway.authorized(operations={"mcphttp.server"}):
-        allowed, denied = gateway("mcphttp server")
+        allowed, denied, concurrent, status, challenge = gateway("mcphttp server")
 
     assert allowed == (["gway", "query"], "ok", None)
     assert denied[0] == ["gway", "query"]
     assert denied[1] is None
     assert "Operation is not authorized: denied" in denied[2]
     assert "Invalid bearer token" not in denied[2]
+
+    assert concurrent == [
+        (["gway", "query"], "alpha-ok", None),
+        (["gway", "query"], "beta-ok", None),
+    ]
+
+    assert status == 401
+    assert challenge.startswith("Bearer")
+    assert (
+        'resource_metadata="'
+        "https://remote.example.test/.well-known/oauth-protected-resource/mcp"
+        '"' in challenge
+    )
+
 
 
 def _issued_oauth_token(tmp_path, monkeypatch, *, resource=MCP_RESOURCE):
@@ -514,70 +568,6 @@ def test_mcp_http_oauth_access_token_obeys_scope_and_capability_boundary(
     assert trusted_only[1] is None
     assert "Operation is not authorized: clear" in trusted_only[2]
     assert "401" not in trusted_only[2]
-
-
-def test_mcp_http_authentication_challenge_points_to_protected_resource_metadata(
-    gateway,
-    recipe_factory,
-    required_runtime,
-    tmp_path,
-    monkeypatch,
-):
-    credential = "gwt_missing_wrong"
-    root_name = "mcpchallengeinvalid"
-    tokens = TokenRegistry(tmp_path / "security.sqlite")
-    monkeypatch.setattr(companion_runtime, "TokenRegistry", lambda path=None: tokens)
-
-    recipe = _mcp_http_recipe(recipe_factory, tmp_path / root_name)
-    recipe.write_text(
-        f"require fastmcp\nserver probe_challenge {credential!r}\n",
-        encoding="utf-8",
-    )
-    gateway.ingest(recipe.parent)
-
-    operation = f"{root_name}.server"
-    with gateway.authorized(operations={operation}):
-        status, challenge = gateway(f"{root_name} server")
-
-    assert status == 401
-    assert challenge.startswith("Bearer")
-    assert (
-        'resource_metadata="'
-        "https://remote.example.test/.well-known/oauth-protected-resource/mcp"
-        '"' in challenge
-    )
-
-
-def test_mcp_http_concurrent_clients_keep_distinct_scopes(
-    gateway, recipe_factory, required_runtime, tmp_path, monkeypatch
-):
-    path = tmp_path / "security.sqlite"
-    scopes = ScopeRegistry(path)
-    tokens = TokenRegistry(path)
-    scopes.replace("alpha-scope", operations={"alpha"})
-    scopes.replace("beta-scope", operations={"beta"})
-    alpha_token = tokens.create("alpha-client", scopes={"alpha-scope"})
-    beta_token = tokens.create("beta-client", scopes={"beta-scope"})
-    monkeypatch.setattr(companion_runtime, "TokenRegistry", lambda path=None: tokens)
-
-    gateway.alpha = gateway.wrap("alpha", lambda: "alpha-ok")
-    gateway.beta = gateway.wrap("beta", lambda: "beta-ok")
-    recipe = _mcp_http_recipe(recipe_factory, tmp_path / "mcphttpconcurrent")
-    recipe.write_text(
-        "require fastmcp\n"
-        f"server probe http {alpha_token.bearer!r} alpha "
-        f"{beta_token.bearer!r} beta\n",
-        encoding="utf-8",
-    )
-    gateway.ingest(recipe.parent)
-
-    with gateway.authorized(operations={"mcphttpconcurrent.server"}):
-        results = gateway("mcphttpconcurrent server")
-
-    assert results == [
-        (["gway", "query"], "alpha-ok", None),
-        (["gway", "query"], "beta-ok", None),
-    ]
 
 
 
