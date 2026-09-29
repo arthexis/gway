@@ -61,9 +61,11 @@ def test_python_310_workflow_delegates_regression_to_project_ci():
     assert 'contains(github.event.pull_request.labels.*.name, \'integration\')' in regression
     assert 'contains(github.event.pull_request.labels.*.name, \'workflow\')' in regression
     assert "python -m gway ci" in regression
-    assert "python -m gway test run architecture" in regression
-    assert 'python -m gway test run --keyword "not architecture"' in regression
+    assert "python -m gway test run architecture - check --is 0" in regression
+    assert 'python -m gway test run --keyword "not architecture" - check --is 0' in regression
     assert "python -m pytest" not in regression
     assert "timeout -s ABRT 300s" in regression
     assert "PYTHONFAULTHANDLER" in regression
     assert "python -m pytest" in forward
+    assert "push:" in workflow
+    assert "branches: [main]" in workflow
