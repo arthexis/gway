@@ -83,19 +83,37 @@ CORE_SCOPE_NAMES = frozenset(CORE_SCOPE_DEFINITIONS)
 
 def converge_scope_registry(registry, published=()):
     """Converge Gway-owned and product-published scopes into one registry."""
-    definitions = dict(CORE_SCOPE_DEFINITIONS)
-    for name, definition in dict(published).items():
-        if name in CORE_SCOPE_NAMES:
-            raise ValueError(f"Published security scope shadows Gway core scope: {name}")
-        definitions[name] = {
-            "operations": frozenset(definition.get("operations", ())),
-            "environment": frozenset(definition.get("environment", ())),
-        }
-
-    for name, definition in definitions.items():
-        registry.replace(
+    published = dict(published)
+    for name, definition in CORE_SCOPE_DEFINITIONS.items():
+        registry.replace_owned(
             name,
+            owner="gway",
             operations=definition["operations"],
             environment=definition["environment"],
+            allow_claim_unowned=True,
         )
-    return definitions
+
+    active_product_names = set()
+    for name, definition in sorted(published.items()):
+        if name in CORE_SCOPE_NAMES:
+            raise ValueError(f"Published security scope shadows Gway core scope: {name}")
+        source = str(definition.get("source") or "").strip()
+        if not source:
+            raise ValueError(f"Published security scope {name} has no publisher source")
+        owner = f"project:{source}"
+        registry.replace_owned(
+            name,
+            owner=owner,
+            operations=definition.get("operations", ()),
+            environment=definition.get("environment", ()),
+        )
+        active_product_names.add(name)
+
+    registry.remove_owned_missing(
+        owner_prefix="project:",
+        active_names=active_product_names,
+    )
+    return {
+        **CORE_SCOPE_DEFINITIONS,
+        **published,
+    }
