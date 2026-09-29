@@ -109,10 +109,12 @@ The maintained sampler currently contains these public families.
 | `bootstrap/watchtower` | maintained recipe | bootstrap/expose Watchtower infrastructure |
 | `ci` | first-class recipe | repository/project CI entry point |
 | `mcp/*` | recipes + capability package | local/remote MCP serving and acceptance |
+| `network/capture` | maintained recipe | bounded network capture composition |
 | `odoo` | capability package | lazy Odoo operation ingestion |
 | `remote/browser` | maintained recipe | remote browser route topology |
 | `watch` | first-class recipe | bounded read-only node snapshot |
 | `web/app` | first-class recipe + capability package | generic maintained web application |
+| `web/expose` | maintained recipe | generic web exposure entry point |
 | `web/expose/*` | maintained recipes | HTTP/HTTPS exposure and cleanup |
 | `web/remote/*` | maintained recipes | remote service HTTP/HTTPS exposure |
 | `wire/*` | recipes + capability package | Wire enrollment, server convergence, and Wire operations |
@@ -134,9 +136,11 @@ maintained recipe resolver where appropriate.
 - `mcp/local`
 - `mcp/serve`
 - `mcp/server`
+- `network/capture`
 - `remote/browser`
 - `watch`
 - `web/app`
+- `web/expose`
 - `web/expose/cleanup-http`
 - `web/expose/cleanup`
 - `web/expose/dns-http`
@@ -163,7 +167,7 @@ gway watch --scope operations-basic
 gway watch --only node,services
 gway watch --except errors,wire
 gway watch --since "10 minutes ago"
-gway watch --errors
+gway watch --problems
 gway watch --changed --cursor <cursor>
 gway -t watch
 ```
