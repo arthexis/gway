@@ -10,6 +10,7 @@ from pathlib import Path
 from .authorization import AuthorizationError
 from .dispatch import OperationLookupError
 from .mutation import MutationError
+from .tokens import Token
 
 
 _CURSOR_VERSION = 1
@@ -129,7 +130,7 @@ class Controller:
     def __init__(self, gateway):
         self.gateway = gateway
 
-    def observe(self, *command, section=None, scope=None, mutate=False):
+    def observe(self, *command: Token, section=None, scope=None, mutate=False):
         """Execute one command read-only and return a structured observation envelope.
 
         Args:
