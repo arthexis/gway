@@ -13,9 +13,8 @@ CORE_WORKFLOWS = {
 }
 
 ON_HOLD_GUARD = (
-    "github.event.action != 'labeled' || "
-    "(github.event.label.name != 'on-hold' && "
-    "github.event.label.name != 'on hold')"
+    "!contains(github.event.pull_request.labels.*.name, 'on-hold') && "
+    "!contains(github.event.pull_request.labels.*.name, 'on hold')"
 )
 
 
@@ -25,3 +24,4 @@ def test_putting_pr_on_hold_skips_core_ci(workflow: str, expected_guards: int) -
 
     assert "labeled" in text
     assert text.count(ON_HOLD_GUARD) == expected_guards
+    assert "github.event.label.name != 'on-hold'" not in text
