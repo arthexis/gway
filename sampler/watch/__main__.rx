@@ -13,4 +13,4 @@ observe --section release --scope [scope] -- node release status
 observe --section queue --scope [scope] -- node queue status
 observe --section wire --scope [scope] -- wire check
 observe --section errors --scope [scope] -- log search "ERROR|CRITICAL" --all --limit 20 --since [since]
-observation collect node services deploy release queue wire errors --only [only] --except [except_] --errors [errors_] --changed [changed] --cursor [cursor] --published --scope [scope]
+observation collect node services deploy release queue wire errors --only [only] --except [except_] --problems [problems] --changed [changed] --cursor [cursor] --published --scope [scope]
