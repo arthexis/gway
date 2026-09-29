@@ -131,7 +131,6 @@ class ScopeRegistry:
         operations=(),
         environment=(),
         allow_claim_unowned=False,
-        allow_claim_matching_unowned=False,
     ):
         """Create or replace a scope only when its durable owner matches."""
         name = self._name(name)
@@ -156,18 +155,7 @@ class ScopeRegistry:
                     (name,),
                 ).fetchone()
             elif row["owner"] is None:
-                can_claim = allow_claim_unowned
-                if allow_claim_matching_unowned and not can_claim:
-                    existing = self._row_scope(connection, {
-                        "id": row["id"],
-                        "name": name,
-                        "owner": None,
-                    })
-                    can_claim = (
-                        existing.operations == operations
-                        and existing.environment == environment
-                    )
-                if not can_claim:
+                if not allow_claim_unowned:
                     raise ValueError(
                         f"Security scope {name} is user-managed and cannot be claimed by {owner}"
                     )
