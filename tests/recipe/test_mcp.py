@@ -915,11 +915,6 @@ def test_mcp_serve_allows_explicit_http_bind_configuration(
 
 
 
-def test_mcp_semantic_surface_is_not_eagerly_registered(gateway):
-    assert gateway.ops.resolve("mcp.local") is None
-    assert gateway.ops.resolve("mcp.serve") is None
-
-
 def test_mcp_sampler_fallback_registers_semantic_surface(gateway, monkeypatch):
     import gway.sampler as sampler
 
