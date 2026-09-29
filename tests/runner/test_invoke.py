@@ -2,6 +2,8 @@ import asyncio
 from contextvars import ContextVar
 import logging
 
+import pytest
+
 from gway.runner import invoke
 
 
@@ -104,3 +106,18 @@ def test_invoke_rejects_future_bound_to_current_running_loop():
             raise AssertionError("invoke() should reject loop-bound futures")
 
     asyncio.run(host())
+
+
+def test_timed_invoke_logs_under_no_mutate_policy(caplog):
+    class ReadOnlyRuntime(Runtime):
+        timed_enabled = True
+        mutation_allowed = False
+
+    runtime = ReadOnlyRuntime()
+    runtime.logger.setLevel(logging.INFO)
+
+    with caplog.at_level(logging.INFO):
+        assert invoke(runtime, "observe", lambda: "ok") == "ok"
+
+    messages = [record.getMessage() for record in caplog.records]
+    assert any(message.startswith("[timed] operation observe ") for message in messages)
