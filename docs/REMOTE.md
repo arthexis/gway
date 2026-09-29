@@ -89,6 +89,47 @@ proxy logic. G-Way service backends own supervision. Public TLS and route
 multiplexing belong to the reverse-proxy layer.
 
 
+
+## Product and extension capabilities
+
+Installed Gway products and extensions may publish remote authorization scopes and
+read-only Watch contributors declaratively from their own `pyproject.toml`.
+Gway discovers this metadata from managed installation records without importing
+product code.
+
+A product-owned scope is declared under `[tool.gway.scopes]`:
+
+```toml
+[tool.gway.scopes.example-read]
+operations = ["example.status", "example.items"]
+environment = []
+```
+
+The scope name becomes available to ordinary bearer-token and OAuth authorization.
+Published scopes cannot replace Gway-owned core scopes, and conflicting definitions
+from multiple installed projects are rejected rather than merged implicitly.
+
+A product may also contribute a bounded section to the generic `watch` snapshot:
+
+```toml
+[[tool.gway.watch]]
+section = "example"
+command = ["example", "status"]
+```
+
+Watch commands are token arrays rather than shell strings. Gway executes each
+contributor through the normal read-only observation boundary under the caller's
+effective authority. A contributor whose operation is not authorized is omitted;
+an unavailable contributor degrades independently in the same way as built-in
+Watch sections. Section-name collisions are rejected.
+
+The built-in read scopes deliberately compose. Their union covers the complete
+built-in Watch report: `logs-read` supplies recent errors, `source-read` supplies
+deployment/release/queue observations, and `operator-read` supplies
+node/services/Wire observations. Product-owned Watch sections require the
+corresponding product-published operation grants.
+
+
 ## One-origin reverse proxy
 
 The remote edge is intentionally one public HTTPS origin backed by two

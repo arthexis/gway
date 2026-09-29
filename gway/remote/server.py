@@ -8,6 +8,7 @@ from ..authorization import AuthorizationError
 from ..dispatch import resolve_operation
 from ..mutation import MutationError
 from ..security.authentication import BearerAuthenticationError
+from ..security.defaults import CORE_SCOPE_NAMES, converge_scope_registry
 from ..security.oauth import OAuthAuthenticationError, OAuthRegistry
 from ..security.tokens import TokenRegistry
 from ..tokens import tokenize
@@ -94,146 +95,13 @@ class RemoteApplication(RemoteDiscoveryApplication):
                 operation_resolver=resolve_runtime_operation,
             )
         self.account = RemoteAccountApplication() if account is None else account
-        self.account.oauth.scopes.replace(
-            "full-access",
-            operations={"__all__"},
-            environment={"__all__"},
+        published_scopes = (
+            {} if runtime is None else getattr(runtime, "_published_scopes", {})
         )
-        self.account.oauth.scopes.replace(
-            "logs-read",
-            operations={
-                "help",
-                "guide",
-                "version",
-                "log.sources",
-                "log.read",
-                "log.tail",
-                "log.search",
-                "security.whoami",
-                "security.scope.current",
-            },
-            environment=(),
-        )
-        self.account.oauth.scopes.replace(
-            "source-read",
-            operations={
-                "source",
-                "search.source",
-            },
-            environment=(),
-        )
-        self.account.oauth.scopes.replace(
-            "source-admin",
-            operations={
-                "github.rulesets",
-                "github.ruleset",
-                "github.create_ruleset",
-                "github.update_ruleset",
-                "github.delete_ruleset",
-                "github.branch_protection",
-                "github.update_branch_protection",
-                "github.delete_branch_protection",
-                "github.collaborators",
-                "github.collaborator_permission",
-                "github.webhooks",
-                "github.webhook",
-                "github.actions_permissions",
-                "github.actions_workflow_permissions",
-                "github.set_actions_permissions",
-                "github.set_actions_workflow_permissions",
-            },
-            environment=(),
-        )
-        self.account.oauth.scopes.replace(
-            "operator-read",
-            operations={
-                "products",
-                "extensions",
-                "service.list",
-                "service.status",
-                "sous.chef.list",
-                "sous.chef.inspect",
-            },
-            environment=(),
-        )
-        self.account.oauth.scopes.replace(
-            "arthexis-read",
-            operations={
-                "arthexis.fleet",
-                "arthexis.ocpp_status",
-                "arthexis.ocpp_matrix",
-                "ocpp.charger",
-                "ocpp.charger.enabled",
-                "ocpp.charger.disabled",
-                "ocpp.charger.connected",
-                "ocpp.charger.disconnected",
-                "ocpp.charger.charging",
-                "ocpp.charger.idle",
-                "ocpp.charger.unresolved",
-                "ocpp.charger.historical",
-                "ocpp.connector.all",
-                "ocpp.connector.filter",
-                "ocpp.chargerconnection.all",
-                "ocpp.chargerconnection.filter",
-                "ocpp.ocpptransaction.all",
-                "ocpp.ocpptransaction.filter",
-                "ocpp.metervalue.all",
-                "ocpp.metervalue.filter",
-                "ocpp.meterreadingbatch.all",
-                "ocpp.meterreadingbatch.filter",
-                "ocpp.protocoloperation.all",
-                "ocpp.protocoloperation.filter",
-                "ocpp.reservation.all",
-                "ocpp.reservation.filter",
-                "ocpp.chargervariable.all",
-                "ocpp.chargervariable.filter",
-                "ocpp.notificationrecord.all",
-                "ocpp.notificationrecord.filter",
-                "ocpp.monitoringrecord.all",
-                "ocpp.monitoringrecord.filter",
-                "ocpp.compatibilityevidence.all",
-                "ocpp.compatibilityevidence.filter",
-                "ocpp.chargingprofile.all",
-                "ocpp.chargingprofile.filter",
-                "ocpp.certificaterecord.all",
-                "ocpp.certificaterecord.filter",
-                "ocpp.inboundprotocolrequest.all",
-                "ocpp.inboundprotocolrequest.filter",
-                "ocpp.operationalstatusrecord.all",
-                "ocpp.operationalstatusrecord.filter",
-                "ocpp.chargertimelineprogress.all",
-                "ocpp.chargertimelineprogress.filter",
-                "energy.customeraccount.all",
-                "energy.customeraccount.filter",
-                "energy.energytariff.all",
-                "energy.energytariff.filter",
-                "energy.ledgerentry.all",
-                "energy.ledgerentry.filter",
-                "cards.cardcredential.all",
-                "cards.cardcredential.filter",
-                "cards.authorizationattempt.all",
-                "cards.authorizationattempt.filter",
-                "nodes.node.all",
-                "nodes.node.filter",
-                "nodes.nodelink.all",
-                "nodes.nodelink.filter",
-                "events.eventenvelope.all",
-                "events.eventenvelope.filter",
-            },
-            environment=(),
-        )
-        self.account.oauth.scopes.replace(
-            "arthexis-write",
-            operations={
-                "ocpp.charger.reset",
-                "ocpp.charger.start",
-                "ocpp.charger.stop",
-                "arthexis.event",
-                "arthexis.ocpp_cutover",
-                "arthexis.ocpp_policy",
-                "arthexis.ocpp_recovery",
-            },
-            environment=(),
+        converge_scope_registry(
+            self.account.oauth.scopes,
+            published_scopes,
+            retire_missing=False,
         )
         self.oauth = RemoteOAuthProtocol(
             metadata,
@@ -695,10 +563,13 @@ def build_server(
     runtime=None,
 ):
     """Build the remote HTTP server without starting its lifecycle."""
+    published_scopes = (
+        set() if runtime is None else set(getattr(runtime, "_published_scopes", {}))
+    )
     metadata = RemoteOAuthMetadata.from_origin(
         public_origin,
         resource_path=resource_path,
-        scopes_supported=("full-access", "logs-read", "operator-read", "arthexis-read", "arthexis-write"),
+        scopes_supported=tuple(sorted(CORE_SCOPE_NAMES | published_scopes)),
         allow_insecure_loopback=allow_insecure_loopback,
     )
     application = RemoteApplication(

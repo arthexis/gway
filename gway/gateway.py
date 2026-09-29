@@ -207,6 +207,14 @@ class Gateway(Resolver):
         )
         self.security_path = self.cache.root / "security" / "state.sqlite"
 
+        from .security.defaults import converge_scope_registry
+        from .security.scopes import ScopeRegistry
+
+        converge_scope_registry(
+            ScopeRegistry(self.security_path),
+            getattr(self, "_published_scopes", {}),
+        )
+
         with self.topics("log"):
             log_source = self.resolve("[source]", default="gway")
         gway_log._set_default_source(log_source)

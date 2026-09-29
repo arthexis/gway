@@ -47,6 +47,88 @@ def project_bindings(data):
     return tuple(bindings)
 
 
+def project_scopes(data, *, source=None):
+    """Return validated named security scopes published by one project."""
+    if not isinstance(data, dict):
+        return {}
+    tool = data.get("tool")
+    gway = tool.get("gway") if isinstance(tool, dict) else None
+    scopes = gway.get("scopes") if isinstance(gway, dict) else None
+    if scopes is None:
+        return {}
+    if not isinstance(scopes, dict):
+        raise ValueError("[tool.gway.scopes] must be a table")
+
+    published = {}
+    for name, declaration in scopes.items():
+        name = str(name).strip()
+        if not name:
+            raise ValueError("published scope names must be non-empty strings")
+        if not isinstance(declaration, dict):
+            raise ValueError(f"[tool.gway.scopes.{name}] must be a table")
+        unknown = set(declaration) - {"operations", "environment"}
+        if unknown:
+            raise ValueError(
+                f"Unknown published scope fields for {name}: "
+                + ", ".join(sorted(unknown))
+            )
+        operations = declaration.get("operations", ())
+        environment = declaration.get("environment", ())
+        if not isinstance(operations, list) or any(
+            not isinstance(value, str) or not value.strip() for value in operations
+        ):
+            raise ValueError(f"{name} operations must be an array of non-empty strings")
+        if not isinstance(environment, list) or any(
+            not isinstance(value, str) or not value.strip() for value in environment
+        ):
+            raise ValueError(f"{name} environment must be an array of non-empty strings")
+        published[name] = {
+            "operations": frozenset(value.strip() for value in operations),
+            "environment": frozenset(value.strip() for value in environment),
+            "source": source,
+        }
+    return published
+
+
+def project_watch(data, *, source=None):
+    """Return validated generic Watch contributors published by one project."""
+    if not isinstance(data, dict):
+        return ()
+    tool = data.get("tool")
+    gway = tool.get("gway") if isinstance(tool, dict) else None
+    entries = gway.get("watch") if isinstance(gway, dict) else None
+    if entries is None:
+        return ()
+    if not isinstance(entries, list):
+        raise ValueError("[[tool.gway.watch]] must be an array of tables")
+
+    contributors = []
+    for entry in entries:
+        if not isinstance(entry, dict):
+            raise ValueError("watch contributor must be a table")
+        unknown = set(entry) - {"section", "command"}
+        if unknown:
+            raise ValueError(
+                "Unknown watch contributor fields: " + ", ".join(sorted(unknown))
+            )
+        section = entry.get("section")
+        command = entry.get("command")
+        if not isinstance(section, str) or not section.strip():
+            raise ValueError("watch contributor requires a non-empty section")
+        if not isinstance(command, list) or not command or any(
+            not isinstance(value, str) or not value.strip() for value in command
+        ):
+            raise ValueError("watch contributor command must be a non-empty string array")
+        contributors.append(
+            {
+                "section": section.strip(),
+                "command": tuple(value.strip() for value in command),
+                "source": source,
+            }
+        )
+    return tuple(contributors)
+
+
 def _guide_rule(entry, *, source=None, implied_roles=()):
     """Normalize one explicit project/role guide declaration."""
     if not isinstance(entry, dict):
@@ -479,6 +561,50 @@ def expand_installed_project(runtime, installation, *, path=None):
     return loaded
 
 
+def _publish_project_capabilities(runtime, data, *, source):
+    """Merge one project's declarative integration capabilities into runtime state."""
+    scopes = dict(getattr(runtime, "_published_scopes", {}))
+    for name, definition in project_scopes(data, source=source).items():
+        existing = scopes.get(name)
+        if existing is not None and existing.get("source") != definition.get("source"):
+            raise ValueError(f"Published security scope collision: {name}")
+        scopes[name] = definition
+
+    contributors = list(getattr(runtime, "_watch_contributors", ()))
+    by_section = {item["section"]: item for item in contributors}
+    for contributor in project_watch(data, source=source):
+        existing = by_section.get(contributor["section"])
+        if existing is not None and existing["command"] != contributor["command"]:
+            raise ValueError(
+                f"Published Watch section collision: {contributor['section']}"
+            )
+        if existing is None:
+            contributors.append(contributor)
+            by_section[contributor["section"]] = contributor
+
+    runtime._published_scopes = scopes
+    runtime._watch_contributors = tuple(contributors)
+    return scopes, tuple(contributors)
+
+
+def _discover_installed_capabilities(runtime, installations):
+    """Discover declarative capabilities without importing installed product code."""
+    from . import toml
+
+    runtime._published_scopes = {}
+    runtime._watch_contributors = ()
+    for installation in installations:
+        project_file = installation.install_path / "pyproject.toml"
+        if not project_file.is_file():
+            continue
+        data = toml.load(project_file)
+        _publish_project_capabilities(
+            runtime,
+            data,
+            source=installation.name,
+        )
+
+
 def discover_managed_projects(runtime):
     """Remember installed projects and their lazy conventional entrypoints."""
     discovered = {}
@@ -532,6 +658,7 @@ def discover_managed_projects(runtime):
             project_record.paths.add(parts)
 
     runtime._installed = discovered
+    _discover_installed_capabilities(runtime, discovered.values())
 
     from .souschef.discovery import discover as discover_souschef
 
@@ -569,6 +696,7 @@ def bootstrap(runtime, *, start=None):
     )
     runtime._guide_rules = project_guidance(data, source=guide_source)
     runtime._guide_documents = project_guide_documents(data, project_file.parent)
+    _publish_project_capabilities(runtime, data, source=guide_source)
     if isinstance(project_name, str) and project_name.strip():
         from .project import project_scripts
 

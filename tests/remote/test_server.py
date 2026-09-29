@@ -207,6 +207,7 @@ def test_remote_runtime_converges_logs_read_scope(tmp_path):
     scope = ScopeRegistry(runtime.security_path).require("logs-read")
     assert scope.operations == frozenset(
         {
+            "watch",
             "help",
             "guide",
             "version",
@@ -236,9 +237,18 @@ def test_remote_runtime_converges_source_read_scope(tmp_path):
     source = registry.require("source-read")
     logs = registry.require("logs-read")
 
-    assert source.operations == frozenset({"source", "search.source"})
+    assert source.operations == frozenset(
+        {
+            "watch",
+            "source",
+            "search.source",
+            "node.deploy.status",
+            "node.release.status",
+            "node.queue.status",
+        }
+    )
     assert source.environment == frozenset()
-    assert source.operations.isdisjoint(logs.operations)
+    assert source.operations & logs.operations == frozenset({"watch"})
 
 
 def test_remote_runtime_converges_source_admin_scope(tmp_path):
@@ -282,16 +292,20 @@ def test_remote_runtime_converges_operator_read_scope(tmp_path):
 
     assert operator.operations == frozenset(
         {
+            "watch",
+            "node",
             "products",
             "extensions",
             "service.list",
             "service.status",
+            "service.statuses",
+            "wire.check",
             "sous.chef.list",
             "sous.chef.inspect",
         }
     )
     assert operator.environment == frozenset()
-    assert logs.operations.isdisjoint(operator.operations)
+    assert logs.operations & operator.operations == frozenset({"watch"})
     assert registry.resolve({"logs-read", "operator-read"}).operations == (
         logs.operations | operator.operations
     )
@@ -319,95 +333,47 @@ def test_remote_runtime_permission_summary_expands_lazy_read_only_operation(tmp_
     assert callable(runtime.ops.resolve("log.read"))
 
 
-def test_remote_runtime_converges_arthexis_scopes(tmp_path):
+def test_remote_runtime_registers_product_published_scopes(tmp_path):
+    from gway.gateway import Gateway
+    from gway.security.scopes import ScopeRegistry
+
+    runtime = Gateway()
+    runtime.security_path = tmp_path / "security.sqlite"
+    runtime._published_scopes = {
+        "demo-read": {
+            "operations": frozenset({"demo.status"}),
+            "environment": frozenset(),
+            "source": "demo",
+        }
+    }
+    metadata = RemoteOAuthMetadata.from_origin("https://remote.example.test")
+
+    RemoteApplication(metadata, runtime=runtime)
+
+    scope = ScopeRegistry(runtime.security_path).require("demo-read")
+    assert scope.operations == frozenset({"demo.status"})
+    assert scope.environment == frozenset()
+
+
+def test_builtin_read_scope_union_covers_complete_builtin_watch(tmp_path):
     from gway.gateway import Gateway
     from gway.security.scopes import ScopeRegistry
 
     runtime = Gateway()
     runtime.security_path = tmp_path / "security.sqlite"
     metadata = RemoteOAuthMetadata.from_origin("https://remote.example.test")
-
     RemoteApplication(metadata, runtime=runtime)
 
-    registry = ScopeRegistry(runtime.security_path)
-    read_scope = registry.require("arthexis-read")
-    write_scope = registry.require("arthexis-write")
-
-    assert read_scope.operations == frozenset(
-        {
-            "arthexis.fleet",
-            "arthexis.ocpp_status",
-            "arthexis.ocpp_matrix",
-            "ocpp.charger",
-            "ocpp.charger.enabled",
-            "ocpp.charger.disabled",
-            "ocpp.charger.connected",
-            "ocpp.charger.disconnected",
-            "ocpp.charger.charging",
-            "ocpp.charger.idle",
-            "ocpp.charger.unresolved",
-            "ocpp.charger.historical",
-            "ocpp.connector.all",
-            "ocpp.connector.filter",
-            "ocpp.chargerconnection.all",
-            "ocpp.chargerconnection.filter",
-            "ocpp.ocpptransaction.all",
-            "ocpp.ocpptransaction.filter",
-            "ocpp.metervalue.all",
-            "ocpp.metervalue.filter",
-            "ocpp.meterreadingbatch.all",
-            "ocpp.meterreadingbatch.filter",
-            "ocpp.protocoloperation.all",
-            "ocpp.protocoloperation.filter",
-            "ocpp.reservation.all",
-            "ocpp.reservation.filter",
-            "ocpp.chargervariable.all",
-            "ocpp.chargervariable.filter",
-            "ocpp.notificationrecord.all",
-            "ocpp.notificationrecord.filter",
-            "ocpp.monitoringrecord.all",
-            "ocpp.monitoringrecord.filter",
-            "ocpp.compatibilityevidence.all",
-            "ocpp.compatibilityevidence.filter",
-            "ocpp.chargingprofile.all",
-            "ocpp.chargingprofile.filter",
-            "ocpp.certificaterecord.all",
-            "ocpp.certificaterecord.filter",
-            "ocpp.inboundprotocolrequest.all",
-            "ocpp.inboundprotocolrequest.filter",
-            "ocpp.operationalstatusrecord.all",
-            "ocpp.operationalstatusrecord.filter",
-            "ocpp.chargertimelineprogress.all",
-            "ocpp.chargertimelineprogress.filter",
-            "energy.customeraccount.all",
-            "energy.customeraccount.filter",
-            "energy.energytariff.all",
-            "energy.energytariff.filter",
-            "energy.ledgerentry.all",
-            "energy.ledgerentry.filter",
-            "cards.cardcredential.all",
-            "cards.cardcredential.filter",
-            "cards.authorizationattempt.all",
-            "cards.authorizationattempt.filter",
-            "nodes.node.all",
-            "nodes.node.filter",
-            "nodes.nodelink.all",
-            "nodes.nodelink.filter",
-            "events.eventenvelope.all",
-            "events.eventenvelope.filter",
-        }
-    )
-    assert write_scope.operations == frozenset(
-        {
-            "ocpp.charger.reset",
-            "ocpp.charger.start",
-            "ocpp.charger.stop",
-            "arthexis.event",
-            "arthexis.ocpp_cutover",
-            "arthexis.ocpp_policy",
-            "arthexis.ocpp_recovery",
-        }
-    )
-    assert read_scope.environment == frozenset()
-    assert write_scope.environment == frozenset()
-    assert read_scope.operations.isdisjoint(write_scope.operations)
+    operations = ScopeRegistry(runtime.security_path).resolve(
+        {"logs-read", "source-read", "operator-read"}
+    ).operations
+    assert {
+        "watch",
+        "node",
+        "service.statuses",
+        "node.deploy.status",
+        "node.release.status",
+        "node.queue.status",
+        "wire.check",
+        "log.search",
+    } <= operations
