@@ -36,7 +36,13 @@ def test_bare_node_reports_active_role_and_operations(tmp_path, monkeypatch):
 
     assert result["role"] == "watchtower"
     assert result["family"] == "node/watchtower"
-    assert result["operations"] == ["diagnose", "security audit"]
+    assert result["operations"] == [
+        "deploy status",
+        "diagnose",
+        "queue status",
+        "release status",
+        "security audit",
+    ]
     assert result["runtime"]["version"]
     assert result["runtime"]["managed"] is False
     assert result["runtime"]["resolved_revision"] is None
