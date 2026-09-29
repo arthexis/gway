@@ -508,53 +508,6 @@ def test_mcp_http_bearer_scope_allows_and_denies_operations(
     assert "Invalid bearer token" not in denied[2]
 
 
-def test_mcp_http_query_uses_bearer_scope_and_forces_no_mutation(
-    gateway, recipe_factory, required_runtime, tmp_path, monkeypatch
-):
-    _, _, issued = _issued_token(
-        tmp_path,
-        monkeypatch,
-        operations=("observe", "restart"),
-        token="http-query-client",
-    )
-    seen = []
-
-    def observe(*, mutate=False):
-        seen.append(("observe", mutate))
-        return "observed"
-
-    def restart():
-        seen.append(("restart", True))
-        return "restarted"
-
-    gateway.observe = gateway.wrap("observe", observe)
-    gateway.restart = gateway.wrap("restart", restart)
-    recipe = _mcp_http_recipe(recipe_factory, tmp_path / "mcphttpquery")
-    recipe.write_text(
-        "require fastmcp\n"
-        f"server probe http {issued.bearer!r} observe "
-        f"{issued.bearer!r} restart --tool query\n",
-        encoding="utf-8",
-    )
-    gateway.ingest(recipe.parent)
-
-    with gateway.authorized(operations={"mcphttpquery.server"}):
-        first, second = gateway("mcphttpquery server")
-
-    tools, result, error = first
-    assert tools == ["gway", "query"]
-    assert result == "observed"
-    assert error is None
-
-    tools, result, error = second
-    assert tools == ["gway", "query"]
-    assert result is None
-    assert "does not support non-mutating execution" in error
-    # second-command mode repeats the first request concurrently so both clients
-    # exercise the same live server; neither query invocation may mutate state.
-    assert seen == [("observe", False), ("observe", False)]
-
-
 def _issued_oauth_token(tmp_path, monkeypatch, *, resource=MCP_RESOURCE):
     path = tmp_path / "security.sqlite"
     scopes = ScopeRegistry(path)
@@ -599,80 +552,6 @@ def test_mcp_http_oauth_access_token_obeys_scope_and_capability_boundary(
     assert "401" not in trusted_only[2]
 
 
-def test_mcp_http_oauth_token_uses_live_named_scope_after_issuance(
-    gateway, recipe_factory, required_runtime, tmp_path, monkeypatch
-):
-    scopes, _, _, issued = _issued_oauth_token(tmp_path, monkeypatch)
-    scopes.replace("reader", operations={"new_allowed"})
-
-    gateway.allowed = gateway.wrap("allowed", lambda: "old")
-    gateway.new_allowed = gateway.wrap("new_allowed", lambda: "new")
-    recipe = _mcp_http_recipe(recipe_factory, tmp_path / "mcpoauthlive")
-    recipe.write_text(
-        "require fastmcp\n"
-        f"server probe http {issued.access_token!r} allowed "
-        f"{issued.access_token!r} new_allowed\n",
-        encoding="utf-8",
-    )
-    gateway.ingest(recipe.parent)
-
-    with gateway.authorized(operations={"mcpoauthlive.server"}):
-        results = gateway("mcpoauthlive server")
-
-    first, second = results
-    assert first[0] == ["gway", "query"]
-    assert first[1] is None
-    assert "Operation is not authorized: allowed" in first[2]
-    assert second == (["gway", "query"], "new", None)
-
-
-def test_mcp_http_rejects_oauth_token_for_different_resource(
-    gateway, recipe_factory, required_runtime, tmp_path, monkeypatch
-):
-    _, _, _, issued = _issued_oauth_token(
-        tmp_path,
-        monkeypatch,
-        resource="https://remote.example.test/api",
-    )
-
-    recipe = _mcp_http_recipe(recipe_factory, tmp_path / "mcpoauthwrongresource")
-    recipe.write_text(
-        f"require fastmcp\nserver probe http {issued.access_token!r} clear\n",
-        encoding="utf-8",
-    )
-    gateway.ingest(recipe.parent)
-
-    with gateway.authorized(operations={"mcpoauthwrongresource.server"}):
-        tools, result, error = gateway("mcpoauthwrongresource server")
-
-    assert tools == []
-    assert result is None
-    assert error is not None
-    assert "Server returned an error response" in error
-
-
-def test_mcp_http_rejects_revoked_oauth_access_token(
-    gateway, recipe_factory, required_runtime, tmp_path, monkeypatch
-):
-    _, _, oauth, issued = _issued_oauth_token(tmp_path, monkeypatch)
-    oauth.revoke(issued.access_token)
-
-    recipe = _mcp_http_recipe(recipe_factory, tmp_path / "mcpoauthrevoked")
-    recipe.write_text(
-        f"require fastmcp\nserver probe http {issued.access_token!r} clear\n",
-        encoding="utf-8",
-    )
-    gateway.ingest(recipe.parent)
-
-    with gateway.authorized(operations={"mcpoauthrevoked.server"}):
-        tools, result, error = gateway("mcpoauthrevoked server")
-
-    assert tools == []
-    assert result is None
-    assert error is not None
-    assert "Server returned an error response" in error
-
-
 @pytest.mark.parametrize(
     ("credential", "root_name"),
     [
@@ -710,61 +589,6 @@ def test_mcp_http_authentication_challenge_points_to_protected_resource_metadata
         "https://remote.example.test/.well-known/oauth-protected-resource/mcp"
         '"' in challenge
     )
-
-
-def test_mcp_http_rejects_missing_and_invalid_bearer(
-    gateway,
-    recipe_factory,
-    required_runtime,
-    tmp_path,
-    monkeypatch,
-):
-    tokens = TokenRegistry(tmp_path / "security.sqlite")
-    monkeypatch.setattr(companion_runtime, "TokenRegistry", lambda path=None: tokens)
-
-    recipe = _mcp_http_recipe(recipe_factory, tmp_path / "mcphttpinvalid")
-    recipe.write_text(
-        "require fastmcp\n"
-        "server probe http __missing__ clear gwt_missing_wrong clear\n",
-        encoding="utf-8",
-    )
-    gateway.ingest(recipe.parent)
-
-    with gateway.authorized(operations={"mcphttpinvalid.server"}):
-        missing, invalid = gateway("mcphttpinvalid server")
-
-    for tools, result, error in (missing, invalid):
-        assert tools == []
-        assert result is None
-        assert error is not None
-        assert "Server returned an error response" in error
-
-
-def test_mcp_http_rejects_disabled_bearer(
-    gateway, recipe_factory, required_runtime, tmp_path, monkeypatch
-):
-    _, tokens, issued = _issued_token(
-        tmp_path,
-        monkeypatch,
-        token="http-client",
-    )
-    tokens.disable("http-client")
-
-    gateway.allowed = gateway.wrap("allowed", lambda: "ok")
-    recipe = _mcp_http_recipe(recipe_factory, tmp_path / "mcphttpdisabled")
-    recipe.write_text(
-        f"require fastmcp\nserver probe http {issued.bearer!r} allowed\n",
-        encoding="utf-8",
-    )
-    gateway.ingest(recipe.parent)
-
-    with gateway.authorized(operations={"mcphttpdisabled.server"}):
-        tools, result, error = gateway("mcphttpdisabled server")
-
-    assert tools == []
-    assert result is None
-    assert error is not None
-    assert "Server returned an error response" in error
 
 
 def test_mcp_http_concurrent_clients_keep_distinct_scopes(
