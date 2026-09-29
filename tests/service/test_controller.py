@@ -253,15 +253,9 @@ def test_deployed_mcp_service_accepts_real_http_bearer_client(tmp_path, monkeypa
     source_root = sampler_root() / "mcp"
     recipe = deployment / "server.rx"
     recipe.write_text(
-        "\n".join(
-            line
-            for line in (source_root / "server.rx")
-            .read_text(encoding="utf-8")
-            .replace("[port|8000]", str(port))
-            .splitlines()
-            if not line.startswith("require ")
-        )
-        + "\n",
+        (source_root / "server.rx")
+        .read_text(encoding="utf-8")
+        .replace("[port|8000]", str(port)),
         encoding="utf-8",
     )
     (deployment / "server.py").write_text(
