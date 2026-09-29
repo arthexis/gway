@@ -197,6 +197,7 @@ def test_expose_app_renders_semantic_headers_at_server_scope(gateway, monkeypatc
     gateway("setup app remote")
     gateway("header Cache-Control no-store")
     gateway("header X-Test \"one two\"")
+    gateway("header X-Literal '$request_id'")
 
     gateway(
         "expose app remote.example.com "
