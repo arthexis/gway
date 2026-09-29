@@ -302,9 +302,29 @@ def probe_http(bearer, command, second_bearer=None, second_command=None, tool="g
         except Exception as exception:
             return [], None, str(exception)
 
+    async def call_pair(url, credential, first_value, second_value):
+        auth = None if credential == "__missing__" else BearerAuth(credential)
+        try:
+            async with Client(url, auth=auth) as client:
+                tools = [tool.name for tool in await client.list_tools()]
+                results = []
+                for value in (first_value, second_value):
+                    try:
+                        result = await client.call_tool(tool, {"command": value})
+                    except Exception as exception:
+                        results.append((tools, None, str(exception)))
+                    else:
+                        results.append((tools, result.content[0].text, None))
+                return results
+        except Exception as exception:
+            failure = ([], None, str(exception))
+            return [failure, failure]
+
     async def run(url):
         if second_command is None:
             return await call(url, bearer, command)
+        if second_bearer == bearer:
+            return await call_pair(url, bearer, command, second_command)
         first_task = asyncio.create_task(call(url, bearer, command))
         second_task = asyncio.create_task(
             call(url, second_bearer, second_command)
@@ -386,11 +406,24 @@ def probe_token_http(reader_bearer, alpha_bearer, beta_bearer, invalid_bearer):
         except Exception as exception:
             return [], None, str(exception)
 
+    async def reader_calls(url):
+        try:
+            async with Client(url, auth=BearerAuth(reader_bearer)) as client:
+                tools = [tool.name for tool in await client.list_tools()]
+                allowed = await client.call_tool("gway", {"command": "allowed"})
+                try:
+                    await client.call_tool("gway", {"command": "denied"})
+                except Exception as exception:
+                    denied = (tools, None, str(exception))
+                else:
+                    denied = (tools, "no", None)
+                return (tools, allowed.content[0].text, None), denied
+        except Exception as exception:
+            failure = ([], None, str(exception))
+            return failure, failure
+
     async def run(url):
-        allowed, denied = await asyncio.gather(
-            call(url, reader_bearer, "allowed"),
-            call(url, reader_bearer, "denied"),
-        )
+        allowed, denied = await reader_calls(url)
         concurrent = await asyncio.gather(
             call(url, alpha_bearer, "alpha"),
             call(url, beta_bearer, "beta"),
