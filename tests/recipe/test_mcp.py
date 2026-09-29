@@ -559,54 +559,44 @@ def test_mcp_http_token_registry_acceptance_shares_one_server(
 
 
 
-def _issued_oauth_token(tmp_path, monkeypatch, *, resource=MCP_RESOURCE):
+def _issued_oauth_acceptance_tokens(tmp_path, monkeypatch):
     path = tmp_path / "security.sqlite"
     scopes = ScopeRegistry(path)
     tokens = TokenRegistry(path)
     oauth = OAuthRegistry(path)
+
     scopes.replace("reader", operations={"allowed"})
+    scopes.replace(
+        "chatgpt-logs",
+        operations={"log.sources", "log.read", "log.tail", "log.search"},
+        environment=(),
+    )
     tokens.create("operator", scopes={"reader"})
-    oauth.link("chatgpt", "operator")
-    grant = oauth.create_grant(
-        "chatgpt",
+    tokens.create("chatgpt-operator", scopes={"chatgpt-logs"})
+    oauth.link("chatgpt-reader", "operator")
+    oauth.link("chatgpt-logs", "chatgpt-operator")
+
+    reader_grant = oauth.create_grant(
+        "chatgpt-reader",
         "chatgpt-client",
         scopes={"reader"},
-        resource=resource,
+        resource=MCP_RESOURCE,
     )
-    issued = oauth.issue_tokens(grant.id)
+    logs_grant = oauth.create_grant(
+        "chatgpt-logs",
+        "chatgpt-client",
+        scopes={"chatgpt-logs"},
+        resource=MCP_RESOURCE,
+    )
+    reader = oauth.issue_tokens(reader_grant.id)
+    logs = oauth.issue_tokens(logs_grant.id)
     monkeypatch.setattr(companion_runtime, "OAuthRegistry", lambda path=None: oauth)
-    return scopes, tokens, oauth, issued
+    return reader, logs
 
 
-def test_mcp_http_oauth_access_token_obeys_scope_and_capability_boundary(
-    gateway, recipe_factory, required_runtime, tmp_path, monkeypatch
-):
-    _, _, _, issued = _issued_oauth_token(tmp_path, monkeypatch)
-
-    gateway.allowed = gateway.wrap("allowed", lambda: "ok")
-    recipe = _mcp_http_recipe(recipe_factory, tmp_path / "mcpoauth")
-    recipe.write_text(
-        "require fastmcp\n"
-        f"server probe http {issued.access_token!r} allowed "
-        f"{issued.access_token!r} clear\n",
-        encoding="utf-8",
-    )
-    gateway.ingest(recipe.parent)
-
-    with gateway.authorized(operations={"mcpoauth.server"}):
-        allowed, trusted_only = gateway("mcpoauth server")
-
-    assert allowed == (["gway", "query"], "ok", None)
-    assert trusted_only[0] == ["gway", "query"]
-    assert trusted_only[1] is None
-    assert "Operation is not authorized: clear" in trusted_only[2]
-    assert "401" not in trusted_only[2]
-
-
-
-def _mcp_log_http_probe_suffix():
+def _mcp_oauth_http_probe_suffix():
     return r'''
-def probe_log_http(bearer, command="log search timeout arthexis --limit 10"):
+def probe_oauth_http(reader_bearer, logs_bearer):
     import asyncio
     import json
     import socket
@@ -634,11 +624,29 @@ def probe_log_http(bearer, command="log search timeout arthexis --limit 10"):
                 time.sleep(0.05)
         raise RuntimeError("MCP HTTP server did not become ready")
 
-    async def run(url):
-        async with Client(url, auth=BearerAuth(bearer)) as client:
+    async def reader_calls(url):
+        async with Client(url, auth=BearerAuth(reader_bearer)) as client:
             tools = [tool.name for tool in await client.list_tools()]
-            result = await client.call_tool("query", {"command": command})
+            allowed = await client.call_tool("gway", {"command": "allowed"})
+            try:
+                await client.call_tool("gway", {"command": "clear"})
+            except Exception as exception:
+                denied = (tools, None, str(exception))
+            else:
+                denied = (tools, "unexpected", None)
+            return (tools, allowed.content[0].text, None), denied
+
+    async def log_query(url):
+        async with Client(url, auth=BearerAuth(logs_bearer)) as client:
+            tools = [tool.name for tool in await client.list_tools()]
+            result = await client.call_tool(
+                "query",
+                {"command": "log search timeout arthexis --limit 10"},
+            )
             return tools, json.loads(result.content[0].text)
+
+    async def run(url):
+        return await asyncio.gather(reader_calls(url), log_query(url))
 
     port = free_port()
     with _callback_relay() as bridge:
@@ -673,29 +681,6 @@ def probe_log_http(bearer, command="log search timeout arthexis --limit 10"):
                 process.kill()
                 process.wait(timeout=5)
 '''
-
-
-def _issued_chatgpt_logs_oauth(tmp_path, monkeypatch):
-    security_path = tmp_path / "security.sqlite"
-    scopes = ScopeRegistry(security_path)
-    tokens = TokenRegistry(security_path)
-    oauth = OAuthRegistry(security_path)
-    scopes.replace(
-        "chatgpt-logs",
-        operations={"log.sources", "log.read", "log.tail", "log.search"},
-        environment=(),
-    )
-    tokens.create("chatgpt-operator", scopes={"chatgpt-logs"})
-    oauth.link("chatgpt", "chatgpt-operator")
-    grant = oauth.create_grant(
-        "chatgpt",
-        "chatgpt-client",
-        scopes={"chatgpt-logs"},
-        resource=MCP_RESOURCE,
-    )
-    issued = oauth.issue_tokens(grant.id)
-    monkeypatch.setattr(companion_runtime, "OAuthRegistry", lambda path=None: oauth)
-    return scopes, tokens, oauth, issued
 
 
 def _install_log_acceptance_fixture(tmp_path, monkeypatch):
@@ -748,29 +733,38 @@ def _install_log_acceptance_fixture(tmp_path, monkeypatch):
     monkeypatch.setattr(log_operations, "read_journal", fake_read_journal)
 
 
-def test_chatgpt_logs_oauth_reaches_canonical_log_query_over_http(
+def test_mcp_oauth_http_acceptance_shares_one_server(
     gateway, recipe_factory, required_runtime, tmp_path, monkeypatch
 ):
-    _, _, _, issued = _issued_chatgpt_logs_oauth(tmp_path, monkeypatch)
+    reader, logs = _issued_oauth_acceptance_tokens(tmp_path, monkeypatch)
     _install_log_acceptance_fixture(tmp_path, monkeypatch)
 
-    root = tmp_path / "mcpchatgptlogs"
+    gateway.allowed = gateway.wrap("allowed", lambda: "ok")
+    root = tmp_path / "mcpoauth"
     recipe = _mcp_companion_recipe(
         recipe_factory,
         root,
         "clear",
-        suffix=_mcp_log_http_probe_suffix(),
+        suffix=_mcp_oauth_http_probe_suffix(),
     )
     recipe.write_text(
         "require fastmcp\n"
-        f"server probe_log_http {issued.access_token!r}\n",
+        f"server probe_oauth_http {reader.access_token!r} {logs.access_token!r}\n",
         encoding="utf-8",
     )
     gateway.ingest(root)
 
-    with gateway.authorized(operations={"mcpchatgptlogs.server"}):
-        tools, result = gateway("mcpchatgptlogs server")
+    with gateway.authorized(operations={"mcpoauth.server"}):
+        reader_result, log_result = gateway("mcpoauth server")
 
+    allowed, trusted_only = reader_result
+    assert allowed == (["gway", "query"], "ok", None)
+    assert trusted_only[0] == ["gway", "query"]
+    assert trusted_only[1] is None
+    assert "Operation is not authorized: clear" in trusted_only[2]
+    assert "401" not in trusted_only[2]
+
+    tools, result = log_result
     assert tools == ["query"]
     assert [item["message"] for item in result] == ["timeout waiting for charger"]
     assert "GWAY_SECRET" not in repr(result)
