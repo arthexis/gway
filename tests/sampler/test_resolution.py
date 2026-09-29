@@ -101,3 +101,26 @@ def test_project_bare_recipe_shadows_maintained_recipe_operation(tmp_path, monke
     assert path == recipe
     assert arguments == []
     assert remaining == []
+
+
+def test_semantic_pipeline_operation_shadows_project_bare_recipe(tmp_path, monkeypatch):
+    recipe = tmp_path / "save.rx"
+    recipe.write_text("version\n", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+    gateway = Gateway()
+    charger = object()
+    gateway.results.insert("charger", charger)
+
+    def save(charger):
+        return charger
+
+    gateway.save = gateway.wrap("save_charger", save, op="save", sub="charger")
+
+    assert (
+        resolve_recipe_stage(
+            gateway,
+            tokenize("save"),
+            pipeline=charger,
+        )
+        is None
+    )
