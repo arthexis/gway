@@ -494,7 +494,20 @@ def bind_arguments(
                 index += 1
                 continue
             if _is_boolean_parameter(keyword_parameter):
-                keywords[key] = not negated
+                value = not negated
+                if not negated and index + 1 < len(stream):
+                    value_item = stream[index + 1]
+                    if not isinstance(value_item, _PipelineValue):
+                        next_value = token_value(value_item)
+                        if (
+                            not is_literal(value_item)
+                            and isinstance(next_value, str)
+                            and next_value.lower()
+                            in {"0", "1", "false", "true", "no", "yes", "off", "on"}
+                        ):
+                            value = _convert_scalar(next_value, bool)
+                            index += 1
+                keywords[key] = value
                 filled.add(key)
                 index += 1
                 continue
