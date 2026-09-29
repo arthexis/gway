@@ -5,6 +5,7 @@ from __future__ import annotations
 import json as json_module
 
 from ..http import request as transport_request
+from ..mutation import MutationError
 
 
 def _mapping(value, *, label):
@@ -92,7 +93,8 @@ class Controller:
         mutate=True,
     ):
         """Perform a mutating HTTP POST request."""
-        del mutate
+        if not mutate:
+            raise MutationError("HTTP POST is disabled by non-mutating execution")
         return self._call(
             "POST", url, headers=headers, params=params, json=json, data=data,
             timeout=timeout, follow_redirects=follow_redirects,
@@ -101,7 +103,8 @@ class Controller:
     def put(self, url, *, headers=None, params=None, json=None, data=None,
             timeout=30.0, follow_redirects=False, mutate=True):
         """Perform a mutating HTTP PUT request."""
-        del mutate
+        if not mutate:
+            raise MutationError("HTTP PUT is disabled by non-mutating execution")
         return self._call(
             "PUT", url, headers=headers, params=params, json=json, data=data,
             timeout=timeout, follow_redirects=follow_redirects,
@@ -110,7 +113,8 @@ class Controller:
     def patch(self, url, *, headers=None, params=None, json=None, data=None,
               timeout=30.0, follow_redirects=False, mutate=True):
         """Perform a mutating HTTP PATCH request."""
-        del mutate
+        if not mutate:
+            raise MutationError("HTTP PATCH is disabled by non-mutating execution")
         return self._call(
             "PATCH", url, headers=headers, params=params, json=json, data=data,
             timeout=timeout, follow_redirects=follow_redirects,
@@ -119,7 +123,8 @@ class Controller:
     def delete(self, url, *, headers=None, params=None, json=None, data=None,
                timeout=30.0, follow_redirects=False, mutate=True):
         """Perform a mutating HTTP DELETE request."""
-        del mutate
+        if not mutate:
+            raise MutationError("HTTP DELETE is disabled by non-mutating execution")
         return self._call(
             "DELETE", url, headers=headers, params=params, json=json, data=data,
             timeout=timeout, follow_redirects=follow_redirects,
@@ -139,7 +144,8 @@ class Controller:
         mutate=True,
     ):
         """Perform a generic HTTP request, conservatively classified as mutating."""
-        del mutate
+        if not mutate:
+            raise MutationError("HTTP request is disabled by non-mutating execution")
         return self._call(
             method, url, headers=headers, params=params, json=json, data=data,
             timeout=timeout, follow_redirects=follow_redirects,
