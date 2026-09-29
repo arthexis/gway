@@ -57,7 +57,12 @@ def nginx_header_directives(headers):
     """Render semantic response headers as server-scoped NGINX directives."""
     directives = []
     for header in headers:
-        value = header.value.replace("\\", "\\\\").replace('"', '\\"')
+        value = (
+            header.value
+            .replace("\\", "\\\\")
+            .replace("$", "\\$")
+            .replace('"', '\\"')
+        )
         directives.append(f'add_header {header.name} "{value}" always;')
     return "\n    ".join(directives)
 
