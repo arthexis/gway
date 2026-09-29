@@ -8,6 +8,7 @@ from ..authorization import AuthorizationError
 from ..dispatch import resolve_operation
 from ..mutation import MutationError
 from ..security.authentication import BearerAuthenticationError
+from ..security.defaults import CORE_SCOPE_DEFINITIONS, CORE_SCOPE_NAMES
 from ..security.oauth import OAuthAuthenticationError, OAuthRegistry
 from ..security.tokens import TokenRegistry
 from ..tokens import tokenize
@@ -94,89 +95,17 @@ class RemoteApplication(RemoteDiscoveryApplication):
                 operation_resolver=resolve_runtime_operation,
             )
         self.account = RemoteAccountApplication() if account is None else account
-        self.account.oauth.scopes.replace(
-            "full-access",
-            operations={"__all__"},
-            environment={"__all__"},
-        )
-        self.account.oauth.scopes.replace(
-            "logs-read",
-            operations={
-                "watch",
-                "help",
-                "guide",
-                "version",
-                "log.sources",
-                "log.read",
-                "log.tail",
-                "log.search",
-                "security.whoami",
-                "security.scope.current",
-            },
-            environment=(),
-        )
-        self.account.oauth.scopes.replace(
-            "source-read",
-            operations={
-                "watch",
-                "source",
-                "search.source",
-                "node.deploy.status",
-                "node.release.status",
-                "node.queue.status",
-            },
-            environment=(),
-        )
-        self.account.oauth.scopes.replace(
-            "source-admin",
-            operations={
-                "github.rulesets",
-                "github.ruleset",
-                "github.create_ruleset",
-                "github.update_ruleset",
-                "github.delete_ruleset",
-                "github.branch_protection",
-                "github.update_branch_protection",
-                "github.delete_branch_protection",
-                "github.collaborators",
-                "github.collaborator_permission",
-                "github.webhooks",
-                "github.webhook",
-                "github.actions_permissions",
-                "github.actions_workflow_permissions",
-                "github.set_actions_permissions",
-                "github.set_actions_workflow_permissions",
-            },
-            environment=(),
-        )
-        self.account.oauth.scopes.replace(
-            "operator-read",
-            operations={
-                "watch",
-                "node",
-                "products",
-                "extensions",
-                "service.list",
-                "service.status",
-                "service.statuses",
-                "wire.check",
-                "sous.chef.list",
-                "sous.chef.inspect",
-            },
-            environment=(),
-        )
-        core_scope_names = {
-            "full-access",
-            "logs-read",
-            "source-read",
-            "source-admin",
-            "operator-read",
-        }
+        for name, definition in CORE_SCOPE_DEFINITIONS.items():
+            self.account.oauth.scopes.replace(
+                name,
+                operations=definition["operations"],
+                environment=definition["environment"],
+            )
         published_scopes = (
             {} if runtime is None else getattr(runtime, "_published_scopes", {})
         )
         for name, definition in sorted(published_scopes.items()):
-            if name in core_scope_names:
+            if name in CORE_SCOPE_NAMES:
                 raise ValueError(f"Published security scope shadows Gway core scope: {name}")
             self.account.oauth.scopes.replace(
                 name,
@@ -643,20 +572,13 @@ def build_server(
     runtime=None,
 ):
     """Build the remote HTTP server without starting its lifecycle."""
-    core_scopes = {
-        "full-access",
-        "logs-read",
-        "source-read",
-        "source-admin",
-        "operator-read",
-    }
     published_scopes = (
         set() if runtime is None else set(getattr(runtime, "_published_scopes", {}))
     )
     metadata = RemoteOAuthMetadata.from_origin(
         public_origin,
         resource_path=resource_path,
-        scopes_supported=tuple(sorted(core_scopes | published_scopes)),
+        scopes_supported=tuple(sorted(CORE_SCOPE_NAMES | published_scopes)),
         allow_insecure_loopback=allow_insecure_loopback,
     )
     application = RemoteApplication(
