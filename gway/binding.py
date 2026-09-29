@@ -115,6 +115,13 @@ def convert_argument(token, parameter, runtime):
     literal = is_literal(token)
     value = token_value(token)
     annotation = parameter.annotation
+    if (
+        annotation is inspect.Parameter.empty
+        and parameter.default is not inspect.Parameter.empty
+        and parameter.default is not None
+        and type(parameter.default) in {str, int, float, bool}
+    ):
+        annotation = type(parameter.default)
 
     if literal or annotation is Literal:
         return Literal(value)
