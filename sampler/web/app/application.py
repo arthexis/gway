@@ -271,6 +271,7 @@ class Controller:
             site=site,
             email=email,
             adapter=adapter,
+            headers=app.headers,
         )
         key = (exposure.domain, exposure.route)
         existing = self._exposures.get(key)
