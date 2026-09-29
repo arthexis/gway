@@ -257,6 +257,14 @@ def _register_callable(gateway, record, operation):
     if existing is not None:
         return None
 
+    selected = gateway.ops._registry.records.get(operation.name)
+    if selected is not None:
+        record.operations[operation.path] = selected.callable
+        if record.operation is None:
+            record.operation = selected.callable
+        record.registered = True
+        return None
+
     wrapped = register_operation(gateway, operation)
     record.operations[operation.path] = wrapped
     if record.operation is None:
@@ -333,7 +341,12 @@ def ingest_python(gateway, source, *, path=None, **kwargs):
 
     wrapped = []
 
-    if callable(source):
+    has_class_main = (
+        inspect.isclass(source)
+        and callable(getattr(source, _ENTRY_SPECIAL_METHOD, None))
+    )
+
+    if callable(source) and not has_class_main:
         operation = IngestedOperation(
             root,
             source,
