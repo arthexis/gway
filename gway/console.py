@@ -320,12 +320,21 @@ def _run_cli(parser, args, unknown, *, runtime=None):
                 elif unknown:
                     from .recipe.resolve import resolve_recipe_stage
 
-                    recipe_execution = (
-                        not getattr(args, "command_help", False)
-                        and resolve_recipe_stage(runtime, unknown, pipeline=None) is not None
+                    resolved_recipe = (
+                        None
+                        if getattr(args, "command_help", False)
+                        else resolve_recipe_stage(runtime, unknown, pipeline=None)
                     )
+                    recipe_execution = resolved_recipe is not None
                     if getattr(args, "command_help", False):
                         output = runtime._command_help(*unknown, verbose=args.verbose)
+                    elif resolved_recipe is not None and not resolved_recipe[2]:
+                        path, recipe_arguments, _ = resolved_recipe
+                        _, output = execute_recipe(
+                            runtime,
+                            path,
+                            context=parse_recipe_context(recipe_arguments),
+                        )
                     else:
                         _, output = process([unknown], gw_instance=runtime)
                 else:
