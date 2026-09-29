@@ -5,6 +5,7 @@ from pathlib import Path
 from .. import log as gway_log
 from ..environment import process_environment
 from ..logs import recipe_identity
+from ..runner import timed
 from ..tokens import statements
 from .frame import RecipeFrame
 from .loading import load_recipe
@@ -69,10 +70,13 @@ def execute_recipe(
             if context:
                 runtime.context.update(context)
 
-            commands, _ = load_recipe(path, section=section)
-            statement_list = []
-            for command in commands:
-                statement_list.extend(statements(command.get("tokens", ())))
+            with timed(runtime, f"recipe {path.stem} load"):
+                commands, _ = load_recipe(path, section=section)
+
+            with timed(runtime, f"recipe {path.stem} parse"):
+                statement_list = []
+                for command in commands:
+                    statement_list.extend(statements(command.get("tokens", ())))
 
             if not statement_list:
                 return [], None
@@ -97,14 +101,19 @@ def execute_recipe(
 
             from ..dispatch import dispatch_program
 
-            if pipeline is _NO_PIPELINE:
-                return dispatch_program(runtime, statement_list, recipe_frame=frame)
-            return dispatch_program(
-                runtime,
-                statement_list,
-                pipeline=pipeline,
-                recipe_frame=frame,
-            )
+            with timed(runtime, f"recipe {path.stem} execute"):
+                if pipeline is _NO_PIPELINE:
+                    return dispatch_program(
+                        runtime,
+                        statement_list,
+                        recipe_frame=frame,
+                    )
+                return dispatch_program(
+                    runtime,
+                    statement_list,
+                    pipeline=pipeline,
+                    recipe_frame=frame,
+                )
     finally:
         if frame is not None and frame.companion_worker is not None:
             from .companion import unregister_worker_operations
