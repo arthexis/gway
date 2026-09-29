@@ -15,7 +15,7 @@ class Controller:
 
     def show(self, grant_id: int, *, mutate=True):
         """Return safe metadata for one OAuth grant."""
-        grant = self.registry.get_grant(grant_id)
+        grant = self.registry.get_grant(grant_id, readonly=not mutate)
         if grant is None:
             raise LookupError(f"Unknown OAuth grant: {grant_id}")
         return grant
