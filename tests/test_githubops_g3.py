@@ -14,8 +14,7 @@ class FakeClient:
 
     def pages(self, path, *, params=None):
         self.calls.append(("PAGES", path, params))
-        for data in self.responses:
-            yield SimpleNamespace(data=data)
+        yield SimpleNamespace(data=self.responses.pop(0), next_url=None)
 
 
 def test_collaboration_reads_map_to_github_resources():
