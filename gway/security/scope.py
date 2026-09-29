@@ -109,7 +109,7 @@ class Controller:
 
     def resolve(self, *names, mutate=True):
         """Return the union of named security scopes."""
-        return self.registry.resolve(names, readonly=not mutate)
+        return self._registry(converge=mutate).resolve(names, readonly=not mutate)
 
     @staticmethod
     def _definitions(path):
