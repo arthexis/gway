@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-${{ github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && !contains(fromJSON('["version-only","on-hold","on hold"]'), github.event.label.name) && github.run_id || 'ci' }}
   cancel-in-progress: true
 
 permissions:
