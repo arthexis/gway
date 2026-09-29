@@ -66,9 +66,12 @@ def mutates(callable_):
 def public_signature(callable_, *, receiver=False):
     """Return the user-facing signature with reserved mutation semantics hidden."""
     try:
-        signature = inspect.signature(callable_)
-    except (TypeError, ValueError):
-        return None
+        signature = inspect.signature(callable_, eval_str=True)
+    except (NameError, TypeError, ValueError):
+        try:
+            signature = inspect.signature(callable_)
+        except (TypeError, ValueError):
+            return None
 
     parameters = list(signature.parameters.values())
     if receiver and parameters:
