@@ -25,6 +25,9 @@ class DiagnosticClient:
             data = {"workflow_runs": [{"id": 7, "conclusion": "failure"}]}
         return SimpleNamespace(data=data, status=200, headers={})
 
+    def download_redirect(self, path):
+        return self.request("GET", path)
+
     def graphql(self, query, variables=None):
         self.calls.append(("GRAPHQL", variables.copy()))
         return SimpleNamespace(
