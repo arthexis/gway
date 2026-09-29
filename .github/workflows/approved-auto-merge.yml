@@ -130,6 +130,7 @@ jobs:
           approved="$(
             jq -r '[.labels[].name | ascii_downcase] | any(. == "approved")' <<< "$pr_json"
           )"
+          native_auto_merge="$(jq -r '.auto_merge != null' <<< "$pr_json")"
           on_hold="$(
             jq -r '[.labels[].name | ascii_downcase] | any(. == "on-hold" or . == "on hold")' <<< "$pr_json"
           )"
@@ -137,23 +138,10 @@ jobs:
             jq -r '[.labels[].name | ascii_downcase] | any(. == "in-progress")' <<< "$pr_json"
           )"
 
-          if [[ "$approved" != "true" || "$on_hold" == "true" || "$in_progress" == "true" ]]; then
-            echo "Disabling auto-merge for PR #$PR_NUMBER (approved=$approved, on_hold=$on_hold, in_progress=$in_progress)."
+          if [[ "$on_hold" == "true" || "$in_progress" == "true" || ( "$approved" != "true" && "$native_auto_merge" != "true" ) ]]; then
+            echo "Disabling auto-merge for PR #$PR_NUMBER (approved=$approved, native_auto_merge=$native_auto_merge, on_hold=$on_hold, in_progress=$in_progress)."
             gh pr merge "$PR_NUMBER" --repo "$REPOSITORY" --disable-auto || true
           fi
-
-      - name: Reset stale auto-merge request
-        if: steps.pr.outputs.skip != 'true'
-        env:
-          GH_TOKEN: ${{ github.token }}
-          REPOSITORY: ${{ github.repository }}
-          PR_NUMBER: ${{ steps.pr.outputs.number }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          # Reconciliation is head-specific. Clear any request armed for an older
-          # revision before validating and re-arming the current head.
-          gh pr merge "$PR_NUMBER" --repo "$REPOSITORY" --disable-auto || true
 
       - name: Validate approval gate
         if: steps.pr.outputs.skip != 'true'
@@ -200,8 +188,9 @@ jobs:
           approved="$(
             jq -r '[.labels[].name | ascii_downcase] | any(. == "approved")' <<< "$pr_json"
           )"
-          if [[ "$approved" != "true" ]]; then
-            echo "PR #$PR_NUMBER does not have the Approved label."
+          native_auto_merge="$(jq -r '.auto_merge != null' <<< "$pr_json")"
+          if [[ "$approved" != "true" && "$native_auto_merge" != "true" ]]; then
+            echo "PR #$PR_NUMBER has neither legacy approval nor native auto-merge authorization."
             echo "ready=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
@@ -249,7 +238,7 @@ jobs:
             exit 0
           fi
 
-          echo "Approval, freshness, and CI gates are satisfied for PR #$PR_NUMBER."
+          echo "Authorization, freshness, and CI gates are satisfied for PR #$PR_NUMBER (approved=$approved, native_auto_merge=$native_auto_merge)."
           echo "The PR is not marked in-progress."
           echo "Review-thread resolution is enforced by the protected branch ruleset."
           echo "head_sha=$head_sha" >> "$GITHUB_OUTPUT"
@@ -265,4 +254,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          pr_json="$(gh api "repos/$REPOSITORY/pulls/$PR_NUMBER")"
+          if [[ "$(jq -r '.auto_merge != null' <<< "$pr_json")" == "true" ]]; then
+            echo "Native auto-merge is already enabled for PR #$PR_NUMBER."
+            exit 0
+          fi
           gh pr merge "$PR_NUMBER"             --repo "$REPOSITORY"             --auto             --merge             --match-head-commit "$HEAD_SHA"
