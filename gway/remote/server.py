@@ -102,6 +102,7 @@ class RemoteApplication(RemoteDiscoveryApplication):
         self.account.oauth.scopes.replace(
             "logs-read",
             operations={
+                "watch",
                 "help",
                 "guide",
                 "version",
@@ -117,6 +118,7 @@ class RemoteApplication(RemoteDiscoveryApplication):
         self.account.oauth.scopes.replace(
             "source-read",
             operations={
+                "watch",
                 "source",
                 "search.source",
             },
@@ -147,6 +149,7 @@ class RemoteApplication(RemoteDiscoveryApplication):
         self.account.oauth.scopes.replace(
             "operator-read",
             operations={
+                "watch",
                 "products",
                 "extensions",
                 "service.list",
@@ -159,6 +162,7 @@ class RemoteApplication(RemoteDiscoveryApplication):
         self.account.oauth.scopes.replace(
             "arthexis-read",
             operations={
+                "watch",
                 "arthexis.fleet",
                 "arthexis.ocpp_status",
                 "arthexis.ocpp_matrix",
