@@ -1,31 +1,26 @@
-name: Approved Auto-Merge
+name: Native Auto-Merge Guard
 
 on:
   pull_request_target:
-    types: [labeled, unlabeled, synchronize, reopened, ready_for_review]
-  workflow_run:
-    workflows:
-      - "python / Package"
-      - "python / Python compatibility"
-      - "python / Quality"
-    types: [completed]
+    types: [labeled, converted_to_draft, reopened]
   workflow_dispatch:
     inputs:
       pr_number:
-        description: Pull request number to evaluate
+        description: Pull request number to reconcile
         required: true
         type: number
 
 permissions:
-  contents: write
   pull-requests: write
-  issues: write
-  checks: read
-  actions: write
+  issues: read
+
+concurrency:
+  group: native-auto-merge-guard-${{ github.event.pull_request.number || inputs.pr_number || github.run_id }}
+  cancel-in-progress: false
 
 jobs:
-  arm-auto-merge:
-    name: Arm approved PR
+  guard:
+    name: Guard native auto-merge
     runs-on: ubuntu-latest
     steps:
       - name: Resolve pull request
@@ -36,87 +31,19 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-
-          case "$EVENT_NAME" in
-            workflow_run)
-              pr_number="$(jq -r '.workflow_run.pull_requests[0].number // empty' "$GITHUB_EVENT_PATH")"
-              ;;
-            workflow_dispatch)
-              pr_number="$INPUT_PR"
-              ;;
-            *)
-              pr_number="$(jq -r '.pull_request.number // empty' "$GITHUB_EVENT_PATH")"
-              ;;
-          esac
-
+          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+            pr_number="$INPUT_PR"
+          else
+            pr_number="$(jq -r '.pull_request.number // empty' "$GITHUB_EVENT_PATH")"
+          fi
           if [[ -z "$pr_number" ]]; then
-            echo "No pull request is associated with this event."
             echo "skip=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-
           echo "number=$pr_number" >> "$GITHUB_OUTPUT"
           echo "skip=false" >> "$GITHUB_OUTPUT"
 
-      - name: Mark approved PR ready for review
-        if: steps.pr.outputs.skip != 'true' && github.event_name == 'pull_request_target' && github.event.action == 'labeled'
-        env:
-          GH_TOKEN: ${{ github.token }}
-          REPOSITORY: ${{ github.repository }}
-          PR_NUMBER: ${{ steps.pr.outputs.number }}
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          label="$(jq -r '.label.name // empty | ascii_downcase' "$GITHUB_EVENT_PATH")"
-          if [[ "$label" != "approved" ]]; then
-            exit 0
-          fi
-
-          pr_json="$(gh api "repos/$REPOSITORY/pulls/$PR_NUMBER")"
-          draft="$(jq -r '.draft' <<< "$pr_json")"
-          if [[ "$draft" == "true" ]]; then
-            echo "PR #$PR_NUMBER was approved while draft; marking ready for review."
-            gh pr ready "$PR_NUMBER" --repo "$REPOSITORY"
-          fi
-
-      - name: Reconcile mutually exclusive work-state labels
-        if: steps.pr.outputs.skip != 'true' && github.event_name == 'pull_request_target' && github.event.action == 'labeled'
-        env:
-          GH_TOKEN: ${{ github.token }}
-          REPOSITORY: ${{ github.repository }}
-          PR_NUMBER: ${{ steps.pr.outputs.number }}
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          label="$(jq -r '.label.name // empty | ascii_downcase' "$GITHUB_EVENT_PATH")"
-          if [[ "$label" != "in-progress" && "$label" != "approved" ]]; then
-            exit 0
-          fi
-
-          pr_json="$(gh api "repos/$REPOSITORY/pulls/$PR_NUMBER")"
-          approved="$(
-            jq -r '[.labels[].name | ascii_downcase] | any(. == "approved")' <<< "$pr_json"
-          )"
-          in_progress="$(
-            jq -r '[.labels[].name | ascii_downcase] | any(. == "in-progress")' <<< "$pr_json"
-          )"
-
-          if [[ "$approved" == "true" && "$in_progress" == "true" ]]; then
-            case "$label" in
-              approved)
-                echo "PR #$PR_NUMBER was newly approved; removing in-progress."
-                gh pr edit "$PR_NUMBER" --repo "$REPOSITORY" --remove-label in-progress
-                ;;
-              in-progress)
-                echo "PR #$PR_NUMBER was newly marked in-progress; removing Approved."
-                gh pr edit "$PR_NUMBER" --repo "$REPOSITORY" --remove-label approved
-                ;;
-            esac
-          fi
-
-      - name: Disarm when approval is removed or PR is on-hold
+      - name: Disable auto-merge for draft or on-hold PRs
         if: steps.pr.outputs.skip != 'true'
         env:
           GH_TOKEN: ${{ github.token }}
@@ -125,138 +52,25 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-
           pr_json="$(gh api "repos/$REPOSITORY/pulls/$PR_NUMBER")"
-          approved="$(
-            jq -r '[.labels[].name | ascii_downcase] | any(. == "approved")' <<< "$pr_json"
-          )"
-          native_auto_merge="$(jq -r '.auto_merge != null' <<< "$pr_json")"
-          on_hold="$(
-            jq -r '[.labels[].name | ascii_downcase] | any(. == "on-hold" or . == "on hold")' <<< "$pr_json"
-          )"
-          in_progress="$(
-            jq -r '[.labels[].name | ascii_downcase] | any(. == "in-progress")' <<< "$pr_json"
-          )"
-
-          if [[ "$on_hold" == "true" || "$in_progress" == "true" || ( "$approved" != "true" && "$native_auto_merge" != "true" ) ]]; then
-            echo "Disabling auto-merge for PR #$PR_NUMBER (approved=$approved, native_auto_merge=$native_auto_merge, on_hold=$on_hold, in_progress=$in_progress)."
-            gh pr merge "$PR_NUMBER" --repo "$REPOSITORY" --disable-auto || true
-          fi
-
-      - name: Validate approval gate
-        if: steps.pr.outputs.skip != 'true'
-        id: gate
-        env:
-          GH_TOKEN: ${{ github.token }}
-          REPOSITORY: ${{ github.repository }}
-          PR_NUMBER: ${{ steps.pr.outputs.number }}
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          pr_json="$(gh api "repos/$REPOSITORY/pulls/$PR_NUMBER")"
-
           state="$(jq -r '.state' <<< "$pr_json")"
           draft="$(jq -r '.draft' <<< "$pr_json")"
-          head_sha="$(jq -r '.head.sha' <<< "$pr_json")"
-          base_ref="$(jq -r '.base.ref' <<< "$pr_json")"
+          on_hold="$(jq -r '[.labels[].name | ascii_downcase] | any(. == "on-hold" or . == "on hold")' <<< "$pr_json")"
+          auto_merge="$(jq -r '.auto_merge != null' <<< "$pr_json")"
 
-          if [[ "$state" != "open" || "$draft" == "true" ]]; then
-            echo "PR #$PR_NUMBER is not an open, non-draft PR."
-            echo "ready=false" >> "$GITHUB_OUTPUT"
+          if [[ "$state" != "open" ]]; then
+            echo "PR #$PR_NUMBER is not open; nothing to guard."
             exit 0
           fi
 
-          on_hold="$(
-            jq -r '[.labels[].name | ascii_downcase] | any(. == "on-hold" or . == "on hold")' <<< "$pr_json"
-          )"
-          if [[ "$on_hold" == "true" ]]; then
-            echo "PR #$PR_NUMBER is on-hold; auto-merge is disabled."
-            echo "ready=false" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          in_progress="$(
-            jq -r '[.labels[].name | ascii_downcase] | any(. == "in-progress")' <<< "$pr_json"
-          )"
-          if [[ "$in_progress" == "true" ]]; then
-            echo "PR #$PR_NUMBER is in progress; approval must be granted again after work is complete."
-            echo "ready=false" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          approved="$(
-            jq -r '[.labels[].name | ascii_downcase] | any(. == "approved")' <<< "$pr_json"
-          )"
-          native_auto_merge="$(jq -r '.auto_merge != null' <<< "$pr_json")"
-          if [[ "$approved" != "true" && "$native_auto_merge" != "true" ]]; then
-            echo "PR #$PR_NUMBER has neither legacy approval nor native auto-merge authorization."
-            echo "ready=false" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          compare_json="$(gh api "repos/$REPOSITORY/compare/$base_ref...$head_sha")"
-          behind_by="$(jq -r '.behind_by' <<< "$compare_json")"
-          if [[ "$behind_by" != "0" ]]; then
-            echo "PR #$PR_NUMBER is $behind_by commit(s) behind $base_ref."
-            echo "ready=false" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          set +e
-          required_checks="$(gh pr checks "$PR_NUMBER" --repo "$REPOSITORY" --required --json name,bucket 2>&1)"
-          required_status=$?
-          set -e
-
-          if (( required_status != 0 )); then
-            if grep -Fq "no required checks reported" <<< "$required_checks"; then
-              required_checks="$(gh pr checks "$PR_NUMBER" --repo "$REPOSITORY" --json name,bucket)"
-              required_checks="$(
-                jq '[.[] | select(.name == "python / Package" or .name == "python / Python compatibility" or .name == "python / Quality" or .name == "Secret Scan")]' <<< "$required_checks"
-              )"
-              expected="$(jq 'length' <<< "$required_checks")"
-              if [[ "$expected" != "4" ]]; then
-                echo "Expected four core CI checks on a branch without required checks; found $expected."
-                echo "$required_checks" | jq -r '.[] | "  \(.name): \(.bucket)"'
-                echo "ready=false" >> "$GITHUB_OUTPUT"
-                exit 0
-              fi
-              echo "No required-check rules on $base_ref; validating the four core CI checks instead."
+          if [[ "$draft" == "true" || "$on_hold" == "true" ]]; then
+            if [[ "$auto_merge" == "true" ]]; then
+              gh pr merge "$PR_NUMBER" --repo "$REPOSITORY" --disable-auto
+              echo "Disabled native auto-merge for PR #$PR_NUMBER (draft=$draft, on_hold=$on_hold)."
             else
-              echo "$required_checks"
-              exit "$required_status"
+              echo "PR #$PR_NUMBER is guarded already (draft=$draft, on_hold=$on_hold)."
             fi
-          fi
-
-          incomplete="$(
-            jq '[.[] | select(.bucket != "pass" and .bucket != "skipping")] | length' <<< "$required_checks"
-          )"
-          if [[ "$incomplete" != "0" ]]; then
-            echo "CI is not fully successful yet."
-            echo "$required_checks" | jq -r '.[] | "  \(.name): \(.bucket)"'
-            echo "ready=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
-          echo "Authorization, freshness, and CI gates are satisfied for PR #$PR_NUMBER (approved=$approved, native_auto_merge=$native_auto_merge)."
-          echo "The PR is not marked in-progress."
-          echo "Review-thread resolution is enforced by the protected branch ruleset."
-          echo "head_sha=$head_sha" >> "$GITHUB_OUTPUT"
-          echo "ready=true" >> "$GITHUB_OUTPUT"
-
-      - name: Enable auto-merge
-        if: steps.gate.outputs.ready == 'true'
-        env:
-          GH_TOKEN: ${{ secrets.RELEASE_AUTOMATION_TOKEN }}
-          REPOSITORY: ${{ github.repository }}
-          PR_NUMBER: ${{ steps.pr.outputs.number }}
-          HEAD_SHA: ${{ steps.gate.outputs.head_sha }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          pr_json="$(gh api "repos/$REPOSITORY/pulls/$PR_NUMBER")"
-          if [[ "$(jq -r '.auto_merge != null' <<< "$pr_json")" == "true" ]]; then
-            echo "Native auto-merge is already enabled for PR #$PR_NUMBER."
-            exit 0
-          fi
-          gh pr merge "$PR_NUMBER"             --repo "$REPOSITORY"             --auto             --merge             --match-head-commit "$HEAD_SHA"
+          echo "PR #$PR_NUMBER is open, ready, and not on-hold. Native auto-merge authorization is unchanged."
