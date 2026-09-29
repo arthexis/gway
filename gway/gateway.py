@@ -213,9 +213,9 @@ class Gateway(Resolver):
 
         from .ingestion.python import ingest_python
         from .security.client import Controller as OAuthClientController
-        from .security.oauth_grant import Controller as OAuthGrantController
-        from .security.oauth_link import Controller as OAuthLinkController
-        from .security.oauth_token import Controller as OAuthTokenController
+        from .security.grant import Controller as OAuthGrantController
+        from .security.link import Controller as OAuthLinkController
+        from .security.credential import Controller as OAuthTokenController
         from .security.controller import Controller as SecurityController
         from .security.scope import Controller as ScopeController
         from .security.token import Controller as TokenController
