@@ -98,7 +98,11 @@ class RemoteApplication(RemoteDiscoveryApplication):
         published_scopes = (
             {} if runtime is None else getattr(runtime, "_published_scopes", {})
         )
-        converge_scope_registry(self.account.oauth.scopes, published_scopes)
+        converge_scope_registry(
+            self.account.oauth.scopes,
+            published_scopes,
+            retire_missing=False,
+        )
         self.oauth = RemoteOAuthProtocol(
             metadata,
             self.account,
