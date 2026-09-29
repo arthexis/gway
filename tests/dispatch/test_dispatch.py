@@ -345,3 +345,20 @@ def test_semantic_sigil_argument_does_not_become_pipeline_selector(gateway):
     gateway.view_app = gateway.wrap("view_app", view_app)
 
     assert dispatch(gateway, "setup app - view app [label]") == ("health", marker)
+
+
+@pytest.mark.parametrize(
+    "source",
+    [".", "..", "./project", "../project", "/tmp/project", "owner/project"],
+)
+def test_operation_resolution_preserves_path_like_first_argument(gateway, source):
+    def deploy(source):
+        return source
+
+    gateway.deploy = gateway.wrap("deploy", deploy)
+
+    resolution = resolve_operation(gateway, ["deploy", source])
+
+    assert resolution.candidate == "deploy"
+    assert [str(token) for token in resolution.arguments] == [source]
+    assert dispatch(gateway, f"deploy {source}") == source
