@@ -161,6 +161,7 @@ class Controller:
                 topic=app.topic,
                 route=app.route,
                 views=app.views,
+                headers=app.headers,
                 templates=str(recipe_base(self.gateway).resolve()),
                 template=app.template,
             )
