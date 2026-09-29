@@ -48,11 +48,18 @@ jobs:
 
           pr_json="$(gh api "repos/$REPOSITORY/pulls/$PR_NUMBER")"
           head_ref="$(jq -r '.head.ref' <<< "$pr_json")"
+          head_repo="$(jq -r '.head.repo.full_name // empty' <<< "$pr_json")"
           base_sha="$(jq -r '.base.sha' <<< "$pr_json")"
           head_sha="$(jq -r '.head.sha' <<< "$pr_json")"
           version_pr="$(jq -r '[.labels[].name | ascii_downcase] | any(. == "version-only")' <<< "$pr_json")"
           workflow_pr="$(jq -r '[.labels[].name | ascii_downcase] | any(. == "workflow")' <<< "$pr_json")"
           integration_pr="$(jq -r '[.labels[].name | ascii_downcase] | any(. == "integration")' <<< "$pr_json")"
+
+          if [[ "$head_repo" != "$REPOSITORY" ]]; then
+            echo "::error::Label-driven CI dispatch is not supported for fork PR #$PR_NUMBER because the head ref does not exist in the base repository."
+            echo "::error::Push a new commit to the fork branch, or update CI scope before opening the PR, so pull_request CI can validate the fork head directly."
+            exit 1
+          fi
 
           dispatch() {
             local workflow="$1"
