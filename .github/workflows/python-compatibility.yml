@@ -19,6 +19,10 @@ on:
         description: Pull request head SHA
         required: false
         type: string
+      head_repo:
+        description: Pull request head repository
+        required: false
+        type: string
       version_pr:
         description: Whether version-only is active
         required: false
@@ -50,6 +54,8 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
+          repository: ${{ inputs.head_repo || github.repository }}
+          ref: ${{ inputs.head_sha || github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
           persist-credentials: false
       - name: Validate version-only PR
@@ -91,6 +97,8 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
+          repository: ${{ inputs.head_repo || github.repository }}
+          ref: ${{ inputs.head_sha || github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
           persist-credentials: false
       - name: Validate version-only PR
