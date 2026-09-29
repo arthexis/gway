@@ -193,7 +193,8 @@ def test_remote_expose_composes_http_then_https_only():
 def test_remote_http_recipe_bootstraps_acme_and_remote_nginx_template():
     rendered = _commands("http.rx")
 
-    assert rendered[:2] == [
+    assert rendered[:3] == [
+        "expose validate site [site]",
         "ingest [nginx_executable|nginx] --kind proc --sudo",
         "ingest [mkdir_executable|mkdir] --kind proc --sudo",
     ]
@@ -208,7 +209,8 @@ def test_remote_http_recipe_bootstraps_acme_and_remote_nginx_template():
 def test_remote_https_recipe_gets_certificate_before_tls_render():
     rendered = _commands("https.rx")
 
-    assert rendered[:2] == [
+    assert rendered[:3] == [
+        "expose validate site [site]",
         "ingest [nginx_executable|nginx] --kind proc --sudo",
         "ingest [certbot_executable|certbot] --kind proc --sudo",
     ]
