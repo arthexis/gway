@@ -42,11 +42,8 @@ def resolve_recipe_stage(runtime, tokens, *, pipeline):
             except (OSError, RuntimeError):
                 pass
         if bare is not None:
-            from ..dispatch import resolve_operation
-
-            try:
-                resolve_operation(runtime, tokens[:1], pipeline=pipeline)
-            except LookupError:
+            existing = runtime.ops.resolve(str(source).replace(" ", "."))
+            if existing is None:
                 stage, remaining = split_recipe_stage(tokens)
                 return bare, stage[1:], remaining
 
