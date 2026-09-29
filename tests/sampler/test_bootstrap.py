@@ -34,6 +34,9 @@ def test_watchtower_bootstrap_recipe_owns_installer_site_dns_and_tls(recipe_comm
     rendered = "\n".join(commands)
 
     assert "install.arthexis.com" in rendered
+    assert "setup app installer" in commands
+    assert "header cache-control no-store" in commands
+    assert "headers" in commands
     assert "watchtower catalog" in commands
     assert any(command.startswith("render installer.html") for command in commands)
     assert any(command.startswith("render gway.sh") for command in commands)
@@ -109,9 +112,12 @@ def test_bootstrap_https_site_serves_ui_and_exact_installer_paths(sampler_path):
     assert "location = /gway" in nginx
     assert "location = /satellite" in nginx
     assert "location = /control" in nginx
-    assert nginx.count('Cache-Control "no-store"') == 4
-    assert nginx.count('Strict-Transport-Security "max-age=31536000" always') == 5
-    assert nginx.count('X-Content-Type-Options "nosniff" always') == 5
-    assert nginx.count('Referrer-Policy "same-origin" always') == 5
+    assert "[headers|]" in nginx
+    assert 'Cache-Control "no-store"' not in nginx
+    assert nginx.count('Strict-Transport-Security "max-age=31536000" always') == 1
+    assert nginx.count('X-Content-Type-Options "nosniff" always') == 1
+    assert nginx.count('Referrer-Policy "same-origin" always') == 1
+    tls_locations = nginx.split("    location = /", 1)[1]
+    assert "add_header" not in tls_locations
     assert "location / {" in nginx
     assert "return 404;" in nginx
