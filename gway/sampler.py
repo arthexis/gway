@@ -306,7 +306,21 @@ def expand_root(runtime, tokens, root_path, *, route_name="root"):
     module = load(str(relative), root_path=base, namespace=route_name)
     register = getattr(module, "register", None)
     if callable(register):
+        registry = runtime.ops._registry
+        selected_before = dict(registry.records)
+        aliases_before = dict(registry.aliases)
         register(runtime)
+        for name, previous in selected_before.items():
+            current = registry.records.get(name)
+            if current is None or current.callable is previous.callable:
+                continue
+            history = registry.history.setdefault(name, [])
+            if history and history[-1] == previous:
+                history.pop()
+            history.append(current)
+            registry.records[name] = previous
+        for alias, canonical in aliases_before.items():
+            registry.aliases[alias] = canonical
     loaded.add(key)
     return True
 
