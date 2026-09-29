@@ -41,6 +41,8 @@ class Controller:
             for pull in pulls:
                 labels = self._labels(pull)
                 normalized = {label.casefold().replace(" ", "-") for label in labels}
+                legacy_approved = "approved" in normalized
+                native_auto_merge = bool(pull.get("auto_merge"))
                 item = {
                     "number": pull.get("number"),
                     "title": pull.get("title"),
@@ -49,7 +51,9 @@ class Controller:
                     "head": (pull.get("head") or {}).get("sha"),
                     "base": (pull.get("base") or {}).get("ref"),
                     "deploy": "deploy" in normalized,
-                    "approved": "approved" in normalized,
+                    "approved": legacy_approved,
+                    "auto_merge": native_auto_merge,
+                    "authorized": legacy_approved or native_auto_merge,
                 }
                 if "on-hold" in normalized:
                     excluded.append(item)
