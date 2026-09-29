@@ -74,7 +74,11 @@ def test_installer_page_derives_endpoint_and_command_from_installer(sampler_path
     assert "[installers_json]" in page
     assert 'new URL("/" + installer, window.location.origin).href' in page
     assert '"curl -fsSL " + endpoint(installer) + " | sh"' in page
-    assert 'searchParams.get("box")' in page\n    assert 'searchParams.set("box", item.installer)' in page\n    assert 'searchParams.delete("box")' in page\n    assert "location.hash" not in page\n    assert "navigator.clipboard.writeText" in page
+    assert 'searchParams.get("box")' in page
+    assert 'searchParams.set("box", item.installer)' in page
+    assert 'searchParams.delete("box")' in page
+    assert "location.hash" not in page
+    assert "navigator.clipboard.writeText" in page
     assert "Install other projects" in page
     assert "https://install.arthexis.com" not in page
 
