@@ -3,6 +3,7 @@ import importlib.util
 
 from fastmcp import Client
 
+from gway.config import bootstrap
 from gway.sampler import root as sampler_root
 
 
@@ -305,6 +306,7 @@ role = "control"
         encoding="utf-8",
     )
     monkeypatch.chdir(tmp_path)
+    bootstrap(gateway, start=tmp_path)
     gateway.wrap(
         "wire.check",
         lambda *, mutate=False: {"ready": True},
