@@ -105,6 +105,7 @@ def test_app_composition_operations_are_declared_non_mutating(gateway):
     assert gateway.setup_app.mutates is False
     assert gateway.view_app.mutates is False
     assert gateway.header_app.mutates is False
+    assert gateway.headers_app.mutates is False
 
     app = gateway.execute("setup app remote", mutate=False)
 
@@ -374,3 +375,17 @@ def test_serve_app_is_mutating_lifecycle_operation(gateway):
     gateway("setup app remote")
 
     assert gateway.serve_app.mutates is True
+
+
+
+def test_headers_operation_renders_current_semantic_app_policy(gateway):
+    gateway("setup app remote")
+    gateway("header Cache-Control no-store")
+    gateway("header X-Test \"one two\"")
+
+    rendered = gateway("headers")
+
+    assert rendered == (
+        'add_header cache-control "no-store" always;\n'
+        '    add_header x-test "one two" always;'
+    )
