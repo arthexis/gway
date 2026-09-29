@@ -61,6 +61,18 @@ def test_full_access_scope_authorizes_operation_added_after_token_creation(gatew
     assert payload == {"result": "future-ok"}
 
 
+def test_read_scopes_include_watch(gateway):
+    metadata = RemoteOAuthMetadata.from_origin(
+        "https://remote.example.test",
+        resource_path="/mcp",
+    )
+    RemoteApplication(metadata, runtime=gateway)
+    scopes = ScopeRegistry(gateway.security_path)
+
+    for name in ("logs-read", "source-read", "operator-read", "arthexis-read"):
+        assert "watch" in scopes.require(name).operations
+
+
 def test_query_executes_authorized_non_mutating_operation(gateway):
     seen = []
 
