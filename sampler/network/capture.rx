@@ -1,0 +1,10 @@
+# Plan/apply one temporary charger-facing network redirect.
+# The returned handle is owned by Gway and can be removed with:
+#   gway network remove <id>
+default
+--target 127.0.0.1
+
+network redirect [interface] [destination] [port]
+--target [target]
+--target-port [target_port]
+--sudo

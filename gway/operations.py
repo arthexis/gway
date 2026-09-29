@@ -5,6 +5,18 @@ from dataclasses import dataclass
 from enum import Enum
 
 
+_INVERSE_VERBS = {
+    "create": "delete",
+    "delete": "create",
+    "install": "uninstall",
+    "uninstall": "install",
+    "start": "stop",
+    "stop": "start",
+    "link": "remove",
+    "redirect": "remove",
+}
+
+
 @dataclass(frozen=True)
 class OperationRecord:
     """One executable operation and its semantic subject."""
@@ -231,6 +243,31 @@ class Operations(Mapping):
     def records(self):
         """Return the live canonical operation records in registration order."""
         return tuple(self._registry.records.values())
+
+    def rollback_operation(self, operation, default=None):
+        """Resolve the semantic inverse operation for a registered callable.
+
+        An explicit __gway_rollback__ operation identity wins. Otherwise,
+        conventional inverse verbs are resolved on the same semantic subject.
+        """
+        canonical = self.canonical_name(operation)
+        if canonical is None:
+            return default
+        record = self._registry.records.get(canonical)
+        if record is None:
+            return default
+
+        explicit = getattr(record.callable, "__gway_rollback__", None)
+        if explicit:
+            if callable(explicit):
+                return explicit
+            resolved = self.resolve(str(explicit))
+            return resolved if resolved is not None else default
+
+        inverse = _INVERSE_VERBS.get(record.op)
+        if inverse is None or record.sub is None:
+            return default
+        return self.resolve_pair(inverse, record.sub, default)
 
     def __getitem__(self, op):
         items = {
