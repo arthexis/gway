@@ -1,6 +1,7 @@
 from urllib.parse import urlencode
 
 
+from gway.config import bootstrap
 from gway.remote.metadata import RemoteOAuthMetadata
 from gway.remote.server import MAX_QUERY_COMMAND_BYTES, RemoteApplication
 from gway.security.scopes import ScopeRegistry
@@ -215,6 +216,7 @@ role = "{role}"
         encoding="utf-8",
     )
     monkeypatch.chdir(tmp_path)
+    bootstrap(gateway, start=tmp_path)
     gateway.wrap(
         "wire.check",
         lambda *, mutate=False: {"ready": True},
@@ -333,7 +335,7 @@ def test_remote_watch_aggregates_authorized_published_contributor(
 
     status, _, payload = _get(application, bearer, "watch --only demo")
 
-    assert status == 200
+    assert status == 200, payload
     result = payload["result"]
     assert result["demo"]["status"] == "ok"
     assert result["demo"]["result"] == {"ready": True}
