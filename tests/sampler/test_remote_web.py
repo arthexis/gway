@@ -475,11 +475,18 @@ def test_remote_no_store_policy_is_declared_at_server_scope():
         assert "add_header" not in block
 
 
-def test_remote_expose_validates_site_before_nested_mutations():
-    rendered = _commands("expose.rx")
+def test_remote_standalone_stages_validate_site_before_mutations():
+    http = _commands("http.rx")
+    https = _commands("https.rx")
 
-    assert rendered[0] == "expose validate site [site]"
-    assert rendered[1:] == ["./http.rx", "./https.rx"]
+    assert http[0] == "expose validate site [site]"
+    assert https[0] == "expose validate site [site]"
+    assert http.index("expose validate site [site]") < next(
+        index for index, command in enumerate(http) if command.startswith("render ")
+    )
+    assert https.index("expose validate site [site]") < next(
+        index for index, command in enumerate(https) if command.startswith("certbot ")
+    )
 
 
 @pytest.mark.parametrize(
