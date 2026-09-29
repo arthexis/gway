@@ -214,12 +214,36 @@ jobs:
             exit 0
           fi
 
-          required_checks="$(gh pr checks "$PR_NUMBER" --repo "$REPOSITORY" --required --json name,bucket)"
+          set +e
+          required_checks="$(gh pr checks "$PR_NUMBER" --repo "$REPOSITORY" --required --json name,bucket 2>&1)"
+          required_status=$?
+          set -e
+
+          if (( required_status != 0 )); then
+            if grep -Fq "no required checks reported" <<< "$required_checks"; then
+              required_checks="$(gh pr checks "$PR_NUMBER" --repo "$REPOSITORY" --json name,bucket)"
+              required_checks="$(
+                jq '[.[] | select(.name == "python / Package" or .name == "python / Python compatibility" or .name == "python / Quality" or .name == "Secret Scan")]' <<< "$required_checks"
+              )"
+              expected="$(jq 'length' <<< "$required_checks")"
+              if [[ "$expected" != "4" ]]; then
+                echo "Expected four core CI checks on a branch without required checks; found $expected."
+                echo "$required_checks" | jq -r '.[] | "  \(.name): \(.bucket)"'
+                echo "ready=false" >> "$GITHUB_OUTPUT"
+                exit 0
+              fi
+              echo "No required-check rules on $base_ref; validating the four core CI checks instead."
+            else
+              echo "$required_checks"
+              exit "$required_status"
+            fi
+          fi
+
           incomplete="$(
             jq '[.[] | select(.bucket != "pass" and .bucket != "skipping")] | length' <<< "$required_checks"
           )"
           if [[ "$incomplete" != "0" ]]; then
-            echo "Required CI is not fully successful yet."
+            echo "CI is not fully successful yet."
             echo "$required_checks" | jq -r '.[] | "  \(.name): \(.bucket)"'
             echo "ready=false" >> "$GITHUB_OUTPUT"
             exit 0
