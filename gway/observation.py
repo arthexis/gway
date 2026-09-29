@@ -224,7 +224,7 @@ class Controller:
         except_=None,
         problems=None,
         changed=None,
-        published=None,
+        published: bool = False,
         scope=None,
         mutate=False,
         **values,
