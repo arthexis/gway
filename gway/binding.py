@@ -543,7 +543,13 @@ def bind_arguments(
                     "a greedy string argument has started"
                 )
             parts = [convert_argument(part, greedy, runtime) for part in tail]
-            converted_positional.append(" ".join(str(part) for part in parts))
+            _bind_positional_value(
+                signature,
+                greedy,
+                " ".join(str(part) for part in parts),
+                converted_positional,
+                keywords,
+            )
             filled.add(greedy.name)
             break
 
