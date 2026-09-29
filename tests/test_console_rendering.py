@@ -69,3 +69,24 @@ def test_lowercase_j_and_json_are_exact_cli_aliases(run_cli):
     assert short_stderr == long_stderr == ""
     assert short_stdout == long_stdout
     assert json.loads(short_stdout)
+
+
+def test_timed_json_keeps_stdout_machine_readable(run_cli, tmp_path, monkeypatch):
+    (tmp_path / "pyproject.toml").write_text(
+        """
+[project]
+name = "demo"
+
+[tool.gway.variables]
+role = "control"
+""".lstrip(),
+        encoding="utf-8",
+    )
+    monkeypatch.chdir(tmp_path)
+
+    status, stdout, _ = run_cli("-t", "-j", "watch", "--only", "node")
+
+    assert status == 0
+    payload = json.loads(stdout)
+    assert set(payload) == {"node", "health", "changed_at", "cursor"}
+    assert "[timed]" not in stdout
