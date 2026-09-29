@@ -114,3 +114,14 @@ def test_app_spec_constructor_keeps_last_value_for_duplicate_header():
     )
 
     assert app.headers == (HeaderSpec("x-test", "two"),)
+
+
+
+def test_header_spec_rejects_response_splitting():
+    with pytest.raises(ValueError, match="line breaks"):
+        HeaderSpec("X-Test", "safe\r\nX-Evil: yes")
+
+
+def test_header_spec_rejects_invalid_name_token():
+    with pytest.raises(ValueError, match="HTTP token"):
+        HeaderSpec("Bad Header", "value")
