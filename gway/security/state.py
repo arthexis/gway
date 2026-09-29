@@ -4,7 +4,7 @@ from pathlib import Path
 import sqlite3
 
 
-_SCHEMA_VERSION = 6
+_SCHEMA_VERSION = 7
 
 
 class SecurityState:
@@ -58,7 +58,8 @@ class SecurityState:
             """
             CREATE TABLE IF NOT EXISTS scopes (
                 id INTEGER PRIMARY KEY,
-                name TEXT NOT NULL UNIQUE
+                name TEXT NOT NULL UNIQUE,
+                owner TEXT
             );
 
             CREATE TABLE IF NOT EXISTS scope_operations (
@@ -196,5 +197,12 @@ class SecurityState:
                     "ALTER TABLE oauth_clients ADD COLUMN "
                     "token_endpoint_auth_method TEXT NOT NULL DEFAULT 'none'"
                 )
+        if version < 7:
+            columns = {
+                row[1]
+                for row in connection.execute("PRAGMA table_info(scopes)")
+            }
+            if "owner" not in columns:
+                connection.execute("ALTER TABLE scopes ADD COLUMN owner TEXT")
         if version < _SCHEMA_VERSION:
             connection.execute(f"PRAGMA user_version = {_SCHEMA_VERSION}")
