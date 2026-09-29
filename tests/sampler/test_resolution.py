@@ -70,3 +70,13 @@ def test_python_310_workflow_delegates_regression_to_project_ci():
     assert "python -m pytest" in forward
     assert "push:" in workflow
     assert "branches: [main]" in workflow
+
+
+def test_registered_operation_still_shadows_project_bare_recipe(tmp_path, monkeypatch):
+    recipe = tmp_path / "status.rx"
+    recipe.write_text("version\n", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+    gateway = Gateway()
+    gateway.status = gateway.wrap("status", lambda: "registered")
+
+    assert resolve_recipe_stage(gateway, tokenize("status"), pipeline=None) is None
