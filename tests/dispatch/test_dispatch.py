@@ -61,6 +61,24 @@ def test_dispatch_stage_accepts_pipeline_before_inline_arguments(gateway):
     assert result == ["A"]
 
 
+def test_explicit_semantic_option_precedes_pipeline_adaptation(gateway):
+    piped = ["A", "B"]
+    gateway.results.insert("chargers", piped)
+
+    def summarize(prefix, chargers):
+        return prefix, chargers
+
+    gateway.summarize = gateway.wrap("summarize", summarize)
+
+    result = dispatch_stage(
+        gateway,
+        ["summarize", "--chargers", "manual"],
+        pipeline=piped,
+    )
+
+    assert result == (piped, "manual")
+
+
 def test_native_arguments_still_reject_inline_tokens(gateway):
     def echo(value):
         return value
