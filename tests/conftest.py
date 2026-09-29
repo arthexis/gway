@@ -9,7 +9,10 @@ from gway.console import cli_main
 
 
 @pytest.fixture
-def gateway():
+def gateway(tmp_path, monkeypatch):
+    """Return a Gateway with per-test durable state and cache isolation."""
+    monkeypatch.setenv("GWAY_DATA_DIR", str(tmp_path / "gway-data"))
+    monkeypatch.setenv("GWAY_CACHE_DIR", str(tmp_path / "gway-cache"))
     runtime = Gateway()
     runtime.context.clear()
     runtime.results.clear()
