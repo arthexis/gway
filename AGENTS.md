@@ -180,6 +180,30 @@ Currently `int`, `float`, and `bool` annotations receive primitive
 conversion. Direct Python calls to wrapped functions are not silently retyped;
 CLI/recipe conversion belongs to the binding boundary.
 
+Raw pipeline adaptation is semantic when possible. If the previous result has a
+known published subject and the consumer has an unbound parameter with that exact
+name, GWAY binds the piped value to that parameter even when it is not the first
+positional parameter. This allows explicit command arguments to keep their natural
+positions:
+
+```python
+def summarize(prefix, chargers):
+    ...
+```
+
+```text
+get chargers - summarize report
+```
+
+Here `report` binds to `prefix`, while the piped `chargers` result binds to
+`chargers`. Keyword-only parameters participate in the same semantic matching.
+
+Explicit user arguments always win. If the matching semantic parameter is already
+bound, or if the pipeline result has no matching subject parameter, GWAY falls
+back to the ordinary positional-prefix pipeline behavior. Explicit chain selectors
+such as `[n]` and `[*]` remain available when the author needs precise manual
+placement.
+
 With `--interactive`, missing required arguments are prompted for before
 semantic completion. A parameter whose default is a sigil is also prompted when
 the sigil's primary expression cannot resolve. If that sigil declares a literal
@@ -1322,3 +1346,28 @@ Once something is classified as a filesystem source, it is always delegated to
 a path; they are only used later to select an available path ingestor. This
 keeps extensionless files and future source types eligible for ingestion routing
 without changing top-level path inference.
+
+
+## Web response-header policy
+
+GWAY-owned HTTPS serving templates define universal transport/security headers at
+the HTTPS server scope. Do not repeat those baseline headers inside individual
+NGINX locations: a location-level `add_header` changes NGINX inheritance and can
+silently suppress server-level headers.
+
+Application-specific response policy belongs to the semantic application model.
+Use the `header` operation to modify the current `AppSpec`, for example:
+
+```text
+setup app installer
+header cache-control no-store
+```
+
+The semantic header declaration is backend-neutral. Serving/exposure adapters are
+responsible for rendering it safely for their backend. The `headers` operation
+exists for static recipes that need the maintained NGINX rendering without going
+through `expose app`.
+
+Keep cache policy, CSP, CORS, Permissions-Policy, and similar application choices
+out of universal GWAY defaults unless they are genuinely safe and required for
+every application served by GWAY.
