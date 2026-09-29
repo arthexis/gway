@@ -73,6 +73,17 @@ gway security oauth grants
 gway security oauth tokens
 ```
 
+OAuth grant scopes can be managed without recreating the connection:
+
+```text
+gway security oauth grant show <grant-id>
+gway security oauth grant bind <grant-id> operator-read
+gway security oauth grant unbind <grant-id> operator-read
+gway security oauth grant set <grant-id> logs-read operator-read
+```
+
+A grant can never exceed the scopes bound to its linked native Gway token.
+
 The OAuth token listing exposes only safe metadata and public ids; bearer
 secrets remain one-time material and are never persisted in plaintext.
 `security oauth token clear` revokes all issued OAuth access and refresh
