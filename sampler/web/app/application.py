@@ -3,7 +3,12 @@
 from pathlib import Path
 
 from .appspec import AppSpec, BindingSpec, ViewSpec
-from .exposure import ExposureSpec, LocalAppService, apply_exposure
+from .exposure import (
+    ExposureSpec,
+    LocalAppService,
+    apply_exposure,
+    nginx_header_directives,
+)
 from gway.binding import Literal
 from gway.publication import SKIP_PUBLICATION
 
@@ -236,6 +241,18 @@ class Controller:
             raise TypeError("header app requires an AppSpec")
         return app.with_header(name, value)
 
+    def headers_app(
+        self,
+        *,
+        app: AppSpec,
+        mutate=False,
+    ):
+        """Render the current app's semantic response headers for the active web backend."""
+        del mutate
+        if not isinstance(app, AppSpec):
+            raise TypeError("headers requires an AppSpec")
+        return nginx_header_directives(app.headers)
+
     def expose_app(
         self,
         domain,
@@ -342,6 +359,13 @@ def register(gateway):
         sub="app",
     )
     gateway.ops.register_alias("header", gateway.header_app)
+    gateway.headers_app = gateway.wrap(
+        "headers.app",
+        controller.headers_app,
+        op="headers",
+        sub="headers",
+    )
+    gateway.ops.register_alias("headers", gateway.headers_app)
     gateway.serve_app = gateway.wrap(
         "serve.app",
         controller.serve_app,
