@@ -2,7 +2,6 @@ import asyncio
 from contextvars import ContextVar
 import logging
 
-import pytest
 
 from gway.runner import invoke
 
