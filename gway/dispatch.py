@@ -547,6 +547,8 @@ def _operation_candidate_tokens(tokens):
         value = token_value(token)
         if value == "-" or value == "--" or value.startswith("--"):
             break
+        if value in {".", ".."} or "/" in value or "\\" in value:
+            break
         values.append(value)
     return values
 
