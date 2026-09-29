@@ -105,6 +105,6 @@ def test_http_result_composes_through_gateway_chain(gateway, monkeypatch):
         )(),
     )
 
-    result = gateway("http get https://example.test/status ; check status --is 200")
+    result = gateway("http get https://example.test/status - check --status 200")
 
-    assert result is True
+    assert result["status"] == 200
