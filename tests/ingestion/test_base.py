@@ -126,3 +126,16 @@ def test_mutate_parameter_must_have_boolean_default():
 
     with pytest.raises(TypeError, match="must default to True or False"):
         IngestedOperation(("demo", "ambiguous"), ambiguous).mutates
+
+
+
+def test_unresolved_annotation_preserves_reserved_mutation_contract():
+    def reader(value=None, *, mutate=False):
+        return value, mutate
+
+    reader.__annotations__ = {"value": "MissingType", "mutate": "bool"}
+
+    operation = IngestedOperation(("demo", "reader"), reader)
+
+    assert operation.mutates is False
+    assert operation.supports_no_mutate is True
