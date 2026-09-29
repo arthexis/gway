@@ -13,6 +13,10 @@ ingest [mkdir_executable|mkdir] --kind proc --sudo
 ingest [nginx_executable|nginx] --kind proc --sudo
 ingest [certbot_executable|certbot] --kind proc --sudo
 
+setup app installer
+header cache-control no-store
+headers
+
 mkdir -p [root]
 mkdir -p [acme_webroot]
 
