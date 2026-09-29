@@ -123,7 +123,7 @@ def test_header_app_consumes_and_publishes_semantic_app(gateway):
     ]
 
 
-def test_header_then_view_chain_uses_semantic_app_receiver(gateway):
+def test_header_then_view_chain_uses_semantic_app_parameter(gateway):
     _register_handler(gateway, "remote.health")
     gateway("setup app remote")
 
@@ -137,7 +137,7 @@ def test_header_then_view_chain_uses_semantic_app_receiver(gateway):
     assert updated.views[0].callable_name == "remote.health"
 
 
-def test_view_then_header_chain_uses_semantic_app_receiver(gateway):
+def test_view_then_header_chain_uses_semantic_app_parameter(gateway):
     _register_handler(gateway, "remote.health")
     gateway("setup app remote")
 
