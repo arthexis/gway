@@ -561,6 +561,53 @@ def expand_installed_project(runtime, installation, *, path=None):
     return loaded
 
 
+def _publish_project_capabilities(runtime, data, *, source):
+    """Merge one project's declarative integration capabilities into runtime state."""
+    scopes = dict(getattr(runtime, "_published_scopes", {}))
+    for name, definition in project_scopes(data, source=source).items():
+        existing = scopes.get(name)
+        if existing is not None and (
+            existing["operations"] != definition["operations"]
+            or existing["environment"] != definition["environment"]
+        ):
+            raise ValueError(f"Published security scope collision: {name}")
+        scopes[name] = definition
+
+    contributors = list(getattr(runtime, "_watch_contributors", ()))
+    by_section = {item["section"]: item for item in contributors}
+    for contributor in project_watch(data, source=source):
+        existing = by_section.get(contributor["section"])
+        if existing is not None and existing["command"] != contributor["command"]:
+            raise ValueError(
+                f"Published Watch section collision: {contributor['section']}"
+            )
+        if existing is None:
+            contributors.append(contributor)
+            by_section[contributor["section"]] = contributor
+
+    runtime._published_scopes = scopes
+    runtime._watch_contributors = tuple(contributors)
+    return scopes, tuple(contributors)
+
+
+def _discover_installed_capabilities(runtime, installations):
+    """Discover declarative capabilities without importing installed product code."""
+    from . import toml
+
+    runtime._published_scopes = {}
+    runtime._watch_contributors = ()
+    for installation in installations:
+        project_file = installation.install_path / "pyproject.toml"
+        if not project_file.is_file():
+            continue
+        data = toml.load(project_file)
+        _publish_project_capabilities(
+            runtime,
+            data,
+            source=installation.name,
+        )
+
+
 def discover_managed_projects(runtime):
     """Remember installed projects and their lazy conventional entrypoints."""
     discovered = {}
@@ -614,6 +661,7 @@ def discover_managed_projects(runtime):
             project_record.paths.add(parts)
 
     runtime._installed = discovered
+    _discover_installed_capabilities(runtime, discovered.values())
 
     from .souschef.discovery import discover as discover_souschef
 
@@ -651,6 +699,7 @@ def bootstrap(runtime, *, start=None):
     )
     runtime._guide_rules = project_guidance(data, source=guide_source)
     runtime._guide_documents = project_guide_documents(data, project_file.parent)
+    _publish_project_capabilities(runtime, data, source=guide_source)
     if isinstance(project_name, str) and project_name.strip():
         from .project import project_scripts
 
