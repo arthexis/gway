@@ -79,3 +79,23 @@ CORE_SCOPE_DEFINITIONS = {
 }
 
 CORE_SCOPE_NAMES = frozenset(CORE_SCOPE_DEFINITIONS)
+
+
+def converge_scope_registry(registry, published=()):
+    """Converge Gway-owned and product-published scopes into one registry."""
+    definitions = dict(CORE_SCOPE_DEFINITIONS)
+    for name, definition in dict(published).items():
+        if name in CORE_SCOPE_NAMES:
+            raise ValueError(f"Published security scope shadows Gway core scope: {name}")
+        definitions[name] = {
+            "operations": frozenset(definition.get("operations", ())),
+            "environment": frozenset(definition.get("environment", ())),
+        }
+
+    for name, definition in definitions.items():
+        registry.replace(
+            name,
+            operations=definition["operations"],
+            environment=definition["environment"],
+        )
+    return definitions
