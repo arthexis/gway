@@ -629,7 +629,7 @@ def resolve_operation(runtime, tokens, *, pipeline=_MISSING):
             for candidate in _operation_spelling_candidates(list_values):
                 value = runtime.ops.resolve(candidate)
                 if callable(value):
-                    return _resolved(value, [], candidate)
+                    return _resolved(value, tokens[len(values):], candidate)
 
     namespace = " ".join(values)
     if runtime.ops.is_namespace(namespace):
