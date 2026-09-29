@@ -774,8 +774,14 @@ def dispatch_stage(
         has_explicit_selector = any(
             not is_literal(token)
             and isinstance(token_value(token), str)
-            and token_value(token).startswith("[")
-            and token_value(token).endswith("]")
+            and (
+                token_value(token) == "[*]"
+                or (
+                    token_value(token).startswith("[")
+                    and token_value(token).endswith("]")
+                    and token_value(token)[1:-1].strip().lstrip("+-").isdigit()
+                )
+            )
             for token in arguments
         )
         if arguments and has_explicit_selector:
