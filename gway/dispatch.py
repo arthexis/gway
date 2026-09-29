@@ -771,11 +771,14 @@ def dispatch_stage(
     initial_args = tuple(args)
     initial_kwargs = kwargs
     if pipeline is not _MISSING:
-        receiver = getattr(func, "__gway_receiver__", None)
-        producer_subject = runtime.results.subject(pipeline)
-        pipeline_is_receiver = receiver is not None and producer_subject == receiver
-
-        if arguments and not pipeline_is_receiver:
+        has_explicit_selector = any(
+            not is_literal(token)
+            and isinstance(token_value(token), str)
+            and token_value(token).startswith("[")
+            and token_value(token).endswith("]")
+            for token in arguments
+        )
+        if arguments and has_explicit_selector:
             bound = bind_arguments(
                 func,
                 arguments,
