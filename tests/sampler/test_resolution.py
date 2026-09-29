@@ -24,10 +24,11 @@ def test_exact_operation_still_shadows_sampler_recipe():
     assert resolve_recipe_stage(runtime, tokens, pipeline=None) is None
 
 
-def test_project_root_recipe_resolves_as_bare_command(gateway, tmp_path, monkeypatch):
+def test_project_root_recipe_resolves_as_bare_command(tmp_path, monkeypatch):
     recipe = tmp_path / "ci.rx"
     recipe.write_text("echo project-ci\\n", encoding="utf-8")
     monkeypatch.chdir(tmp_path)
+    gateway = Gateway()
 
     tokens = tokenize("ci")
     resolved = resolve_recipe_stage(gateway, tokens, pipeline=None)
