@@ -1,0 +1,76 @@
+name: Native Auto-Merge Guard
+
+on:
+  pull_request_target:
+    types: [labeled, converted_to_draft, reopened]
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: Pull request number to reconcile
+        required: true
+        type: number
+
+permissions:
+  pull-requests: write
+  issues: read
+
+concurrency:
+  group: native-auto-merge-guard-${{ github.event.pull_request.number || inputs.pr_number || github.run_id }}
+  cancel-in-progress: false
+
+jobs:
+  guard:
+    name: Guard native auto-merge
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve pull request
+        id: pr
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_PR: ${{ inputs.pr_number }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+            pr_number="$INPUT_PR"
+          else
+            pr_number="$(jq -r '.pull_request.number // empty' "$GITHUB_EVENT_PATH")"
+          fi
+          if [[ -z "$pr_number" ]]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "number=$pr_number" >> "$GITHUB_OUTPUT"
+          echo "skip=false" >> "$GITHUB_OUTPUT"
+
+      - name: Disable auto-merge for draft or on-hold PRs
+        if: steps.pr.outputs.skip != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          PR_NUMBER: ${{ steps.pr.outputs.number }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          pr_json="$(gh api "repos/$REPOSITORY/pulls/$PR_NUMBER")"
+          state="$(jq -r '.state' <<< "$pr_json")"
+          draft="$(jq -r '.draft' <<< "$pr_json")"
+          on_hold="$(jq -r '[.labels[].name | ascii_downcase] | any(. == "on-hold" or . == "on hold")' <<< "$pr_json")"
+          auto_merge="$(jq -r '.auto_merge != null' <<< "$pr_json")"
+
+          if [[ "$state" != "open" ]]; then
+            echo "PR #$PR_NUMBER is not open; nothing to guard."
+            exit 0
+          fi
+
+          if [[ "$draft" == "true" || "$on_hold" == "true" ]]; then
+            if [[ "$auto_merge" == "true" ]]; then
+              gh pr merge "$PR_NUMBER" --repo "$REPOSITORY" --disable-auto
+              echo "Disabled native auto-merge for PR #$PR_NUMBER (draft=$draft, on_hold=$on_hold)."
+            else
+              echo "PR #$PR_NUMBER is guarded already (draft=$draft, on_hold=$on_hold)."
+            fi
+            exit 0
+          fi
+
+          echo "PR #$PR_NUMBER is open, ready, and not on-hold. Native auto-merge authorization is unchanged."

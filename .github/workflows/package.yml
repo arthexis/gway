@@ -2,11 +2,40 @@ name: python / Package
 
 on:
   pull_request:
-    types: [opened, synchronize, reopened, labeled, unlabeled]
+    types: [opened, synchronize, reopened]
   workflow_dispatch:
+    inputs:
+      pr_number:
+        description: Pull request number for label-driven CI
+        required: false
+        type: number
+      base_sha:
+        description: Pull request base SHA
+        required: false
+        type: string
+      head_sha:
+        description: Pull request head SHA
+        required: false
+        type: string
+      head_repo:
+        description: Pull request head repository
+        required: false
+        type: string
+      version_pr:
+        description: Whether version-only is active
+        required: false
+        type: boolean
+      workflow_pr:
+        description: Whether workflow scope is active
+        required: false
+        type: boolean
+      integration_pr:
+        description: Whether integration scope is active
+        required: false
+        type: boolean
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-${{ github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && !contains(fromJSON('["version-only","on-hold","on hold"]'), github.event.label.name) && github.run_id || 'ci' }}
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || inputs.pr_number || github.ref }}
   cancel-in-progress: true
 
 permissions:
@@ -15,15 +44,16 @@ permissions:
 jobs:
   package:
     name: python / Package
-    if: ${{ github.event_name != 'pull_request' || ((!contains(github.event.pull_request.labels.*.name, 'on-hold') && !contains(github.event.pull_request.labels.*.name, 'on hold')) && ((github.event.action != 'labeled' && github.event.action != 'unlabeled') || contains(fromJSON('["version-only","on-hold","on hold"]'), github.event.label.name))) }}
     runs-on: ubuntu-latest
     env:
-      VERSION_PR: ${{ github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'version-only') }}
-      BASE_SHA: ${{ github.event.pull_request.base.sha || '' }}
-      HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+      VERSION_PR: ${{ inputs.version_pr || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'version-only')) }}
+      BASE_SHA: ${{ inputs.base_sha || github.event.pull_request.base.sha || '' }}
+      HEAD_SHA: ${{ inputs.head_sha || github.event.pull_request.head.sha || github.sha }}
     steps:
       - uses: actions/checkout@v7
         with:
+          repository: ${{ inputs.head_repo || github.repository }}
+          ref: ${{ inputs.head_sha || github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
           persist-credentials: false
       - name: Validate version-only PR
