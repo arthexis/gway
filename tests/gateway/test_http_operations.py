@@ -50,7 +50,7 @@ def test_http_get_accepts_json_query_mapping(gateway, monkeypatch):
 
     monkeypatch.setattr("gway.httpops.controller.transport_request", fake)
 
-    gateway('http get https://example.test/items --params {"page":2}')
+    gateway("http get https://example.test/items --params '{\"page\":2}'")
 
     assert observed["method"] == "GET"
     assert observed["params"] == {"page": 2}
@@ -70,7 +70,7 @@ def test_http_post_decodes_json_body(gateway, monkeypatch):
     monkeypatch.setattr("gway.httpops.controller.transport_request", fake)
 
     result = gateway(
-        'http post https://example.test/items --json {"name":"Ada"}'
+        "http post https://example.test/items --json '{\"name\":\"Ada\"}'"
     )
 
     assert result["status"] == 201
@@ -105,6 +105,6 @@ def test_http_result_composes_through_gateway_chain(gateway, monkeypatch):
         )(),
     )
 
-    result = gateway("http get https://example.test/status ; check status --is 200")
+    result = gateway("http get https://example.test/status - check --status 200")
 
-    assert result is True
+    assert result["status"] == 200
