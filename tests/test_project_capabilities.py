@@ -138,7 +138,7 @@ def test_retired_product_scope_is_removed_without_touching_user_scope(tmp_path):
     assert manual.operations == frozenset({"manual.status"})
 
 
-def test_duplicate_publishers_cannot_share_scope_name(tmp_path, monkeypatch):
+def test_duplicate_publishers_cannot_share_scope_name(tmp_path):
     first = tmp_path / "first"
     second = tmp_path / "second"
     first.mkdir()
