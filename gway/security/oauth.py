@@ -539,6 +539,58 @@ class OAuthRegistry:
                 )
         return self.get_grant(grant_id)
 
+    def replace_grant_scopes(self, grant_id, scopes):
+        """Atomically replace one OAuth grant's scope bindings."""
+        grant = self.get_grant(grant_id)
+        if grant is None:
+            raise LookupError(f"Unknown OAuth grant: {grant_id}")
+        link = self.get_link(grant.link_name)
+        token = self.tokens.require(link.token_name)
+        scope_names = frozenset(self._text(name, "scope name") for name in scopes)
+        unknown = scope_names - token.scopes
+        if unknown:
+            raise ValueError(
+                "OAuth grant exceeds linked token scopes: "
+                + ", ".join(sorted(unknown))
+            )
+        for name in scope_names:
+            self.scopes.require(name)
+
+        with self.state.connect() as connection:
+            connection.execute(
+                "DELETE FROM oauth_grant_scopes WHERE grant_id = ?",
+                (int(grant_id),),
+            )
+            for name in sorted(scope_names):
+                row = connection.execute(
+                    "SELECT id FROM scopes WHERE name = ?",
+                    (name,),
+                ).fetchone()
+                connection.execute(
+                    """
+                    INSERT INTO oauth_grant_scopes (grant_id, scope_id)
+                    VALUES (?, ?)
+                    """,
+                    (int(grant_id), row["id"]),
+                )
+        return self.get_grant(grant_id)
+
+    def bind_grant_scope(self, grant_id, scope):
+        """Bind one additional scope to an OAuth grant."""
+        grant = self.get_grant(grant_id)
+        if grant is None:
+            raise LookupError(f"Unknown OAuth grant: {grant_id}")
+        return self.replace_grant_scopes(grant_id, {*grant.scopes, str(scope)})
+
+    def unbind_grant_scope(self, grant_id, scope):
+        """Remove one scope from an OAuth grant."""
+        grant = self.get_grant(grant_id)
+        if grant is None:
+            raise LookupError(f"Unknown OAuth grant: {grant_id}")
+        scopes = set(grant.scopes)
+        scopes.discard(str(scope))
+        return self.replace_grant_scopes(grant_id, scopes)
+
     def revoke_grant(self, grant_id):
         revoked_at = self._now().isoformat()
         with self.state.connect() as connection:
