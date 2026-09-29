@@ -287,9 +287,13 @@ def test_security_scope_gway_command_surface(gateway, tmp_path):
     assert gateway("security scope show logs") == removed
     renamed = gateway("security scope rename logs logs-custom")
     assert renamed.name == "logs-custom"
-    assert gateway("security scope list") == [renamed]
+    listed = gateway("security scope list")
+    assert renamed in listed
+    assert any(scope.name == "full-access" for scope in listed)
     assert gateway("security scope delete logs-custom") is True
-    assert gateway("security scope list") == []
+    remaining = gateway("security scope list")
+    assert all(scope.name != "logs-custom" for scope in remaining)
+    assert any(scope.name == "full-access" for scope in remaining)
 
 
 
