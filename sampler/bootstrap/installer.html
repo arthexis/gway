@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Install GWAY</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      background: Canvas;
+      color: CanvasText;
+    }
+    main {
+      width: min(760px, calc(100% - 32px));
+      box-sizing: border-box;
+      padding: 32px;
+      border: 1px solid color-mix(in srgb, CanvasText 18%, transparent);
+      border-radius: 16px;
+    }
+    h1 { margin-top: 0; }
+    p { line-height: 1.55; }
+    .command {
+      display: flex;
+      gap: 8px;
+      align-items: stretch;
+      margin: 24px 0;
+    }
+    code {
+      flex: 1;
+      overflow-x: auto;
+      padding: 14px;
+      border-radius: 8px;
+      background: color-mix(in srgb, CanvasText 8%, Canvas);
+      white-space: nowrap;
+    }
+    button, select {
+      font: inherit;
+      padding: 10px 14px;
+    }
+    .chooser {
+      display: grid;
+      gap: 8px;
+      margin-top: 28px;
+    }
+    .hint {
+      opacity: .72;
+      font-size: .92rem;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <h1 id="title"></h1>
+    <p id="description"></p>
+    <div class="command">
+      <code id="command"></code>
+      <button id="copy" type="button">Copy</button>
+    </div>
+    <p class="hint">Paste the command into a shell on the machine you want to install.</p>
+    <div class="chooser">
+      <label for="installer">Install other projects</label>
+      <select id="installer"></select>
+    </div>
+  </main>
+
+  <script type="application/json" id="installers">[installers_json]</script>
+  <script>
+    const catalog = JSON.parse(document.getElementById("installers").textContent);
+    const chooser = document.getElementById("installer");
+    const title = document.getElementById("title");
+    const description = document.getElementById("description");
+    const command = document.getElementById("command");
+    const copy = document.getElementById("copy");
+
+    function endpoint(installer) {
+      return new URL("/" + installer, window.location.origin).href;
+    }
+
+    function installCommand(installer) {
+      return "curl -fsSL " + endpoint(installer) + " | sh";
+    }
+
+    function show(item) {
+      document.title = "Install " + item.title;
+      title.textContent = "Install " + item.title;
+      description.textContent = item.description;
+      command.textContent = installCommand(item.installer);
+      chooser.value = item.installer;
+      history.replaceState(null, "", "#"+ item.installer);
+    }
+
+    for (const item of catalog) {
+      const option = document.createElement("option");
+      option.value = item.installer;
+      option.textContent = item.title;
+      chooser.append(option);
+    }
+
+    chooser.addEventListener("change", () => {
+      const selected = catalog.find(item => item.installer === chooser.value);
+      if (selected) show(selected);
+    });
+
+    copy.addEventListener("click", async () => {
+      await navigator.clipboard.writeText(command.textContent);
+      copy.textContent = "Copied";
+      setTimeout(() => { copy.textContent = "Copy"; }, 1200);
+    });
+
+    const requested = location.hash.slice(1);
+    const initial = catalog.find(item => item.installer === requested)
+      || catalog.find(item => item.installer === "gway")
+      || catalog.at(0);
+    show(initial);
+  </script>
+</body>
+</html>
