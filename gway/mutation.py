@@ -72,3 +72,18 @@ def public_signature(callable_, *, receiver=False):
         if parameter.name != MUTATE_PARAMETER
     ]
     return signature.replace(parameters=parameters)
+
+
+
+def rollback_with(operation):
+    """Declare an explicit semantic inverse for an operation.
+
+    Most operations should rely on conventional inverse verbs. Use this only
+    when the rollback operation cannot be inferred from the shared subject.
+    """
+
+    def decorate(callable_):
+        callable_.__gway_rollback__ = operation
+        return callable_
+
+    return decorate
