@@ -41,15 +41,22 @@ def mutation_parameter(callable_):
 
 def supports_no_mutate(callable_):
     """Return whether a callable explicitly supports Gway's mutation contract."""
+    declared = getattr(callable_, "__gway_supports_no_mutate__", None)
+    if declared is not None:
+        return bool(declared)
     return mutation_parameter(callable_) is not None
 
 
 def mutates(callable_):
     """Return the callable's declared default mutation behavior.
 
-    Callables without the reserved mutation contract are conservatively treated
-    as mutating.
+    Wrapped operations retain their original mutation metadata even though the
+    reserved mutate parameter is hidden from the public signature. Callables
+    without an explicit contract remain conservatively classified as mutating.
     """
+    declared = getattr(callable_, "__gway_mutates__", None)
+    if declared is not None:
+        return bool(declared)
     parameter = mutation_parameter(callable_)
     if parameter is None or parameter.default is MUTATE_UNSET:
         return True
