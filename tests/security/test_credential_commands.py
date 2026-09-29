@@ -85,6 +85,46 @@ def test_oauth_grant_bind_updates_live_access_authority(gateway, tmp_path):
     )
 
 
+def test_token_list_reports_last_successful_native_use(gateway, tmp_path):
+    path = tmp_path / "security.sqlite"
+    gateway.security_path = path
+    scopes = ScopeRegistry(path)
+    scopes.create("logs")
+    issued = TokenRegistry(path).create("reader", scopes={"logs"})
+
+    before = gateway("security tokens")
+    assert before[0].last_used_at is None
+
+    authenticated = TokenRegistry(path).authenticate(issued.bearer)
+    after = gateway("security tokens")
+
+    assert authenticated.token.last_used_at is not None
+    assert after[0].last_used_at == authenticated.token.last_used_at
+
+
+def test_oauth_access_use_updates_oauth_and_backing_native_token(gateway, tmp_path):
+    _, _, oauth, _, issued = _oauth_state(gateway, tmp_path)
+
+    assert gateway("security tokens")[0].last_used_at is None
+    access = next(
+        token
+        for token in gateway("security oauth tokens")
+        if token.kind == "access"
+    )
+    assert access.last_used_at is None
+
+    oauth.authenticate_access(issued.access_token)
+
+    native = gateway("security tokens")[0]
+    access = next(
+        token
+        for token in gateway("security oauth tokens")
+        if token.kind == "access"
+    )
+    assert native.last_used_at is not None
+    assert access.last_used_at is not None
+
+
 def test_oauth_token_clear_revokes_credentials_but_preserves_grant(gateway, tmp_path):
     _, _, oauth, grant, issued = _oauth_state(gateway, tmp_path)
 
