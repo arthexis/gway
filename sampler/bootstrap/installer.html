@@ -93,7 +93,14 @@
       description.textContent = item.description;
       command.textContent = installCommand(item.installer);
       chooser.value = item.installer;
-      history.replaceState(null, "", "#"+ item.installer);
+
+      const url = new URL(window.location.href);
+      if (item.installer === "gway") {
+        url.searchParams.delete("box");
+      } else {
+        url.searchParams.set("box", item.installer);
+      }
+      history.replaceState(null, "", url);
     }
 
     for (const item of catalog) {
@@ -114,7 +121,7 @@
       setTimeout(() => { copy.textContent = "Copy"; }, 1200);
     });
 
-    const requested = location.hash.slice(1);
+    const requested = new URL(window.location.href).searchParams.get("box");
     const initial = catalog.find(item => item.installer === requested)
       || catalog.find(item => item.installer === "gway")
       || catalog.at(0);
