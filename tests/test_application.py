@@ -104,10 +104,64 @@ def test_app_composition_operations_are_declared_non_mutating(gateway):
 
     assert gateway.setup_app.mutates is False
     assert gateway.view_app.mutates is False
+    assert gateway.header_app.mutates is False
 
     app = gateway.execute("setup app remote", mutate=False)
 
     assert app == AppSpec(name="remote")
+
+
+def test_header_app_consumes_and_publishes_semantic_app(gateway):
+    original = gateway("setup app remote")
+
+    updated = gateway("header cache-control no-store")
+
+    assert original.headers == ()
+    assert updated is gateway.results["app"]
+    assert [(header.name, header.value) for header in updated.headers] == [
+        ("cache-control", "no-store")
+    ]
+
+
+def test_header_then_view_chain_uses_semantic_app_receiver(gateway):
+    _register_handler(gateway, "remote.health")
+    gateway("setup app remote")
+
+    updated = gateway(
+        "header cache-control no-store - view health --route /health"
+    )
+
+    assert [(header.name, header.value) for header in updated.headers] == [
+        ("cache-control", "no-store")
+    ]
+    assert updated.views[0].callable_name == "remote.health"
+
+
+def test_view_then_header_chain_uses_semantic_app_receiver(gateway):
+    _register_handler(gateway, "remote.health")
+    gateway("setup app remote")
+
+    updated = gateway(
+        "view health --route /health - header cache-control no-store"
+    )
+
+    assert updated.views[0].callable_name == "remote.health"
+    assert [(header.name, header.value) for header in updated.headers] == [
+        ("cache-control", "no-store")
+    ]
+
+
+def test_header_statement_changes_app_seen_by_later_view(gateway):
+    _register_handler(gateway, "remote.health")
+    gateway("setup app remote")
+
+    gateway("header cache-control no-store")
+    updated = gateway("view health --route /health")
+
+    assert [(header.name, header.value) for header in updated.headers] == [
+        ("cache-control", "no-store")
+    ]
+    assert updated.views[0].callable_name == "remote.health"
 
 
 def test_recipe_companion_handler_composes_by_short_identity(gateway, tmp_path):
