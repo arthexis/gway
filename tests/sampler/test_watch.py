@@ -725,9 +725,9 @@ def test_timed_watch_reports_recipe_lifecycle_and_nested_operations(
     ]
 
     assert any("route sampler discovery" in message for message in messages)
-    assert any("recipe __main__ load" in message for message in messages)
-    assert any("recipe __main__ parse" in message for message in messages)
-    assert any("recipe __main__ execute" in message for message in messages)
+    assert any("recipe watch load" in message for message in messages)
+    assert any("recipe watch parse" in message for message in messages)
+    assert any("recipe watch execute" in message for message in messages)
     assert any("operation node " in message for message in messages)
     assert any("operation wire.check " in message for message in messages)
     assert any("operation watch " in message for message in messages)
