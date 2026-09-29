@@ -207,14 +207,6 @@ class Gateway(Resolver):
         )
         self.security_path = self.cache.root / "security" / "state.sqlite"
 
-        from .security.defaults import converge_scope_registry
-        from .security.scopes import ScopeRegistry
-
-        converge_scope_registry(
-            ScopeRegistry(self.security_path),
-            getattr(self, "_published_scopes", {}),
-        )
-
         with self.topics("log"):
             log_source = self.resolve("[source]", default="gway")
         gway_log._set_default_source(log_source)
@@ -300,6 +292,17 @@ class Gateway(Resolver):
         self._souschef_controller = SousChefController(self)
         ingest_python(self, self._souschef_controller, path=("sous", "chef"))
         self._sigil_dispatch_enabled = True
+
+    def converge_security_scopes(self, *, retire_missing=True):
+        """Converge discovered scope policy into durable security state on demand."""
+        from .security.defaults import converge_scope_registry
+        from .security.scopes import ScopeRegistry
+
+        return converge_scope_registry(
+            ScopeRegistry(self.security_path),
+            getattr(self, "_published_scopes", {}),
+            retire_missing=retire_missing,
+        )
 
     def _execute_operation_rollback(self, operation, result):
         """Resolve and execute the semantic inverse of one operation result."""
@@ -1514,6 +1517,7 @@ class Gateway(Resolver):
         """Authenticate one bearer and execute under its current authority."""
         from .security.authentication import authenticate_bearer
 
+        self.converge_security_scopes()
         identity = authenticate_bearer(
             bearer,
             resource=resource,

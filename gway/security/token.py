@@ -12,14 +12,20 @@ class Controller:
     def __init__(self, gateway):
         self.gateway = gateway
 
+    def _registry(self, *, converge=False):
+        """Return the token registry, converging published scopes when requested."""
+        if converge:
+            self.gateway.converge_security_scopes()
+        return TokenRegistry(self.gateway.security_path)
+
     @property
     def registry(self):
         """Return the token registry bound to the active Gateway security path."""
-        return TokenRegistry(self.gateway.security_path)
+        return self._registry()
 
     def scopes(self, *, mutate=True):
         """Return named security scopes available for token binding."""
-        return self.registry.scopes.all(readonly=not mutate)
+        return self._registry(converge=mutate).scopes.all(readonly=not mutate)
 
     def create(self, name, *scopes, expires=None):
         """Issue a token and return its bearer secret exactly once.
@@ -29,7 +35,7 @@ class Controller:
             scopes: Named scopes to bind.
             expires: Optional timezone-aware ISO-8601 expiry timestamp.
         """
-        return self.registry.create(
+        return self._registry(converge=True).create(
             name,
             scopes=scopes,
             expires_at=expires,
@@ -57,11 +63,11 @@ class Controller:
 
     def set(self, name, *scopes):
         """Replace the complete named-scope binding set for one token."""
-        return self.registry.replace_scopes(name, scopes)
+        return self._registry(converge=True).replace_scopes(name, scopes)
 
     def bind(self, name, scope):
         """Bind one additional scope to a token."""
-        return self.registry.bind(name, scope)
+        return self._registry(converge=True).bind(name, scope)
 
     def unbind(self, name, scope):
         """Remove one scope binding from a token."""

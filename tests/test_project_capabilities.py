@@ -70,6 +70,11 @@ command = ["demo", "status"]
     assert gateway._published_scopes["demo-read"]["operations"] == frozenset(
         {"demo.status"}
     )
+    assert not gateway.security_path.exists()
+
+    scopes = gateway._token_controller.scopes()
+    assert {scope.name for scope in scopes} >= {"demo-read"}
+
     registered = ScopeRegistry(gateway.security_path).require("demo-read")
     assert registered.operations == frozenset({"demo.status"})
     assert gateway._watch_contributors == (
@@ -174,3 +179,111 @@ environment = []
             toml.load(second / "pyproject.toml"),
             source="second",
         )
+
+
+def test_gateway_help_bootstrap_does_not_require_writable_security_state(
+    tmp_path,
+    monkeypatch,
+):
+    project = tmp_path / "project"
+    project.mkdir()
+    cache = tmp_path / "system-cache"
+    (project / "pyproject.toml").write_text(
+        f"""
+[project]
+name = "demo"
+
+[tool.gway.variables]
+cache_dir = "{cache}"
+
+[tool.gway.scopes.demo-read]
+operations = ["demo.status"]
+environment = []
+""".lstrip(),
+        encoding="utf-8",
+    )
+    monkeypatch.chdir(project)
+
+    gateway = Gateway()
+
+    assert gateway.security_path == cache / "security" / "state.sqlite"
+    assert not gateway.security_path.exists()
+    assert gateway._published_scopes["demo-read"]["operations"] == frozenset(
+        {"demo.status"}
+    )
+
+
+def test_scope_resolve_converges_on_first_use(tmp_path, monkeypatch):
+    project = tmp_path / "project"
+    project.mkdir()
+    cache = tmp_path / "cache"
+    (project / "pyproject.toml").write_text(
+        f"""
+[project]
+name = "demo"
+
+[tool.gway.variables]
+cache_dir = "{cache}"
+
+[tool.gway.scopes.demo-read]
+operations = ["demo.status"]
+environment = []
+""".lstrip(),
+        encoding="utf-8",
+    )
+    monkeypatch.chdir(project)
+
+    gateway = Gateway()
+    assert not gateway.security_path.exists()
+
+    resolved = gateway._scope_controller.resolve("demo-read")
+
+    assert resolved.operations == frozenset({"demo.status"})
+
+
+def test_execute_authenticated_converges_published_scope_updates(tmp_path, monkeypatch):
+    project = tmp_path / "project"
+    project.mkdir()
+    cache = tmp_path / "cache"
+    project_file = project / "pyproject.toml"
+    project_file.write_text(
+        f"""
+[project]
+name = "demo"
+
+[tool.gway.variables]
+cache_dir = "{cache}"
+
+[tool.gway.scopes.demo-read]
+operations = ["help"]
+environment = []
+""".lstrip(),
+        encoding="utf-8",
+    )
+    monkeypatch.chdir(project)
+
+    gateway = Gateway()
+    bearer = gateway._token_controller.create("demo-token", "demo-read")
+
+    project_file.write_text(
+        f"""
+[project]
+name = "demo"
+
+[tool.gway.variables]
+cache_dir = "{cache}"
+
+[tool.gway.scopes.demo-read]
+operations = ["version"]
+environment = []
+""".lstrip(),
+        encoding="utf-8",
+    )
+
+    refreshed = Gateway()
+
+    with pytest.raises(PermissionError):
+        refreshed.execute_authenticated(bearer, "help")
+
+    result = refreshed.execute_authenticated(bearer, "version")
+    assert result is not None
