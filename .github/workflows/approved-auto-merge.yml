@@ -45,7 +45,7 @@ jobs:
               if [[ -z "$pr_number" ]]; then
                 head_sha="$(jq -r '.workflow_run.head_sha // empty' "$GITHUB_EVENT_PATH")"
                 if [[ -n "$head_sha" ]]; then
-                  pr_number="$(gh api "repos/$REPOSITORY/commits/$head_sha/pulls" --jq '[.[] | select(.state == "open")][0].number // empty')"
+                  pr_number="$(gh api "repos/$REPOSITORY/commits/$head_sha/pulls" --jq '[.[] | select(.state == "open" and .head.sha == "'"$head_sha"'")][0].number // empty')"
                 fi
               fi
               ;;
