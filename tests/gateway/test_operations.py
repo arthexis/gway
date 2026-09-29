@@ -76,3 +76,37 @@ def test_unsubjected_operation_does_not_create_subject():
 
     assert "ping" in ops
     assert ops["ping"][None] is ping
+
+
+def test_multiword_subject_resolves_from_space_separated_cli_spelling():
+    ops = Operations()
+
+    def set_actions_permissions():
+        return "ok"
+
+    ops.register("github.set_actions_permissions", set_actions_permissions)
+
+    assert ops.resolve("github set actions permissions") is set_actions_permissions
+
+
+def test_operation_spelling_does_not_hide_pipeline_or_option_tokens():
+    ops = Operations()
+
+    def probe():
+        return "ok"
+
+    ops.register("probe", probe)
+
+    assert ops.resolve("probe -") is None
+    assert ops.resolve("probe --status") is None
+
+
+def test_operation_spelling_keeps_dunder_identities_opaque():
+    ops = Operations()
+
+    def help_operation():
+        return "help"
+
+    ops.register("help", help_operation)
+
+    assert ops.resolve("__help__") is None
