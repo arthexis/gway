@@ -67,8 +67,12 @@ class HeaderSpec:
         value = str(self.value).strip()
         if not name:
             raise ValueError("header name cannot be empty")
+        if any(character in name for character in " ()<>@,;:\\\"/[]?={}\t"):
+            raise ValueError("header name must be an HTTP token")
         if not value:
             raise ValueError("header value cannot be empty")
+        if "\r" in value or "\n" in value:
+            raise ValueError("header value cannot contain line breaks")
         object.__setattr__(self, "name", name)
         object.__setattr__(self, "value", value)
 
