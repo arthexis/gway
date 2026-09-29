@@ -796,6 +796,18 @@ def dispatch_stage(
             )
             return _invoke_resolved(runtime, resolution, *bound.args, **bound.kwargs)
 
+        if arguments:
+            explicit = bind_arguments(
+                func,
+                arguments,
+                runtime=runtime,
+                interactive=False,
+                initial_args=initial_args,
+                initial_kwargs=initial_kwargs,
+            )
+            initial_args = explicit.args
+            initial_kwargs = explicit.kwargs
+
         adapted = adapt_pipeline(
             runtime,
             func,
@@ -806,7 +818,7 @@ def dispatch_stage(
         initial_args = adapted.args
         initial_kwargs = adapted.kwargs
 
-    if arguments:
+    if arguments and pipeline is _MISSING:
         bound = bind_arguments(
             func,
             arguments,
