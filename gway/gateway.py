@@ -540,11 +540,15 @@ class Gateway(Resolver):
         """Return durable install paths from semantic roots plus platform defaults."""
         from .install.paths import install_paths
 
+        with self.trusted_capability():
+            data_dir = None if root is not None else self.data_root(system=system)
+            bin_dir = self.bin_root(system=system)
+
         return install_paths(
             system=system,
             root=root,
-            data_dir=None if root is not None else self.data_root(system=system),
-            bin_dir=self.bin_root(system=system),
+            data_dir=data_dir,
+            bin_dir=bin_dir,
         )
 
     def _install(self, source, *, ref=None, upgrade=True, force=False, stash=False, system=False):
