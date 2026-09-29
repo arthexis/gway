@@ -408,7 +408,7 @@ def test_remote_query_route_uses_auth_upstream_and_preserves_request_contract():
         assert "[mcp_host|127.0.0.1]:[mcp_port|8000]" not in block
         assert "proxy_set_header Authorization $http_authorization;" in block
         assert "proxy_cache off;" in block
-        assert 'add_header Cache-Control "no-store" always;' in block
+        assert "add_header" not in block
         assert "proxy_pass http://[auth_host|127.0.0.1]:[auth_port|8001];" in block
         assert "proxy_pass http://[auth_host|127.0.0.1]:[auth_port|8001]/;" not in block
 
@@ -460,12 +460,15 @@ def test_remote_https_rate_limits_login_and_token_only():
     assert directive not in _block(content, "location = /query {")
 
 
-def test_remote_no_store_routes_keep_security_headers():
+def test_remote_no_store_policy_is_declared_at_server_scope():
     content = _template("nginx-https-[site].conf")
 
-    for route in ("/query",):
-        block = _block(content, f"location = {route} {{")
-        assert 'add_header Cache-Control "no-store" always;' in block
-        assert 'add_header Strict-Transport-Security "max-age=31536000" always;' in block
-        assert 'add_header X-Content-Type-Options "nosniff" always;' in block
-        assert 'add_header Referrer-Policy "same-origin" always;' in block
+    assert "map $uri $gway_remote_cache_control_[site] {" in content
+    assert '/query "no-store";' in content
+    assert (
+        "add_header Cache-Control $gway_remote_cache_control_[site] always;"
+        in content
+    )
+    tls_server = content.split("\n}\n\nserver {", 1)[1]
+    for block in tls_server.split("\n    location ")[1:]:
+        assert "add_header" not in block
