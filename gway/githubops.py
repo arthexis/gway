@@ -835,7 +835,7 @@ class Controller:
         """Explicitly merge a pull request at the expected head SHA."""
         if not mutate:
             raise PermissionError("GitHub pull request mutation is disabled")
-        if not str(sha):
+        if sha is None or not str(sha).strip():
             raise ValueError("expected pull request head sha is required")
         payload = {"sha": str(sha)}
         if method is not None:
