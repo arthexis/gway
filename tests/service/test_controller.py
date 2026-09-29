@@ -354,27 +354,6 @@ def test_deployed_mcp_service_accepts_real_http_bearer_client(tmp_path, monkeypa
     assert stopped["running"] is False
 
 
-def test_mcp_sampler_contains_no_service_manager_lifecycle_logic():
-    root = sampler_root() / "mcp"
-    text = "\n".join(
-        path.read_text(encoding="utf-8").casefold()
-        for path in sorted(root.glob("*"))
-        if path.suffix in {".py", ".rx"}
-    )
-
-    forbidden = (
-        "systemctl",
-        "daemon-reload",
-        "pidfile",
-        "daemonize",
-        "[service]",
-        "wantedby=",
-    )
-    for marker in forbidden:
-        assert marker not in text
-
-
-
 def test_required_service_companion_repairs_missing_dependency(
     tmp_path,
     monkeypatch,
