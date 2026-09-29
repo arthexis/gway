@@ -47,6 +47,88 @@ def project_bindings(data):
     return tuple(bindings)
 
 
+def project_scopes(data, *, source=None):
+    """Return validated named security scopes published by one project."""
+    if not isinstance(data, dict):
+        return {}
+    tool = data.get("tool")
+    gway = tool.get("gway") if isinstance(tool, dict) else None
+    scopes = gway.get("scopes") if isinstance(gway, dict) else None
+    if scopes is None:
+        return {}
+    if not isinstance(scopes, dict):
+        raise ValueError("[tool.gway.scopes] must be a table")
+
+    published = {}
+    for name, declaration in scopes.items():
+        name = str(name).strip()
+        if not name:
+            raise ValueError("published scope names must be non-empty strings")
+        if not isinstance(declaration, dict):
+            raise ValueError(f"[tool.gway.scopes.{name}] must be a table")
+        unknown = set(declaration) - {"operations", "environment"}
+        if unknown:
+            raise ValueError(
+                f"Unknown published scope fields for {name}: "
+                + ", ".join(sorted(unknown))
+            )
+        operations = declaration.get("operations", ())
+        environment = declaration.get("environment", ())
+        if not isinstance(operations, list) or any(
+            not isinstance(value, str) or not value.strip() for value in operations
+        ):
+            raise ValueError(f"{name} operations must be an array of non-empty strings")
+        if not isinstance(environment, list) or any(
+            not isinstance(value, str) or not value.strip() for value in environment
+        ):
+            raise ValueError(f"{name} environment must be an array of non-empty strings")
+        published[name] = {
+            "operations": frozenset(value.strip() for value in operations),
+            "environment": frozenset(value.strip() for value in environment),
+            "source": source,
+        }
+    return published
+
+
+def project_watch(data, *, source=None):
+    """Return validated generic Watch contributors published by one project."""
+    if not isinstance(data, dict):
+        return ()
+    tool = data.get("tool")
+    gway = tool.get("gway") if isinstance(tool, dict) else None
+    entries = gway.get("watch") if isinstance(gway, dict) else None
+    if entries is None:
+        return ()
+    if not isinstance(entries, list):
+        raise ValueError("[[tool.gway.watch]] must be an array of tables")
+
+    contributors = []
+    for entry in entries:
+        if not isinstance(entry, dict):
+            raise ValueError("watch contributor must be a table")
+        unknown = set(entry) - {"section", "command"}
+        if unknown:
+            raise ValueError(
+                "Unknown watch contributor fields: " + ", ".join(sorted(unknown))
+            )
+        section = entry.get("section")
+        command = entry.get("command")
+        if not isinstance(section, str) or not section.strip():
+            raise ValueError("watch contributor requires a non-empty section")
+        if not isinstance(command, list) or not command or any(
+            not isinstance(value, str) or not value.strip() for value in command
+        ):
+            raise ValueError("watch contributor command must be a non-empty string array")
+        contributors.append(
+            {
+                "section": section.strip(),
+                "command": tuple(value.strip() for value in command),
+                "source": source,
+            }
+        )
+    return tuple(contributors)
+
+
 def _guide_rule(entry, *, source=None, implied_roles=()):
     """Normalize one explicit project/role guide declaration."""
     if not isinstance(entry, dict):
