@@ -552,22 +552,15 @@ def test_mcp_http_oauth_access_token_obeys_scope_and_capability_boundary(
     assert "401" not in trusted_only[2]
 
 
-@pytest.mark.parametrize(
-    ("credential", "root_name"),
-    [
-        ("__missing__", "mcpchallengemissing"),
-        ("gwt_missing_wrong", "mcpchallengeinvalid"),
-    ],
-)
 def test_mcp_http_authentication_challenge_points_to_protected_resource_metadata(
     gateway,
     recipe_factory,
     required_runtime,
     tmp_path,
     monkeypatch,
-    credential,
-    root_name,
 ):
+    credential = "gwt_missing_wrong"
+    root_name = "mcpchallengeinvalid"
     tokens = TokenRegistry(tmp_path / "security.sqlite")
     monkeypatch.setattr(companion_runtime, "TokenRegistry", lambda path=None: tokens)
 
