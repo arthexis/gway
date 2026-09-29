@@ -140,10 +140,13 @@ def test_wire_watchtower_recipe_smoke_executes_with_fake_host_adapters(monkeypat
     ]
     assert len(certbot_calls) == 1
     certbot_args = certbot_calls[0][2]
-    assert "register.arthexis.com" in certbot_args
-    assert "ops@example.com" in certbot_args
-    assert "[domain]" not in certbot_args
-    assert "[email]" not in certbot_args
+    certbot_options = certbot_calls[0][3]
+    assert certbot_args == ("certonly",)
+    assert certbot_options["domain"] == "register.arthexis.com"
+    assert certbot_options["cert_name"] == "register.arthexis.com"
+    assert certbot_options["email"] == "ops@example.com"
+    assert "[domain]" not in certbot_options.values()
+    assert "[email]" not in certbot_options.values()
 
 
 def test_mcp_server_recipe_smoke_executes_with_fake_server(monkeypatch, run_recipe):
