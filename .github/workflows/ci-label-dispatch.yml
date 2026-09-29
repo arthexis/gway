@@ -49,6 +49,7 @@ jobs:
           pr_json="$(gh api "repos/$REPOSITORY/pulls/$PR_NUMBER")"
           head_ref="$(jq -r '.head.ref' <<< "$pr_json")"
           head_repo="$(jq -r '.head.repo.full_name // empty' <<< "$pr_json")"
+          base_ref="$(jq -r '.base.ref' <<< "$pr_json")"
           base_sha="$(jq -r '.base.sha' <<< "$pr_json")"
           head_sha="$(jq -r '.head.sha' <<< "$pr_json")"
           version_pr="$(jq -r '[.labels[].name | ascii_downcase] | any(. == "version-only")' <<< "$pr_json")"
