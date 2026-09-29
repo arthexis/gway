@@ -925,6 +925,7 @@ class OAuthRegistry:
             ):
                 raise OAuthAuthenticationError()
             active = self._active_grant(connection, row["grant_id"])
+            token_public_id = active["token_public_id"]
             if client_id is not None and active["client_id"] != client_id:
                 raise OAuthAuthenticationError()
             if resource is not None and active["resource"] != resource:
