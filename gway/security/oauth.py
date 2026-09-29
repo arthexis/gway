@@ -78,6 +78,19 @@ class AuthenticatedOAuthToken:
     authority: EffectiveScope
 
 
+@dataclass(frozen=True)
+class OAuthCredential:
+    """Safe metadata for one issued OAuth access or refresh token."""
+
+    kind: str
+    public_id: str
+    grant_id: int
+    created_at: str
+    expires_at: str
+    revoked_at: str | None
+    rotated_at: str | None = None
+
+
 class OAuthRegistry:
     """OAuth persistence whose effective authority remains G-Way scope policy."""
 
@@ -385,6 +398,16 @@ class OAuthRegistry:
             row["name"], row["token_name"], row["created_at"], row["revoked_at"]
         )
 
+    def links(self, *, readonly=False):
+        """Return all OAuth links in stable name order."""
+        if not self.path.is_file():
+            return []
+        with self.state.connect(readonly=readonly) as connection:
+            rows = connection.execute(
+                "SELECT name FROM oauth_links ORDER BY name"
+            ).fetchall()
+        return [self.get_link(row["name"]) for row in rows]
+
     def revoke_link(self, name):
         name = self._text(name, "OAuth link name")
         revoked_at = self._now().isoformat()
@@ -447,6 +470,23 @@ class OAuthRegistry:
                 (int(grant_id),),
             ).fetchone()
             return self._grant_from_row(connection, row)
+
+    def grants(self, *, readonly=False):
+        """Return all OAuth grants in stable id order."""
+        if not self.path.is_file():
+            return []
+        with self.state.connect(readonly=readonly) as connection:
+            rows = connection.execute(
+                """
+                SELECT oauth_grants.id, oauth_links.name AS link_name,
+                       oauth_grants.client_id, oauth_grants.resource,
+                       oauth_grants.created_at, oauth_grants.revoked_at
+                FROM oauth_grants
+                JOIN oauth_links ON oauth_links.id = oauth_grants.link_id
+                ORDER BY oauth_grants.id
+                """
+            ).fetchall()
+            return [self._grant_from_row(connection, row) for row in rows]
 
     def create_grant(self, link_name, client_id, *, scopes, resource=None):
         link_name = self._text(link_name, "OAuth link name")
@@ -846,6 +886,98 @@ class OAuthRegistry:
             access_lifetime_seconds=access_lifetime_seconds,
             refresh_lifetime_seconds=refresh_lifetime_seconds,
         )
+
+    @staticmethod
+    def _credential_from_row(kind, row):
+        if row is None:
+            return None
+        return OAuthCredential(
+            kind,
+            row["public_id"],
+            int(row["grant_id"]),
+            row["created_at"],
+            row["expires_at"],
+            row["revoked_at"],
+            row["rotated_at"] if kind == "refresh" else None,
+        )
+
+    def credentials(self, *, readonly=False):
+        """Return safe metadata for issued OAuth access and refresh tokens."""
+        if not self.path.is_file():
+            return []
+        result = []
+        with self.state.connect(readonly=readonly) as connection:
+            access = connection.execute(
+                """
+                SELECT public_id, grant_id, created_at, expires_at, revoked_at
+                FROM oauth_access_tokens
+                ORDER BY id
+                """
+            ).fetchall()
+            refresh = connection.execute(
+                """
+                SELECT public_id, grant_id, created_at, expires_at,
+                       revoked_at, rotated_at
+                FROM oauth_refresh_tokens
+                ORDER BY id
+                """
+            ).fetchall()
+        result.extend(self._credential_from_row("access", row) for row in access)
+        result.extend(self._credential_from_row("refresh", row) for row in refresh)
+        return result
+
+    def credential(self, public_id, *, readonly=False):
+        """Return safe metadata for one OAuth token public id."""
+        public_id = self._text(public_id, "OAuth token public id")
+        if not self.path.is_file():
+            raise LookupError(f"Unknown OAuth token: {public_id}")
+        with self.state.connect(readonly=readonly) as connection:
+            row = connection.execute(
+                """
+                SELECT public_id, grant_id, created_at, expires_at, revoked_at
+                FROM oauth_access_tokens
+                WHERE public_id = ?
+                """,
+                (public_id,),
+            ).fetchone()
+            if row is not None:
+                return self._credential_from_row("access", row)
+            row = connection.execute(
+                """
+                SELECT public_id, grant_id, created_at, expires_at,
+                       revoked_at, rotated_at
+                FROM oauth_refresh_tokens
+                WHERE public_id = ?
+                """,
+                (public_id,),
+            ).fetchone()
+        if row is None:
+            raise LookupError(f"Unknown OAuth token: {public_id}")
+        return self._credential_from_row("refresh", row)
+
+    def revoke_all_credentials(self):
+        """Revoke every issued OAuth access and refresh token."""
+        if not self.path.is_file():
+            return 0
+        revoked_at = self._now().isoformat()
+        with self.state.connect() as connection:
+            access = connection.execute(
+                """
+                UPDATE oauth_access_tokens
+                SET revoked_at = COALESCE(revoked_at, ?)
+                WHERE revoked_at IS NULL
+                """,
+                (revoked_at,),
+            )
+            refresh = connection.execute(
+                """
+                UPDATE oauth_refresh_tokens
+                SET revoked_at = COALESCE(revoked_at, ?)
+                WHERE revoked_at IS NULL
+                """,
+                (revoked_at,),
+            )
+        return int(access.rowcount) + int(refresh.rowcount)
 
     def revoke(self, bearer):
         value = str(bearer)
