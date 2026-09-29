@@ -68,13 +68,17 @@ def split_operation(name):
 
 
 def _command_words(name):
-    """Normalize canonical and CLI spellings without hiding structural tokens."""
+    """Normalize public command spellings without rewriting special identities."""
     words = []
-    for part in str(name).replace(".", " ").replace("_", " ").split():
-        if part == "-" or part.startswith("--"):
-            words.append(part)
+    for raw in str(name).replace(".", " ").split():
+        if raw.startswith("__") and raw.endswith("__"):
+            words.append(raw)
             continue
-        words.extend(piece for piece in part.replace("-", " ").split() if piece)
+        if raw == "-" or raw.startswith("--"):
+            words.append(raw)
+            continue
+        for part in raw.replace("_", " ").split():
+            words.extend(piece for piece in part.replace("-", " ").split() if piece)
     return tuple(words)
 
 
