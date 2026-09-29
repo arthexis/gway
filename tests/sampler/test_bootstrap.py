@@ -1,10 +1,11 @@
-def test_gway_bootstrap_force_upgrades_active_release_line(sampler_path):
+def test_gway_bootstrap_excludes_obsolete_release_during_rollout(sampler_path):
     script = sampler_path("bootstrap/gway.sh").read_text(encoding="utf-8")
 
     assert script.startswith("#!/bin/sh\n# GWAY_BOOTSTRAP_V1\n")
     assert "uv/install.sh" in script
-    assert 'tool install --force --upgrade gway' in script
+    assert 'tool install --force --upgrade "gway!=1.0.1"' in script
     assert "gway<1" not in script
+    assert 'tool install --force --upgrade gway' not in script
     assert "git+https://github.com/arthexis/gway" not in script
     assert "tool install --upgrade gway" not in script
 
