@@ -52,6 +52,13 @@ def test_explicit_plural_operation_beats_plural_list_fallback(gateway):
     assert gateway("widgets") == "explicit"
 
 
+def test_plural_list_fallback_preserves_pipeline_tail(gateway):
+    gateway.wrap("widget.list", lambda: ["listed"])
+    gateway.wrap("consume", lambda value: ("consumed", value))
+
+    assert gateway("widgets - consume") == ("consumed", ["listed"])
+
+
 def test_oauth_plural_commands_expose_safe_inspection(gateway, tmp_path):
     _, _, oauth, grant, issued = _oauth_state(gateway, tmp_path)
 
