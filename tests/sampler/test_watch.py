@@ -1,3 +1,5 @@
+import logging
+
 import pytest
 
 from gway import Gateway
@@ -701,3 +703,46 @@ def test_watch_changed_composes_with_only_filter(tmp_path, monkeypatch):
         "changed_at",
         "cursor",
     }
+
+
+def test_timed_watch_reports_recipe_lifecycle_and_nested_operations(
+    tmp_path,
+    monkeypatch,
+    caplog,
+):
+    gateway = _role_gateway(tmp_path, monkeypatch, "control")
+    gateway.timed_enabled = True
+    gateway.logger.setLevel(logging.INFO)
+
+    with caplog.at_level(logging.INFO):
+        result = gateway("watch --only node,wire")
+
+    assert result["node"]["status"] == "ok"
+    messages = [
+        record.getMessage()
+        for record in caplog.records
+        if "[timed]" in record.getMessage()
+    ]
+
+    assert any("route sampler discovery" in message for message in messages)
+    assert any("recipe __main__ load" in message for message in messages)
+    assert any("recipe __main__ parse" in message for message in messages)
+    assert any("recipe __main__ execute" in message for message in messages)
+    assert any("operation node " in message for message in messages)
+    assert any("operation wire.check " in message for message in messages)
+    assert any("operation watch " in message for message in messages)
+
+
+def test_timing_does_not_change_watch_structured_result(tmp_path, monkeypatch):
+    plain = _role_gateway(tmp_path, monkeypatch, "control")
+    plain_result = plain("watch --only node,wire")
+
+    timed = _role_gateway(tmp_path, monkeypatch, "control")
+    timed.timed_enabled = True
+    timed_result = timed("watch --only node,wire")
+
+    for result in (plain_result, timed_result):
+        assert set(result) == {"node", "wire", "health", "changed_at", "cursor"}
+        assert result["node"]["status"] == "ok"
+        assert result["wire"]["status"] == "ok"
+        assert result["health"]["status"] == "ok"
