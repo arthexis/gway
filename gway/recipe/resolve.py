@@ -42,14 +42,21 @@ def resolve_recipe_stage(runtime, tokens, *, pipeline):
             except (OSError, RuntimeError):
                 pass
         if bare is not None:
-            existing = runtime.ops.resolve(str(source).replace(" ", "."))
+            stage, remaining = split_recipe_stage(tokens)
+            from ..dispatch import resolve_operation
+
+            try:
+                resolution = resolve_operation(runtime, stage, pipeline=pipeline)
+            except LookupError:
+                resolution = None
+
+            existing = None if resolution is None else resolution.callable
             maintained_recipe = (
                 existing is not None
                 and getattr(existing, "__gway_source_kind__", None) == "recipe"
                 and getattr(existing, "__gway_metadata__", {}).get("route") == "sampler"
             )
             if existing is None or maintained_recipe:
-                stage, remaining = split_recipe_stage(tokens)
                 return bare, stage[1:], remaining
 
     from ..sampler import resolve_tokens as resolve_sampler_tokens
