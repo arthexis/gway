@@ -240,8 +240,37 @@ def test_deployed_mcp_service_accepts_real_http_bearer_client(tmp_path, monkeypa
     monkeypatch.setattr("gway.service.runtime.subprocess.Popen", diagnostic_popen)
     data_root = tmp_path / "gway-data"
     cache_root = tmp_path / "gway-cache"
+    bin_root = tmp_path / "bin"
+    bin_root.mkdir()
     monkeypatch.setenv("GWAY_DATA_DIR", str(data_root))
     monkeypatch.setenv("GWAY_CACHE_DIR", str(cache_root))
+    monkeypatch.setenv("PATH", f"{bin_root}:{os.environ['PATH']}")
+
+    fake_uv = bin_root / "uv"
+    fake_uv.write_text(
+        "#!/usr/bin/env python3\n"
+        "from pathlib import Path\n"
+        "import subprocess\n"
+        "import sys\n"
+        "\n"
+        "args = sys.argv[1:]\n"
+        "if args[0] == 'venv':\n"
+        "    subprocess.check_call([\n"
+        "        sys.executable, '-m', 'venv', '--without-pip',\n"
+        "        '--system-site-packages', args[1]\n"
+        "    ])\n"
+        "elif args[:2] == ['pip', 'compile']:\n"
+        "    source = Path(args[args.index('--python') + 2])\n"
+        "    output = Path(args[args.index('--output-file') + 1])\n"
+        "    output.write_text(source.read_text(encoding='utf-8'), encoding='utf-8')\n"
+        "elif args[:2] == ['pip', 'sync']:\n"
+        "    pass\n"
+        "else:\n"
+        "    raise SystemExit(f'unexpected fake uv invocation: {args!r}')\n",
+        encoding="utf-8",
+    )
+    fake_uv.chmod(0o755)
+
     gateway = Gateway()
 
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as listener:
@@ -367,7 +396,7 @@ def test_required_service_companion_repairs_missing_dependency(
         "\n"
         "args = sys.argv[1:]\n"
         "if args[0] == 'venv':\n"
-        "    subprocess.check_call([sys.executable, '-m', 'venv', args[1]])\n"
+        "    subprocess.check_call([sys.executable, '-m', 'venv', '--without-pip', args[1]])\n"
         "elif args[:2] == ['pip', 'compile']:\n"
         "    source = Path(args[args.index('--python') + 2])\n"
         "    output = Path(args[args.index('--output-file') + 1])\n"

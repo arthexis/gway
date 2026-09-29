@@ -121,8 +121,15 @@ def test_mcp_stdio_transport_lists_tools_and_survives_authorization_error(
     gateway, recipe_factory, required_runtime, tmp_path
 ):
     root = tmp_path / "mcpstdio"
+    mutations = []
+
+    def mutate_now():
+        mutations.append("mutated")
+        return "done"
+
     gateway.allowed = gateway.wrap("allowed", lambda: "ok")
     gateway.denied = gateway.wrap("denied", lambda: "no")
+    gateway.mutate_now = gateway.wrap("mutate_now", mutate_now)
     probe = (
         "\n\ndef probe_stdio():\n"
         "    import asyncio\n"
@@ -143,7 +150,8 @@ def test_mcp_stdio_transport_lists_tools_and_survives_authorization_error(
         "                except Exception as exception:\n"
         "                    error = str(exception)\n"
         "                second = await client.call_tool('gway', {'command': 'allowed'})\n"
-        "                return tools, first.content[0].text, error, second.content[0].text\n"
+        "                mutated = await client.call_tool('gway', {'command': 'mutate_now'})\n"
+        "                return tools, first.content[0].text, error, second.content[0].text, mutated.content[0].text\n"
         "    return asyncio.run(run())\n"
     )
     recipe = _mcp_companion_recipe(
@@ -155,13 +163,17 @@ def test_mcp_stdio_transport_lists_tools_and_survives_authorization_error(
     recipe.write_text("require fastmcp\nserver probe stdio\n", encoding="utf-8")
     gateway.ingest(root)
 
-    with gateway.authorized(operations={"mcpstdio.server", "allowed"}):
-        tools, first, error, second = gateway("mcpstdio server")
+    with gateway.authorized(
+        operations={"mcpstdio.server", "allowed", "mutate_now"}
+    ):
+        tools, first, error, second, mutated = gateway("mcpstdio server")
 
     assert tools == ["gway", "query"]
     assert first == "ok"
     assert "Operation is not authorized: denied" in error
     assert second == "ok"
+    assert mutated == "done"
+    assert mutations == ["mutated"]
 
 
 def _authenticated_parent_recipe(recipe_factory, root, bearer, command):
@@ -302,10 +314,29 @@ def probe_http(bearer, command, second_bearer=None, second_command=None, tool="g
         except Exception as exception:
             return [], None, str(exception)
 
+    async def call_pair(url, credential, first_value, second_value):
+        auth = None if credential == "__missing__" else BearerAuth(credential)
+        try:
+            async with Client(url, auth=auth) as client:
+                tools = [tool.name for tool in await client.list_tools()]
+                results = []
+                for value in (first_value, second_value):
+                    try:
+                        result = await client.call_tool(tool, {"command": value})
+                    except Exception as exception:
+                        results.append((tools, None, str(exception)))
+                    else:
+                        results.append((tools, result.content[0].text, None))
+                return results
+        except Exception as exception:
+            failure = ([], None, str(exception))
+            return [failure, failure]
+
     async def run(url):
-        first = await call(url, bearer, command)
         if second_command is None:
-            return first
+            return await call(url, bearer, command)
+        if second_bearer == bearer:
+            return await call_pair(url, bearer, command, second_command)
         first_task = asyncio.create_task(call(url, bearer, command))
         second_task = asyncio.create_task(
             call(url, second_bearer, second_command)
@@ -346,14 +377,17 @@ def probe_http(bearer, command, second_bearer=None, second_command=None, tool="g
                 process.wait(timeout=5)
 
 
-def probe_challenge(credential="__missing__"):
+def probe_token_http(reader_bearer, alpha_bearer, beta_bearer, invalid_bearer):
+    import asyncio
     import http.client
     import json
-    import os
     import socket
     import subprocess
     import sys
     import time
+
+    from fastmcp import Client
+    from fastmcp.client.auth import BearerAuth
 
     def free_port():
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as listener:
@@ -371,6 +405,69 @@ def probe_challenge(credential="__missing__"):
             except OSError:
                 time.sleep(0.05)
         raise RuntimeError("MCP HTTP server did not become ready")
+
+    async def call(url, credential, command):
+        try:
+            async with Client(url, auth=BearerAuth(credential)) as client:
+                tools = await client.list_tools()
+                try:
+                    result = await client.call_tool("gway", {"command": command})
+                except Exception as exception:
+                    return [tool.name for tool in tools], None, str(exception)
+                return [tool.name for tool in tools], result.content[0].text, None
+        except Exception as exception:
+            return [], None, str(exception)
+
+    async def reader_calls(url):
+        try:
+            async with Client(url, auth=BearerAuth(reader_bearer)) as client:
+                tools = [tool.name for tool in await client.list_tools()]
+                allowed = await client.call_tool("gway", {"command": "allowed"})
+                try:
+                    await client.call_tool("gway", {"command": "denied"})
+                except Exception as exception:
+                    denied = (tools, None, str(exception))
+                else:
+                    denied = (tools, "no", None)
+                return (tools, allowed.content[0].text, None), denied
+        except Exception as exception:
+            failure = ([], None, str(exception))
+            return failure, failure
+
+    async def run(url):
+        allowed, denied = await reader_calls(url)
+        concurrent = await asyncio.gather(
+            call(url, alpha_bearer, "alpha"),
+            call(url, beta_bearer, "beta"),
+        )
+        return allowed, denied, concurrent
+
+    def challenge(port):
+        connection = http.client.HTTPConnection("127.0.0.1", port, timeout=2)
+        headers = {
+            "Content-Type": "application/json",
+            "Accept": "application/json, text/event-stream",
+            "Authorization": f"Bearer {invalid_bearer}",
+        }
+        body = json.dumps(
+            {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "initialize",
+                "params": {
+                    "protocolVersion": "2025-03-26",
+                    "capabilities": {},
+                    "clientInfo": {"name": "test", "version": "1"},
+                },
+            }
+        )
+        connection.request("POST", "/mcp", body=body, headers=headers)
+        response = connection.getresponse()
+        status = response.status
+        www_authenticate = response.getheader("WWW-Authenticate")
+        response.read()
+        connection.close()
+        return status, www_authenticate
 
     port = free_port()
     with _callback_relay() as bridge:
@@ -396,32 +493,11 @@ def probe_challenge(credential="__missing__"):
         )
         try:
             wait_ready(port, process)
-            connection = http.client.HTTPConnection("127.0.0.1", port, timeout=2)
-            headers = {
-                "Content-Type": "application/json",
-                "Accept": "application/json, text/event-stream",
-            }
-            if credential != "__missing__":
-                headers["Authorization"] = f"Bearer {credential}"
-            body = json.dumps(
-                {
-                    "jsonrpc": "2.0",
-                    "id": 1,
-                    "method": "initialize",
-                    "params": {
-                        "protocolVersion": "2025-03-26",
-                        "capabilities": {},
-                        "clientInfo": {"name": "test", "version": "1"},
-                    },
-                }
+            allowed, denied, concurrent = asyncio.run(
+                run(f"http://127.0.0.1:{port}/mcp")
             )
-            connection.request("POST", "/mcp", body=body, headers=headers)
-            response = connection.getresponse()
-            status = response.status
-            challenge = response.getheader("WWW-Authenticate")
-            response.read()
-            connection.close()
-            return status, challenge
+            status, www_authenticate = challenge(port)
+            return allowed, denied, concurrent, status, www_authenticate
         finally:
             process.terminate()
             try:
@@ -443,28 +519,36 @@ def _mcp_http_recipe(recipe_factory, root):
     return recipe
 
 
-def test_mcp_http_bearer_scope_allows_and_denies_operations(
+def test_mcp_http_token_registry_acceptance_shares_one_server(
     gateway, recipe_factory, required_runtime, tmp_path, monkeypatch
 ):
-    _, _, issued = _issued_token(
-        tmp_path,
-        monkeypatch,
-        token="http-client",
-    )
+    path = tmp_path / "security.sqlite"
+    scopes = ScopeRegistry(path)
+    tokens = TokenRegistry(path)
+    scopes.replace("reader", operations={"allowed"})
+    scopes.replace("alpha-scope", operations={"alpha"})
+    scopes.replace("beta-scope", operations={"beta"})
+    reader = tokens.create("http-client", scopes={"reader"})
+    alpha = tokens.create("alpha-client", scopes={"alpha-scope"})
+    beta = tokens.create("beta-client", scopes={"beta-scope"})
+    monkeypatch.setattr(companion_runtime, "TokenRegistry", lambda path=None: tokens)
 
     gateway.allowed = gateway.wrap("allowed", lambda: "ok")
     gateway.denied = gateway.wrap("denied", lambda: "no")
+    gateway.alpha = gateway.wrap("alpha", lambda: "alpha-ok")
+    gateway.beta = gateway.wrap("beta", lambda: "beta-ok")
+
     recipe = _mcp_http_recipe(recipe_factory, tmp_path / "mcphttp")
     recipe.write_text(
         "require fastmcp\n"
-        f"server probe http {issued.bearer!r} allowed "
-        f"{issued.bearer!r} denied\n",
+        f"server probe token http {reader.bearer!r} {alpha.bearer!r} "
+        f"{beta.bearer!r} gwt_missing_wrong\n",
         encoding="utf-8",
     )
     gateway.ingest(recipe.parent)
 
     with gateway.authorized(operations={"mcphttp.server"}):
-        allowed, denied = gateway("mcphttp server")
+        allowed, denied, concurrent, status, challenge = gateway("mcphttp server")
 
     assert allowed == (["gway", "query"], "ok", None)
     assert denied[0] == ["gway", "query"]
@@ -472,73 +556,10 @@ def test_mcp_http_bearer_scope_allows_and_denies_operations(
     assert "Operation is not authorized: denied" in denied[2]
     assert "Invalid bearer token" not in denied[2]
 
-
-def _issued_oauth_token(tmp_path, monkeypatch, *, resource=MCP_RESOURCE):
-    path = tmp_path / "security.sqlite"
-    scopes = ScopeRegistry(path)
-    tokens = TokenRegistry(path)
-    oauth = OAuthRegistry(path)
-    scopes.replace("reader", operations={"allowed"})
-    tokens.create("operator", scopes={"reader"})
-    oauth.link("chatgpt", "operator")
-    grant = oauth.create_grant(
-        "chatgpt",
-        "chatgpt-client",
-        scopes={"reader"},
-        resource=resource,
-    )
-    issued = oauth.issue_tokens(grant.id)
-    monkeypatch.setattr(companion_runtime, "OAuthRegistry", lambda path=None: oauth)
-    return scopes, tokens, oauth, issued
-
-
-def test_mcp_http_oauth_access_token_obeys_scope_and_capability_boundary(
-    gateway, recipe_factory, required_runtime, tmp_path, monkeypatch
-):
-    _, _, _, issued = _issued_oauth_token(tmp_path, monkeypatch)
-
-    gateway.allowed = gateway.wrap("allowed", lambda: "ok")
-    recipe = _mcp_http_recipe(recipe_factory, tmp_path / "mcpoauth")
-    recipe.write_text(
-        "require fastmcp\n"
-        f"server probe http {issued.access_token!r} allowed "
-        f"{issued.access_token!r} clear\n",
-        encoding="utf-8",
-    )
-    gateway.ingest(recipe.parent)
-
-    with gateway.authorized(operations={"mcpoauth.server"}):
-        allowed, trusted_only = gateway("mcpoauth server")
-
-    assert allowed == (["gway", "query"], "ok", None)
-    assert trusted_only[0] == ["gway", "query"]
-    assert trusted_only[1] is None
-    assert "Operation is not authorized: clear" in trusted_only[2]
-    assert "401" not in trusted_only[2]
-
-
-def test_mcp_http_authentication_challenge_points_to_protected_resource_metadata(
-    gateway,
-    recipe_factory,
-    required_runtime,
-    tmp_path,
-    monkeypatch,
-):
-    credential = "gwt_missing_wrong"
-    root_name = "mcpchallengeinvalid"
-    tokens = TokenRegistry(tmp_path / "security.sqlite")
-    monkeypatch.setattr(companion_runtime, "TokenRegistry", lambda path=None: tokens)
-
-    recipe = _mcp_http_recipe(recipe_factory, tmp_path / root_name)
-    recipe.write_text(
-        f"require fastmcp\nserver probe_challenge {credential!r}\n",
-        encoding="utf-8",
-    )
-    gateway.ingest(recipe.parent)
-
-    operation = f"{root_name}.server"
-    with gateway.authorized(operations={operation}):
-        status, challenge = gateway(f"{root_name} server")
+    assert concurrent == [
+        (["gway", "query"], "alpha-ok", None),
+        (["gway", "query"], "beta-ok", None),
+    ]
 
     assert status == 401
     assert challenge.startswith("Bearer")
@@ -549,42 +570,45 @@ def test_mcp_http_authentication_challenge_points_to_protected_resource_metadata
     )
 
 
-def test_mcp_http_concurrent_clients_keep_distinct_scopes(
-    gateway, recipe_factory, required_runtime, tmp_path, monkeypatch
-):
+
+def _issued_oauth_acceptance_tokens(tmp_path, monkeypatch):
     path = tmp_path / "security.sqlite"
     scopes = ScopeRegistry(path)
     tokens = TokenRegistry(path)
-    scopes.replace("alpha-scope", operations={"alpha"})
-    scopes.replace("beta-scope", operations={"beta"})
-    alpha_token = tokens.create("alpha-client", scopes={"alpha-scope"})
-    beta_token = tokens.create("beta-client", scopes={"beta-scope"})
-    monkeypatch.setattr(companion_runtime, "TokenRegistry", lambda path=None: tokens)
+    oauth = OAuthRegistry(path)
 
-    gateway.alpha = gateway.wrap("alpha", lambda: "alpha-ok")
-    gateway.beta = gateway.wrap("beta", lambda: "beta-ok")
-    recipe = _mcp_http_recipe(recipe_factory, tmp_path / "mcphttpconcurrent")
-    recipe.write_text(
-        "require fastmcp\n"
-        f"server probe http {alpha_token.bearer!r} alpha "
-        f"{beta_token.bearer!r} beta\n",
-        encoding="utf-8",
+    scopes.replace("reader", operations={"allowed"})
+    scopes.replace(
+        "chatgpt-logs",
+        operations={"log.sources", "log.read", "log.tail", "log.search"},
+        environment=(),
     )
-    gateway.ingest(recipe.parent)
+    tokens.create("operator", scopes={"reader"})
+    tokens.create("chatgpt-operator", scopes={"chatgpt-logs"})
+    oauth.link("chatgpt-reader", "operator")
+    oauth.link("chatgpt-logs", "chatgpt-operator")
 
-    with gateway.authorized(operations={"mcphttpconcurrent.server"}):
-        results = gateway("mcphttpconcurrent server")
+    reader_grant = oauth.create_grant(
+        "chatgpt-reader",
+        "chatgpt-client",
+        scopes={"reader"},
+        resource=MCP_RESOURCE,
+    )
+    logs_grant = oauth.create_grant(
+        "chatgpt-logs",
+        "chatgpt-client",
+        scopes={"chatgpt-logs"},
+        resource=MCP_RESOURCE,
+    )
+    reader = oauth.issue_tokens(reader_grant.id)
+    logs = oauth.issue_tokens(logs_grant.id)
+    monkeypatch.setattr(companion_runtime, "OAuthRegistry", lambda path=None: oauth)
+    return reader, logs
 
-    assert results == [
-        (["gway", "query"], "alpha-ok", None),
-        (["gway", "query"], "beta-ok", None),
-    ]
 
-
-
-def _mcp_log_http_probe_suffix():
+def _mcp_oauth_http_probe_suffix():
     return r'''
-def probe_log_http(bearer, command="log search timeout arthexis --limit 10"):
+def probe_oauth_http(reader_bearer, logs_bearer):
     import asyncio
     import json
     import socket
@@ -612,11 +636,29 @@ def probe_log_http(bearer, command="log search timeout arthexis --limit 10"):
                 time.sleep(0.05)
         raise RuntimeError("MCP HTTP server did not become ready")
 
-    async def run(url):
-        async with Client(url, auth=BearerAuth(bearer)) as client:
+    async def reader_calls(url):
+        async with Client(url, auth=BearerAuth(reader_bearer)) as client:
             tools = [tool.name for tool in await client.list_tools()]
-            result = await client.call_tool("query", {"command": command})
+            allowed = await client.call_tool("gway", {"command": "allowed"})
+            try:
+                await client.call_tool("gway", {"command": "clear"})
+            except Exception as exception:
+                denied = (tools, None, str(exception))
+            else:
+                denied = (tools, "unexpected", None)
+            return (tools, allowed.content[0].text, None), denied
+
+    async def log_query(url):
+        async with Client(url, auth=BearerAuth(logs_bearer)) as client:
+            tools = [tool.name for tool in await client.list_tools()]
+            result = await client.call_tool(
+                "query",
+                {"command": "log search timeout arthexis --limit 10"},
+            )
             return tools, json.loads(result.content[0].text)
+
+    async def run(url):
+        return await asyncio.gather(reader_calls(url), log_query(url))
 
     port = free_port()
     with _callback_relay() as bridge:
@@ -651,29 +693,6 @@ def probe_log_http(bearer, command="log search timeout arthexis --limit 10"):
                 process.kill()
                 process.wait(timeout=5)
 '''
-
-
-def _issued_chatgpt_logs_oauth(tmp_path, monkeypatch):
-    security_path = tmp_path / "security.sqlite"
-    scopes = ScopeRegistry(security_path)
-    tokens = TokenRegistry(security_path)
-    oauth = OAuthRegistry(security_path)
-    scopes.replace(
-        "chatgpt-logs",
-        operations={"log.sources", "log.read", "log.tail", "log.search"},
-        environment=(),
-    )
-    tokens.create("chatgpt-operator", scopes={"chatgpt-logs"})
-    oauth.link("chatgpt", "chatgpt-operator")
-    grant = oauth.create_grant(
-        "chatgpt",
-        "chatgpt-client",
-        scopes={"chatgpt-logs"},
-        resource=MCP_RESOURCE,
-    )
-    issued = oauth.issue_tokens(grant.id)
-    monkeypatch.setattr(companion_runtime, "OAuthRegistry", lambda path=None: oauth)
-    return scopes, tokens, oauth, issued
 
 
 def _install_log_acceptance_fixture(tmp_path, monkeypatch):
@@ -726,29 +745,38 @@ def _install_log_acceptance_fixture(tmp_path, monkeypatch):
     monkeypatch.setattr(log_operations, "read_journal", fake_read_journal)
 
 
-def test_chatgpt_logs_oauth_reaches_canonical_log_query_over_http(
+def test_mcp_oauth_http_acceptance_shares_one_server(
     gateway, recipe_factory, required_runtime, tmp_path, monkeypatch
 ):
-    _, _, _, issued = _issued_chatgpt_logs_oauth(tmp_path, monkeypatch)
+    reader, logs = _issued_oauth_acceptance_tokens(tmp_path, monkeypatch)
     _install_log_acceptance_fixture(tmp_path, monkeypatch)
 
-    root = tmp_path / "mcpchatgptlogs"
+    gateway.allowed = gateway.wrap("allowed", lambda: "ok")
+    root = tmp_path / "mcpoauth"
     recipe = _mcp_companion_recipe(
         recipe_factory,
         root,
         "clear",
-        suffix=_mcp_log_http_probe_suffix(),
+        suffix=_mcp_oauth_http_probe_suffix(),
     )
     recipe.write_text(
         "require fastmcp\n"
-        f"server probe_log_http {issued.access_token!r}\n",
+        f"server probe_oauth_http {reader.access_token!r} {logs.access_token!r}\n",
         encoding="utf-8",
     )
     gateway.ingest(root)
 
-    with gateway.authorized(operations={"mcpchatgptlogs.server"}):
-        tools, result = gateway("mcpchatgptlogs server")
+    with gateway.authorized(operations={"mcpoauth.server"}):
+        reader_result, log_result = gateway("mcpoauth server")
 
+    allowed, trusted_only = reader_result
+    assert allowed == (["gway", "query"], "ok", None)
+    assert trusted_only[0] == ["gway", "query"]
+    assert trusted_only[1] is None
+    assert "Operation is not authorized: clear" in trusted_only[2]
+    assert "401" not in trusted_only[2]
+
+    tools, result = log_result
     assert tools == ["query"]
     assert [item["message"] for item in result] == ["timeout waiting for charger"]
     assert "GWAY_SECRET" not in repr(result)
@@ -884,53 +912,6 @@ def test_mcp_serve_allows_explicit_http_bind_configuration(
         "port": 8123,
         "path": "/custom-mcp",
     }
-
-
-
-def test_mcp_query_does_not_change_generic_gway_mutation_behavior(
-    gateway, recipe_factory, required_runtime, tmp_path
-):
-    root = tmp_path / "mcpgwaymutating"
-    seen = []
-
-    def mutate_now():
-        seen.append("mutated")
-        return "done"
-
-    gateway.mutate_now = gateway.wrap("mutate_now", mutate_now)
-    probe = (
-        "\n\ndef probe_gway_mutation():\n"
-        "    import asyncio\n"
-        "    from fastmcp import Client\n"
-        "    from fastmcp.client.transports import PythonStdioTransport\n"
-        "    async def run():\n"
-        "        with _callback_relay() as bridge:\n"
-        "            transport = PythonStdioTransport(str(Path(__file__)), args=['--parent-bridge', bridge])\n"
-        "            async with Client(transport) as client:\n"
-        "                result = await client.call_tool('gway', {'command': 'mutate_now'})\n"
-        "                return result.content[0].text\n"
-        "    return asyncio.run(run())\n"
-    )
-    recipe = _mcp_companion_recipe(
-        recipe_factory,
-        root,
-        "mutate_now",
-        suffix=probe,
-    )
-    recipe.write_text(
-        "require fastmcp\nserver probe_gway_mutation\n",
-        encoding="utf-8",
-    )
-    gateway.ingest(root)
-
-    with gateway.authorized(
-        operations={"mcpgwaymutating.server", "mutate_now"}
-    ):
-        result = gateway("mcpgwaymutating server")
-
-    assert result == "done"
-    assert seen == ["mutated"]
-
 
 
 
