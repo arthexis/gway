@@ -1000,9 +1000,28 @@ class Gateway(Resolver):
             "security.scope.current",
         }
 
+    def _source_operation_visible(self, name):
+        """Return whether one operation's source is visible to the caller."""
+        authority = self.authorization
+        if authority is None or "__all__" in authority.operations:
+            return True
+        return name in authority.operations
+
     def _operation_catalog(self):
-        """Return visible canonical operations in stable lexical order."""
+        """Return visible discoverable operations in stable lexical order."""
         from .documentation import describe
+        from .ingestion.base import expand_path
+
+        roots = sorted(
+            {
+                path[:1]
+                for record in self._ingested.values()
+                for path in record.paths
+                if len(path) == 1
+            }
+        )
+        for root in roots:
+            expand_path(self, root)
 
         items = []
         for record in sorted(self.ops.records(), key=lambda item: item.name):
