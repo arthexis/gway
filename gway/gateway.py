@@ -280,6 +280,10 @@ class Gateway(Resolver):
                     topics = (*topics, "admin")
                 metadata["topics"] = tuple(dict.fromkeys(topics))
                 record.callable.__gway_metadata__ = metadata
+                record.callable.mutates = access == "write"
+                record.callable.__gway_mutates__ = record.callable.mutates
+                if access == "read":
+                    record.callable.__gway_supports_no_mutate__ = True
 
         from .dns import Controller as DNSController
         from .network import Controller as NetworkController
@@ -536,11 +540,15 @@ class Gateway(Resolver):
         """Return durable install paths from semantic roots plus platform defaults."""
         from .install.paths import install_paths
 
+        with self.trusted_capability():
+            data_dir = None if root is not None else self.data_root(system=system)
+            bin_dir = self.bin_root(system=system)
+
         return install_paths(
             system=system,
             root=root,
-            data_dir=None if root is not None else self.data_root(system=system),
-            bin_dir=self.bin_root(system=system),
+            data_dir=data_dir,
+            bin_dir=bin_dir,
         )
 
     def _install(self, source, *, ref=None, upgrade=True, force=False, stash=False, system=False):
@@ -992,9 +1000,30 @@ class Gateway(Resolver):
             "security.scope.current",
         }
 
+    def _source_operation_visible(self, name):
+        """Return whether one operation's source is visible to the caller."""
+        authority = self.authorization
+        if authority is None or "__all__" in authority.operations:
+            return True
+        return name in authority.operations
+
     def _operation_catalog(self):
-        """Return visible canonical operations in stable lexical order."""
+        """Return visible discoverable operations in stable lexical order."""
         from .documentation import describe
+        from .ingestion.base import expand_path
+        from .ingestion.django import ingest_model
+
+        roots = sorted(
+            {
+                path[:1]
+                for record in self._ingested.values()
+                if record.expander is not ingest_model
+                for path in record.paths
+                if len(path) == 1
+            }
+        )
+        for root in roots:
+            expand_path(self, root)
 
         items = []
         for record in sorted(self.ops.records(), key=lambda item: item.name):
@@ -1214,6 +1243,16 @@ class Gateway(Resolver):
 
         if operation is None:
             requested = " ".join(values)
+            authority = self.authorization
+            if authority is not None and authority.kind is not None:
+                from .authorization import AuthorizationError
+
+                candidate = f"{family}." + ".".join(
+                    value.replace(" ", ".") for value in values if value
+                )
+                raise AuthorizationError(
+                    f"Operation is not authorized: {candidate}"
+                )
             raise LookupError(
                 f"Role {role!r} does not expose node operation {requested!r}"
             )
@@ -1577,7 +1616,12 @@ class Gateway(Resolver):
                 raise TypeError(f"{func_name!r} resolved to a non-callable target")
             mutation_policy = self.mutation_policy
             supports_mutation_policy = supports_no_mutate(current)
-            if mutation_policy is False and not supports_mutation_policy:
+            declared_non_mutating = getattr(wrapped, "__gway_mutates__", True) is False
+            if (
+                mutation_policy is False
+                and not supports_mutation_policy
+                and not declared_non_mutating
+            ):
                 raise MutationError(
                     f"{func_name!r} does not support non-mutating execution"
                 )
