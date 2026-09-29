@@ -394,7 +394,7 @@ def pipeline_boundary(
         if greedy is not None and parameter is greedy:
             return None
 
-        if is_unquoted(raw) and token == "-":
+        if not literal_mode and is_unquoted(raw) and token == "-":
             return index
 
         if (
