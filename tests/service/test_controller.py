@@ -367,7 +367,7 @@ def test_required_service_companion_repairs_missing_dependency(
         "\n"
         "args = sys.argv[1:]\n"
         "if args[0] == 'venv':\n"
-        "    subprocess.check_call([sys.executable, '-m', 'venv', args[1]])\n"
+        "    subprocess.check_call([sys.executable, '-m', 'venv', '--without-pip', args[1]])\n"
         "elif args[:2] == ['pip', 'compile']:\n"
         "    source = Path(args[args.index('--python') + 2])\n"
         "    output = Path(args[args.index('--output-file') + 1])\n"
