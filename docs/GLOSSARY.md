@@ -1897,6 +1897,38 @@ A - B
 
 pipes the result of `A` into `B`.
 
+### Pipe adapts results semantically when possible
+
+The dash still transfers one operation's raw result to the next operation, but
+Gway does not always force that value into the consumer's first positional slot.
+
+When publication associates the result with a semantic subject and the consumer
+has an unbound parameter of the same name, that parameter receives the piped
+value. This semantic match can therefore move a pipeline value past earlier
+positional parameters without requiring explicit reordering syntax.
+
+For example:
+
+```python
+def summarize(prefix, chargers):
+    ...
+```
+
+```text
+get chargers - summarize report
+```
+
+The explicit word `report` remains `prefix`; the piped charger collection is
+bound to `chargers`.
+
+Explicitly supplied arguments are more specific than automatic semantic
+placement. When the matching parameter is already bound, or no matching semantic
+parameter exists, ordinary positional pipeline adaptation remains the fallback.
+
+This behavior is semantic compression: information already carried by the
+published result's subject does not need to be repeated merely to choose a
+parameter slot.
+
 ### Pipe transfers results, not context
 
 Pipe and context are separate composition mechanisms.

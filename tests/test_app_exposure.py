@@ -60,6 +60,7 @@ def test_expose_app_applies_existing_web_exposure_sampler(gateway, monkeypatch):
                 "host": "127.0.0.1",
                 "port": 8001,
                 "email": "admin@example.com",
+                "response_headers": "",
             },
         )
     ]
@@ -183,3 +184,41 @@ def test_expose_app_is_mutating_but_supports_no_mutate(gateway):
     )
 
     assert exposure.service.app == app.name
+
+
+
+def test_expose_app_renders_semantic_headers_at_server_scope(gateway, monkeypatch):
+    calls = []
+
+    def fake_run(runtime, recipe_name, **context):
+        calls.append(context)
+
+    monkeypatch.setattr("gway.sampler.run", fake_run)
+    gateway("setup app remote")
+    gateway("header Cache-Control no-store")
+    gateway("header X-Test \"one two\"")
+    gateway("header X-Literal '$request_id'")
+
+    gateway(
+        "expose app remote.example.com "
+        "--host 127.0.0.1 --port 8001 "
+        "--email admin@example.com"
+    )
+
+    assert calls[0]["response_headers"] == (
+        'add_header cache-control "no-store" always;\n'
+        '    add_header x-test "one two" always;'
+    )
+
+
+def test_exposure_identity_includes_response_header_policy():
+    service = LocalAppService(app="remote", host="127.0.0.1", port=8001)
+
+    plain = ExposureSpec(service=service, domain="remote.example.com")
+    hardened = ExposureSpec(
+        service=service,
+        domain="remote.example.com",
+        headers=AppSpec().with_header("Cache-Control", "no-store").headers,
+    )
+
+    assert plain != hardened

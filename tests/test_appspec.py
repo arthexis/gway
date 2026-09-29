@@ -4,6 +4,7 @@ from gway.sampler import load as load_sampler
 
 web_app = load_sampler("web/app")
 AppSpec = web_app.AppSpec
+HeaderSpec = web_app.HeaderSpec
 RouteSpec = web_app.RouteSpec
 ViewSpec = web_app.ViewSpec
 
@@ -74,3 +75,53 @@ def test_app_spec_allows_same_route_with_distinct_methods():
     updated = app.add(ViewSpec("remote.write", route="/resource", methods=("POST",)))
 
     assert [route.method for route in updated.routes] == ["GET", "POST"]
+
+
+
+def test_app_spec_headers_are_copy_on_write():
+    app = AppSpec(name="remote")
+
+    updated = app.with_header("Cache-Control", "no-store")
+
+    assert app.headers == ()
+    assert updated.headers == (HeaderSpec("cache-control", "no-store"),)
+
+
+def test_app_spec_header_names_are_semantic_and_case_insensitive():
+    app = AppSpec().with_header("Cache-Control", "public")
+
+    updated = app.with_header("cache-control", "no-store")
+
+    assert updated.headers == (HeaderSpec("cache-control", "no-store"),)
+
+
+def test_app_spec_preserves_headers_when_adding_view():
+    app = AppSpec().with_header("X-Test", "one")
+
+    updated = app.add(ViewSpec("remote.health", route="/health"))
+
+    assert app.views == ()
+    assert updated.headers == app.headers
+    assert updated.views[0].callable_name == "remote.health"
+
+
+def test_app_spec_constructor_keeps_last_value_for_duplicate_header():
+    app = AppSpec(
+        headers=(
+            HeaderSpec("X-Test", "one"),
+            HeaderSpec("x-test", "two"),
+        )
+    )
+
+    assert app.headers == (HeaderSpec("x-test", "two"),)
+
+
+
+def test_header_spec_rejects_response_splitting():
+    with pytest.raises(ValueError, match="line breaks"):
+        HeaderSpec("X-Test", "safe\r\nX-Evil: yes")
+
+
+def test_header_spec_rejects_invalid_name_token():
+    with pytest.raises(ValueError, match="HTTP token"):
+        HeaderSpec("Bad Header", "value")

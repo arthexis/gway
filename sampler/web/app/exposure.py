@@ -2,6 +2,8 @@
 
 from dataclasses import dataclass
 
+from .appspec import HeaderSpec
+
 
 @dataclass(frozen=True)
 class LocalAppService:
@@ -32,6 +34,7 @@ class ExposureSpec:
     site: str | None = None
     email: str | None = None
     adapter: str = "nginx-certbot"
+    headers: tuple[HeaderSpec, ...] = ()
 
     def __post_init__(self):
         domain = str(self.domain).strip().lower()
@@ -44,6 +47,24 @@ class ExposureSpec:
         object.__setattr__(self, "domain", domain)
         object.__setattr__(self, "route", route)
         object.__setattr__(self, "site", str(site).strip())
+        headers = tuple(self.headers)
+        if any(not isinstance(header, HeaderSpec) for header in headers):
+            raise TypeError("exposure headers must be HeaderSpec instances")
+        object.__setattr__(self, "headers", headers)
+
+
+def nginx_header_directives(headers):
+    """Render semantic response headers as server-scoped NGINX directives."""
+    directives = []
+    for header in headers:
+        value = (
+            header.value
+            .replace("\\", "\\\\")
+            .replace("$", "\\$")
+            .replace('"', '\\"')
+        )
+        directives.append(f'add_header {header.name} "{value}" always;')
+    return "\n    ".join(directives)
 
 
 def apply_exposure(gateway, exposure):
@@ -67,5 +88,6 @@ def apply_exposure(gateway, exposure):
         host=exposure.service.host,
         port=exposure.service.port,
         email=exposure.email,
+        response_headers=nginx_header_directives(exposure.headers),
     )
     return exposure

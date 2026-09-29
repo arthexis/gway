@@ -42,6 +42,31 @@ Use a standalone dash to transfer the previous raw result into the next stage:
 produce - consume
 ~~~
 
+Pipeline placement is semantic before it is positional. When the produced result
+has a known subject and the consumer has an unbound parameter with the same name,
+GWAY binds the piped value to that parameter even if it appears later in the
+Python signature.
+
+For example, with:
+
+~~~python
+def summarize(prefix, chargers):
+    ...
+~~~
+
+this recipe chain:
+
+~~~text
+get chargers - summarize report
+~~~
+
+binds `report` to `prefix` and the piped result to `chargers`.
+
+Explicit arguments remain authoritative. If the matching semantic parameter is
+already supplied, or no semantic-name match exists, the pipeline keeps the normal
+positional-prefix behavior. Use chain selectors such as `[n]` and `[*]` when
+manual placement is clearer or required.
+
 The useful distinction is:
 
 ~~~text

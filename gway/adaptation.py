@@ -118,6 +118,32 @@ def plan_pipeline(runtime, func, value, *, args=(), kwargs=None) -> AdaptationPl
             consumer_subject,
         )
 
+    explicit = signature.bind_partial(*args, **kwargs)
+    if producer_subject is not None:
+        parameter = signature.parameters.get(producer_subject)
+        if (
+            parameter is not None
+            and producer_subject not in explicit.arguments
+            and parameter.kind
+            in (
+                inspect.Parameter.POSITIONAL_OR_KEYWORD,
+                inspect.Parameter.KEYWORD_ONLY,
+            )
+        ):
+            _reject_implicit_collection_to_singular(
+                func,
+                value,
+                producer_subject=producer_subject,
+                consumer_subject=consumer_subject,
+                parameter=parameter,
+            )
+            return AdaptationPlan(
+                "semantic",
+                producer_subject,
+                producer_subject,
+                consumer_subject,
+            )
+
     pipeline_args = _pipeline_args(value)
     combined = (*pipeline_args, *args)
 
@@ -159,6 +185,13 @@ def apply_plan(func, plan, value, *, args=(), kwargs=None) -> BoundCall:
     kwargs = {} if kwargs is None else dict(kwargs)
 
     if plan.rule == "receiver":
+        signature.bind_partial(*args, **kwargs)
+        return BoundCall(args, kwargs)
+
+    if plan.rule == "semantic":
+        if plan.parameter is None:
+            raise ValueError("Semantic adaptation requires a target parameter")
+        kwargs[plan.parameter] = value
         signature.bind_partial(*args, **kwargs)
         return BoundCall(args, kwargs)
 

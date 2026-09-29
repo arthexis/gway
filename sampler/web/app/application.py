@@ -3,7 +3,12 @@
 from pathlib import Path
 
 from .appspec import AppSpec, BindingSpec, ViewSpec
-from .exposure import ExposureSpec, LocalAppService, apply_exposure
+from .exposure import (
+    ExposureSpec,
+    LocalAppService,
+    apply_exposure,
+    nginx_header_directives,
+)
 from gway.binding import Literal
 from gway.publication import SKIP_PUBLICATION
 
@@ -161,6 +166,7 @@ class Controller:
                 topic=app.topic,
                 route=app.route,
                 views=app.views,
+                headers=app.headers,
                 templates=str(recipe_base(self.gateway).resolve()),
                 template=app.template,
             )
@@ -215,6 +221,38 @@ class Controller:
         )
         return app.replace(view) if replace else app.add(view)
 
+    def header_app(
+        self,
+        name,
+        value,
+        *,
+        app: AppSpec,
+        mutate=False,
+    ):
+        """Add or replace one semantic response header on the current application.
+
+        Args:
+            app: Current AppSpec supplied through semantic context or pipeline adaptation.
+            name: HTTP response header name.
+            value: HTTP response header value.
+        """
+        del mutate
+        if not isinstance(app, AppSpec):
+            raise TypeError("header app requires an AppSpec")
+        return app.with_header(name, value)
+
+    def headers_app(
+        self,
+        *,
+        app: AppSpec,
+        mutate=False,
+    ):
+        """Render the current app's semantic response headers for the active web backend."""
+        del mutate
+        if not isinstance(app, AppSpec):
+            raise TypeError("headers requires an AppSpec")
+        return nginx_header_directives(app.headers)
+
     def expose_app(
         self,
         domain,
@@ -250,6 +288,7 @@ class Controller:
             site=site,
             email=email,
             adapter=adapter,
+            headers=app.headers,
         )
         key = (exposure.domain, exposure.route)
         existing = self._exposures.get(key)
@@ -313,6 +352,20 @@ def register(gateway):
         sub="app",
     )
     gateway.ops.register_alias("view", gateway.view_app)
+    gateway.header_app = gateway.wrap(
+        "header.app",
+        controller.header_app,
+        op="header",
+        sub="app",
+    )
+    gateway.ops.register_alias("header", gateway.header_app)
+    gateway.headers_app = gateway.wrap(
+        "headers.app",
+        controller.headers_app,
+        op="headers",
+        sub="headers",
+    )
+    gateway.ops.register_alias("headers", gateway.headers_app)
     gateway.serve_app = gateway.wrap(
         "serve.app",
         controller.serve_app,

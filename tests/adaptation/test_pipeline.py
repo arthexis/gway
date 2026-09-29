@@ -48,7 +48,7 @@ def test_pipeline_preserves_native_keyword_arguments():
     assert adapted.kwargs == {"title": "Fleet"}
 
 
-def test_pipeline_uses_first_available_positional_regardless_of_subject_name(gateway):
+def test_pipeline_routes_by_semantic_subject_name(gateway):
     marker = object()
     gateway.results.insert("chargers", marker)
 
@@ -56,13 +56,56 @@ def test_pipeline_uses_first_available_positional_regardless_of_subject_name(gat
         return prefix, chargers
 
     wrapped = gateway.wrap("summarize_chargers", summarize)
-    plan = plan_pipeline(gateway, wrapped, marker)
-    adapted = apply_plan(wrapped, plan, marker)
+    plan = plan_pipeline(gateway, wrapped, marker, args=("report",))
+    adapted = apply_plan(wrapped, plan, marker, args=("report",))
+
+    assert plan.rule == "semantic"
+    assert plan.parameter == "chargers"
+    assert plan.producer_subject == "chargers"
+    assert adapted.args == ("report",)
+    assert adapted.kwargs == {"chargers": marker}
+
+
+def test_pipeline_routes_semantic_subject_to_keyword_only_parameter(gateway):
+    marker = object()
+    gateway.results.insert("app", marker)
+
+    def compose(handler=None, *, app=None):
+        return handler, app
+
+    wrapped = gateway.wrap("compose_view", compose)
+    adapted = adapt_pipeline(gateway, wrapped, marker, args=("health",))
+
+    assert adapted.args == ("health",)
+    assert adapted.kwargs == {"app": marker}
+
+
+def test_explicit_semantic_argument_wins_and_pipeline_uses_positional_fallback(gateway):
+    marker = object()
+    explicit = object()
+    gateway.results.insert("chargers", marker)
+
+    def summarize(prefix, chargers):
+        return prefix, chargers
+
+    wrapped = gateway.wrap("summarize_chargers", summarize)
+    plan = plan_pipeline(
+        gateway,
+        wrapped,
+        marker,
+        kwargs={"chargers": explicit},
+    )
+    adapted = apply_plan(
+        wrapped,
+        plan,
+        marker,
+        kwargs={"chargers": explicit},
+    )
 
     assert plan.rule == "positional"
     assert plan.parameter == "prefix"
-    assert plan.producer_subject == "chargers"
     assert adapted.args == (marker,)
+    assert adapted.kwargs == {"chargers": explicit}
 
 
 def test_pipeline_does_not_route_by_annotation():
