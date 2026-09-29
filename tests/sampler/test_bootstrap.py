@@ -109,6 +109,10 @@ def test_bootstrap_https_site_serves_ui_and_exact_installer_paths(sampler_path):
     )
 
     assert "location = / {" in nginx
+    root_location = nginx.split("location = / {", 1)[1].split("}", 1)[0]
+    assert "root [root|/var/www/gway-install];" in root_location
+    assert "try_files /index.html =404;" in root_location
+    assert "alias " not in root_location
     assert "location = /gway" in nginx
     assert "location = /satellite" in nginx
     assert "location = /control" in nginx
