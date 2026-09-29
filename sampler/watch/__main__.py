@@ -1,4 +1,4 @@
-def __main__(scope=None, only=None, except_=None, since=None, errors=False, changed=False, cursor=None, *, mutate=False):
+def __main__(scope=None, only=None, except_=None, since=None, errors_=False, changed=False, cursor=None, *, mutate=False):
     """Inspect the current node through bounded read-only observations."""
 
 
