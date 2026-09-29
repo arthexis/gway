@@ -31,3 +31,23 @@ def test_recipe_execution_scopes_log_identity(tmp_path):
 
     assert output == "recipe/deploy"
     assert gway_log._current_source() == "gway"
+
+
+def test_recipe_preserves_published_observation_context_between_statements(tmp_path):
+    recipe = tmp_path / "observe.rx"
+    recipe.write_text(
+        "observe --section first -- probe one\n"
+        "observe --section second -- probe two\n"
+        "observation collect first second\n",
+        encoding="utf-8",
+    )
+    runtime = Gateway()
+    runtime.wrap("probe", lambda value, *, mutate=False: value)
+
+    _, output = execute_recipe(runtime, recipe)
+
+    assert output["first"]["status"] == "ok"
+    assert output["first"]["result"] == "one"
+    assert output["second"]["status"] == "ok"
+    assert output["second"]["result"] == "two"
+    assert output["health"]["sections"] == {"first": "ok", "second": "ok"}
