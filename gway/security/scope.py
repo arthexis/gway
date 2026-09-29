@@ -23,10 +23,16 @@ class Controller:
         """Return all named security scopes."""
         return self.list(mutate=mutate)
 
+    def _registry(self, *, converge=False):
+        """Return the scope registry, converging published scopes when requested."""
+        if converge:
+            self.gateway.converge_security_scopes()
+        return ScopeRegistry(self.gateway.security_path)
+
     @property
     def registry(self):
         """Return the scope registry bound to the active Gateway security path."""
-        return ScopeRegistry(self.gateway.security_path)
+        return self._registry()
 
     def create(self, name):
         """Create an empty named security scope."""
@@ -34,11 +40,11 @@ class Controller:
 
     def show(self, name, *, mutate=True):
         """Return one named security scope."""
-        return self.registry.require(name, readonly=not mutate)
+        return self._registry(converge=mutate).require(name, readonly=not mutate)
 
     def list(self, *, mutate=True):
         """Return all named security scopes."""
-        return self.registry.all(readonly=not mutate)
+        return self._registry(converge=mutate).all(readonly=not mutate)
 
     def current(self, *, mutate=False):
         """Return the caller's current effective authority."""
