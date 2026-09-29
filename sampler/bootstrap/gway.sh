@@ -16,10 +16,10 @@ else
     fi
 fi
 
-# Force reconciliation so bootstrap replaces an existing Gway installation.
-# Gway 1.1.0 supersedes the obsolete 1.0.1 package-index release, so the
-# bootstrap no longer needs a temporary <1 release-line constraint.
-"$UV" tool install --force --upgrade gway
+# Gway 1.0.1 is an obsolete package-index release from the previous lineage.
+# Exclude only that version so bootstrap remains safe before 1.1.0 reaches
+# PyPI while allowing the active 1.1.x release line once it is published.
+"$UV" tool install --force --upgrade "gway!=1.0.1"
 
 # Persist uv's configured tool executable directory for future shells before
 # exposing it to this child process. A piped shell cannot mutate its parent.
