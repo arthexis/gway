@@ -1,0 +1,161 @@
+name: Branch Update
+
+on:
+  push:
+    branches: [main]
+  pull_request_target:
+    types: [opened, reopened, synchronize, ready_for_review, unlabeled]
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: Optional PR number; leave blank to scan all open PRs
+        required: false
+        type: number
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+
+concurrency:
+  group: pr-branch-update-${{ github.repository }}
+  cancel-in-progress: false
+
+jobs:
+  update-stale:
+    name: Update stale PRs
+    runs-on: ubuntu-latest
+    steps:
+      - name: Find and update stale PRs
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BRANCH_UPDATE_TOKEN: ${{ secrets.BRANCH_UPDATE_TOKEN }}
+          REPOSITORY: ${{ github.repository }}
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_ACTION: ${{ github.event.action }}
+          EVENT_LABEL: ${{ github.event.label.name }}
+          EVENT_PR_NUMBER: ${{ github.event.pull_request.number }}
+          INPUT_PR_NUMBER: ${{ inputs.pr_number }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          update_pr() {
+            local pr_number="$1"
+            local pr_json state head_repo base_ref head_sha live_base_sha compare_json behind_by
+            local current_json current_head update_output update_status
+
+            pr_json="$(gh api "repos/$REPOSITORY/pulls/$pr_number")"
+            state="$(jq -r '.state' <<< "$pr_json")"
+            head_repo="$(jq -r '.head.repo.full_name // ""' <<< "$pr_json")"
+            base_ref="$(jq -r '.base.ref' <<< "$pr_json")"
+
+            if [[ "$state" != "open" ]]; then
+              echo "PR #$pr_number: not open; skipping."
+              return
+            fi
+
+            if [[ "$head_repo" != "$REPOSITORY" ]]; then
+              echo "PR #$pr_number: fork PR; automatic branch update is disabled."
+              return
+            fi
+
+            if [[ "$base_ref" != "$DEFAULT_BRANCH" ]]; then
+              echo "PR #$pr_number: targets $base_ref, not $DEFAULT_BRANCH; skipping."
+              return
+            fi
+
+            if jq -e '[.labels[].name | ascii_downcase] | any(. == "on-hold" or . == "on hold")' <<< "$pr_json" >/dev/null; then
+              echo "PR #$pr_number: on-hold; skipping."
+              return
+            fi
+
+
+            head_sha="$(jq -r '.head.sha' <<< "$pr_json")"
+            live_base_sha="$(gh api "repos/$REPOSITORY/git/ref/heads/$base_ref" --jq '.object.sha')"
+            compare_json="$(gh api "repos/$REPOSITORY/compare/$live_base_sha...$head_sha")"
+            behind_by="$(jq -r '.behind_by' <<< "$compare_json")"
+
+            if (( behind_by == 0 )); then
+              echo "PR #$pr_number: already up to date."
+              return
+            fi
+
+            current_json="$(gh api "repos/$REPOSITORY/pulls/$pr_number")"
+            current_head="$(jq -r '.head.sha' <<< "$current_json")"
+
+            if [[ "$current_head" != "$head_sha" ]]; then
+              echo "PR #$pr_number: head moved while checking; skipping stale update."
+              return
+            fi
+
+            if jq -e '[.labels[].name | ascii_downcase] | any(. == "on-hold" or . == "on hold")' <<< "$current_json" >/dev/null; then
+              echo "PR #$pr_number: became on-hold before update; skipping."
+              return
+            fi
+
+            echo "PR #$pr_number: updating branch ($behind_by commit(s) behind) with expected head $head_sha."
+
+            set +e
+            update_output="$(
+              GH_TOKEN="$BRANCH_UPDATE_TOKEN" gh api                 --method PUT                 -H "Accept: application/vnd.github+json"                 "repos/$REPOSITORY/pulls/$pr_number/update-branch"                 -f "expected_head_sha=$head_sha" 2>&1
+            )"
+            update_status=$?
+            set -e
+
+
+            if (( update_status != 0 )); then
+              echo "PR #$pr_number: branch update failed; update attempt finished."
+              echo "$update_output"
+              {
+                echo "### PR #$pr_number branch update failed"
+                echo
+                echo 'GitHub could not automatically update this branch from the default branch.'
+                echo
+                echo 'Manual conflict resolution may be required.'
+              } >> "$GITHUB_STEP_SUMMARY"
+              return
+            fi
+
+            echo "PR #$pr_number: branch update requested successfully; update attempt finished."
+          }
+
+          if [[ -z "${BRANCH_UPDATE_TOKEN:-}" ]]; then
+            echo "::error::BRANCH_UPDATE_TOKEN is not configured; refusing to update PRs with github.token because bot-authored updates suppress normal PR CI."
+            exit 1
+          fi
+
+          case "$EVENT_NAME" in
+            pull_request_target)
+              if [[ "$EVENT_ACTION" == "unlabeled" ]]; then
+                case "${EVENT_LABEL,,}" in
+                  on-hold|"on hold")
+                    ;;
+                  *)
+                    echo "PR #$EVENT_PR_NUMBER: removed label does not release a hold; skipping."
+                    exit 0
+                    ;;
+                esac
+              fi
+              update_pr "$EVENT_PR_NUMBER"
+              ;;
+            workflow_dispatch)
+              if [[ -n "${INPUT_PR_NUMBER:-}" ]]; then
+                update_pr "$INPUT_PR_NUMBER"
+              else
+                while IFS= read -r pr_number; do
+                  update_pr "$pr_number"
+                done < <(
+                  gh pr list --repo "$REPOSITORY" --state open --limit 1000                     --json number --jq '.[].number'
+                )
+              fi
+              ;;
+            push)
+              while IFS= read -r pr_number; do
+                update_pr "$pr_number"
+              done < <(
+                gh pr list --repo "$REPOSITORY" --state open --limit 1000                   --json number --jq '.[].number'
+              )
+              ;;
+          esac
