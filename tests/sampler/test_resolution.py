@@ -80,3 +80,24 @@ def test_registered_operation_still_shadows_project_bare_recipe(tmp_path, monkey
     gateway.status = gateway.wrap("status", lambda: "registered")
 
     assert resolve_recipe_stage(gateway, tokenize("status"), pipeline=None) is None
+
+
+def test_project_bare_recipe_shadows_maintained_recipe_operation(tmp_path, monkeypatch):
+    recipe = tmp_path / "ci.rx"
+    recipe.write_text("resolve '[site|local]'\n", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+    gateway = Gateway()
+
+    # Expand the maintained sampler root so its first-class ci recipe is registered.
+    gateway.operation_routes.expand(gateway, tokenize("ci"))
+    maintained = gateway.ops.resolve("ci")
+    assert maintained is not None
+    assert getattr(maintained, "__gway_source_kind__", None) == "recipe"
+
+    resolved = resolve_recipe_stage(gateway, tokenize("ci"), pipeline=None)
+
+    assert resolved is not None
+    path, arguments, remaining = resolved
+    assert path == recipe
+    assert arguments == []
+    assert remaining == []
