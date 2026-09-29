@@ -121,8 +121,15 @@ def test_mcp_stdio_transport_lists_tools_and_survives_authorization_error(
     gateway, recipe_factory, required_runtime, tmp_path
 ):
     root = tmp_path / "mcpstdio"
+    mutations = []
+
+    def mutate_now():
+        mutations.append("mutated")
+        return "done"
+
     gateway.allowed = gateway.wrap("allowed", lambda: "ok")
     gateway.denied = gateway.wrap("denied", lambda: "no")
+    gateway.mutate_now = gateway.wrap("mutate_now", mutate_now)
     probe = (
         "\n\ndef probe_stdio():\n"
         "    import asyncio\n"
@@ -143,7 +150,8 @@ def test_mcp_stdio_transport_lists_tools_and_survives_authorization_error(
         "                except Exception as exception:\n"
         "                    error = str(exception)\n"
         "                second = await client.call_tool('gway', {'command': 'allowed'})\n"
-        "                return tools, first.content[0].text, error, second.content[0].text\n"
+        "                mutated = await client.call_tool('gway', {'command': 'mutate_now'})\n"
+        "                return tools, first.content[0].text, error, second.content[0].text, mutated.content[0].text\n"
         "    return asyncio.run(run())\n"
     )
     recipe = _mcp_companion_recipe(
@@ -155,13 +163,17 @@ def test_mcp_stdio_transport_lists_tools_and_survives_authorization_error(
     recipe.write_text("require fastmcp\nserver probe stdio\n", encoding="utf-8")
     gateway.ingest(root)
 
-    with gateway.authorized(operations={"mcpstdio.server", "allowed"}):
-        tools, first, error, second = gateway("mcpstdio server")
+    with gateway.authorized(
+        operations={"mcpstdio.server", "allowed", "mutate_now"}
+    ):
+        tools, first, error, second, mutated = gateway("mcpstdio server")
 
     assert tools == ["gway", "query"]
     assert first == "ok"
     assert "Operation is not authorized: denied" in error
     assert second == "ok"
+    assert mutated == "done"
+    assert mutations == ["mutated"]
 
 
 def _authenticated_parent_recipe(recipe_factory, root, bearer, command):
@@ -900,53 +912,6 @@ def test_mcp_serve_allows_explicit_http_bind_configuration(
         "port": 8123,
         "path": "/custom-mcp",
     }
-
-
-
-def test_mcp_query_does_not_change_generic_gway_mutation_behavior(
-    gateway, recipe_factory, required_runtime, tmp_path
-):
-    root = tmp_path / "mcpgwaymutating"
-    seen = []
-
-    def mutate_now():
-        seen.append("mutated")
-        return "done"
-
-    gateway.mutate_now = gateway.wrap("mutate_now", mutate_now)
-    probe = (
-        "\n\ndef probe_gway_mutation():\n"
-        "    import asyncio\n"
-        "    from fastmcp import Client\n"
-        "    from fastmcp.client.transports import PythonStdioTransport\n"
-        "    async def run():\n"
-        "        with _callback_relay() as bridge:\n"
-        "            transport = PythonStdioTransport(str(Path(__file__)), args=['--parent-bridge', bridge])\n"
-        "            async with Client(transport) as client:\n"
-        "                result = await client.call_tool('gway', {'command': 'mutate_now'})\n"
-        "                return result.content[0].text\n"
-        "    return asyncio.run(run())\n"
-    )
-    recipe = _mcp_companion_recipe(
-        recipe_factory,
-        root,
-        "mutate_now",
-        suffix=probe,
-    )
-    recipe.write_text(
-        "require fastmcp\nserver probe_gway_mutation\n",
-        encoding="utf-8",
-    )
-    gateway.ingest(root)
-
-    with gateway.authorized(
-        operations={"mcpgwaymutating.server", "mutate_now"}
-    ):
-        result = gateway("mcpgwaymutating server")
-
-    assert result == "done"
-    assert seen == ["mutated"]
-
 
 
 
