@@ -45,14 +45,15 @@ def test_wire_watchtower_recipe_smoke_executes_with_fake_host_adapters(monkeypat
     def fake_ingest(self, source, *, kind=None, sudo=False, **kwargs):
         calls.append(("ingest", str(source), kind, sudo))
         if kind == "proc" and self.ops.resolve(str(source)) is None:
-            operation = self.wrap(
-                str(source),
-                lambda *args, **options: {
+            def invoke_proc(*args, **options):
+                calls.append(("proc", str(source), tuple(args), options))
+                return {
                     "command": str(source),
                     "args": list(args),
                     "options": options,
-                },
-            )
+                }
+
+            operation = self.wrap(str(source), invoke_proc)
             setattr(self, f"_smoke_{str(source).replace('-', '_')}", operation)
         return str(source)
 
@@ -132,6 +133,20 @@ def test_wire_watchtower_recipe_smoke_executes_with_fake_host_adapters(monkeypat
     assert "service.start" in names
     assert "render" in names
     assert "wire.check" in names
+
+    certbot_calls = [
+        call for call in calls
+        if call[0] == "proc" and call[1] == "certbot"
+    ]
+    assert len(certbot_calls) == 1
+    certbot_args = certbot_calls[0][2]
+    certbot_options = certbot_calls[0][3]
+    assert certbot_args == ("certonly",)
+    assert certbot_options["domain"] == "register.arthexis.com"
+    assert certbot_options["cert_name"] == "register.arthexis.com"
+    assert certbot_options["email"] == "ops@example.com"
+    assert "[domain]" not in certbot_options.values()
+    assert "[email]" not in certbot_options.values()
 
 
 def test_mcp_server_recipe_smoke_executes_with_fake_server(monkeypatch, run_recipe):
