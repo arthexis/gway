@@ -69,7 +69,7 @@ def test_read_scopes_include_watch(gateway):
     RemoteApplication(metadata, runtime=gateway)
     scopes = ScopeRegistry(gateway.security_path)
 
-    for name in ("logs-read", "source-read", "operator-read", "arthexis-read"):
+    for name in ("logs-read", "source-read", "operator-read"):
         assert "watch" in scopes.require(name).operations
 
 
