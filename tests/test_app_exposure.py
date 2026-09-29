@@ -207,7 +207,8 @@ def test_expose_app_renders_semantic_headers_at_server_scope(gateway, monkeypatc
 
     assert calls[0]["response_headers"] == (
         'add_header cache-control "no-store" always;\n'
-        '    add_header x-test "one two" always;'
+        '    add_header x-test "one two" always;\n'
+        '    add_header x-literal "\\$request_id" always;'
     )
 
 
