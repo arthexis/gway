@@ -15,7 +15,12 @@ def mutation_parameter(callable_):
     """Return the reserved mutate parameter declared by a callable, if any."""
     try:
         signature = inspect.signature(callable_, eval_str=True)
-    except (TypeError, ValueError, NameError):
+    except NameError:
+        try:
+            signature = inspect.signature(callable_)
+        except (TypeError, ValueError):
+            return None
+    except (TypeError, ValueError):
         return None
 
     parameter = signature.parameters.get(MUTATE_PARAMETER)
