@@ -369,3 +369,13 @@ def test_observation_cursor_unchanged_result_is_empty_surface():
     assert set(second) == {"health", "changed_at", "cursor"}
     assert second["health"]["sections"] == {}
     assert second["changed_at"] is None
+
+
+def test_observe_section_publishes_envelope_to_semantic_context():
+    gateway = Gateway()
+    gateway.wrap("probe", lambda *, mutate=False: {"ready": True})
+
+    result = gateway("observe --section node -- probe")
+
+    assert result["node"]["status"] == "ok"
+    assert gateway.context["node"] == result["node"]
