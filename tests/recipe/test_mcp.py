@@ -303,9 +303,8 @@ def probe_http(bearer, command, second_bearer=None, second_command=None, tool="g
             return [], None, str(exception)
 
     async def run(url):
-        first = await call(url, bearer, command)
         if second_command is None:
-            return first
+            return await call(url, bearer, command)
         first_task = asyncio.create_task(call(url, bearer, command))
         second_task = asyncio.create_task(
             call(url, second_bearer, second_command)
