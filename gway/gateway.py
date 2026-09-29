@@ -1011,11 +1011,13 @@ class Gateway(Resolver):
         """Return visible discoverable operations in stable lexical order."""
         from .documentation import describe
         from .ingestion.base import expand_path
+        from .ingestion.django import ingest_model
 
         roots = sorted(
             {
                 path[:1]
                 for record in self._ingested.values()
+                if record.expander is not ingest_model
                 for path in record.paths
                 if len(path) == 1
             }
