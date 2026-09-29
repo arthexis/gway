@@ -24,7 +24,7 @@ def test_scope_create_round_trips_and_versions_schema(tmp_path):
     assert registry.get("logs-read") == Scope("logs-read")
 
     with sqlite3.connect(path) as connection:
-        assert connection.execute("PRAGMA user_version").fetchone()[0] == 6
+        assert connection.execute("PRAGMA user_version").fetchone()[0] == 7
 
 
 def test_scope_replace_is_atomic_complete_definition(tmp_path):
@@ -285,11 +285,15 @@ def test_security_scope_gway_command_surface(gateway, tmp_path):
     )
 
     assert gateway("security scope show logs") == removed
-    renamed = gateway("security scope rename logs logs-read")
-    assert renamed.name == "logs-read"
-    assert gateway("security scope list") == [renamed]
-    assert gateway("security scope delete logs-read") is True
-    assert gateway("security scope list") == []
+    renamed = gateway("security scope rename logs logs-custom")
+    assert renamed.name == "logs-custom"
+    listed = gateway("security scope list")
+    assert renamed in listed
+    assert any(scope.name == "full-access" for scope in listed)
+    assert gateway("security scope delete logs-custom") is True
+    remaining = gateway("security scope list")
+    assert all(scope.name != "logs-custom" for scope in remaining)
+    assert any(scope.name == "full-access" for scope in remaining)
 
 
 
