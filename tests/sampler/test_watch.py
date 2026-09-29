@@ -496,7 +496,7 @@ def test_watch_since_is_forwarded_to_bounded_error_search(tmp_path, monkeypatch)
     ]
 
 
-def test_watch_errors_keeps_only_problematic_sections(tmp_path, monkeypatch):
+def test_watch_problems_keeps_only_problematic_sections(tmp_path, monkeypatch):
     gateway = _role_gateway(tmp_path, monkeypatch, "control")
 
     def fail(*, mutate=False):
@@ -504,7 +504,7 @@ def test_watch_errors_keeps_only_problematic_sections(tmp_path, monkeypatch):
 
     gateway.wrap("wire.check", fail, op="check", sub="wire")
 
-    result = gateway("watch --errors")
+    result = gateway("watch --problems")
 
     assert set(result) == {
         "wire",
@@ -517,7 +517,7 @@ def test_watch_errors_keeps_only_problematic_sections(tmp_path, monkeypatch):
     assert result["health"]["sections"] == {"wire": "error"}
 
 
-def test_watch_errors_includes_nonempty_recent_error_logs(tmp_path, monkeypatch):
+def test_watch_problems_includes_nonempty_recent_error_logs(tmp_path, monkeypatch):
     gateway = _role_gateway(tmp_path, monkeypatch, "control")
 
     gateway.wrap(
@@ -529,7 +529,7 @@ def test_watch_errors_includes_nonempty_recent_error_logs(tmp_path, monkeypatch)
         sub="log",
     )
 
-    result = gateway("watch --errors")
+    result = gateway("watch --problems")
 
     assert set(result) == {
         "errors",
@@ -542,7 +542,7 @@ def test_watch_errors_includes_nonempty_recent_error_logs(tmp_path, monkeypatch)
     assert result["health"]["status"] == "ok"
 
 
-def test_watch_errors_composes_after_only_filter(tmp_path, monkeypatch):
+def test_watch_problems_composes_after_only_filter(tmp_path, monkeypatch):
     gateway = _role_gateway(tmp_path, monkeypatch, "control")
 
     def fail(*, mutate=False):
@@ -550,7 +550,7 @@ def test_watch_errors_composes_after_only_filter(tmp_path, monkeypatch):
 
     gateway.wrap("wire.check", fail, op="check", sub="wire")
 
-    result = gateway("watch --only node,wire --errors")
+    result = gateway("watch --only node,wire --problems")
 
     assert set(result) == {
         "wire",
@@ -581,13 +581,13 @@ def test_watch_time_error_change_help(tmp_path, monkeypatch):
     gateway = _role_gateway(tmp_path, monkeypatch, "control")
 
     since = gateway("help watch --since")
-    errors = gateway("help watch --errors")
+    problems = gateway("help watch --problems")
     changed = gateway("help watch --changed")
 
     assert "Bound time-aware observations" in since
     assert "10 minutes ago" in since
-    assert "Show only problematic observations" in errors
-    assert "Optional unavailable capabilities are not treated as errors" in errors
+    assert "Show only problematic observations" in problems
+    assert "Optional unavailable capabilities are not treated as errors" in problems
     assert "Show only changed observations" in changed
     assert "prior opaque cursor" in changed
     cursor = gateway("help watch --cursor")
