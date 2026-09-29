@@ -185,9 +185,9 @@ def test_recipe_operation_participates_in_normal_chaining(tmp_path):
 
 def test_non_mutating_recipe_respects_outer_no_mutate_for_child_operations(tmp_path):
     gateway, root = _root_gateway(tmp_path)
-    _write(root / "inspect.rx", "danger\n")
+    _write(root / "snapshot.rx", "danger\n")
     _write(
-        root / "inspect.py",
+        root / "snapshot.py",
         """
 def __main__(*, mutate=False):
     \"\"\"Observe without mutation.\"\"\"
@@ -202,7 +202,7 @@ def __main__(*, mutate=False):
     gateway.wrap("danger", danger)
 
     with pytest.raises(MutationError, match="does not support non-mutating execution"):
-        gateway.execute("inspect", mutate=False)
+        gateway.execute("snapshot", mutate=False)
 
     assert calls == []
 
@@ -218,9 +218,9 @@ def test_recipe_without_non_mutating_contract_is_conservatively_mutating(tmp_pat
 
 def test_authorized_external_execution_accepts_recipe_operation_name(tmp_path):
     gateway, root = _root_gateway(tmp_path)
-    _write(root / "inspect.rx", "version\n")
+    _write(root / "snapshot.rx", "version\n")
     _write(
-        root / "inspect.py",
+        root / "snapshot.py",
         """
 def __main__(*, mutate=False):
     \"\"\"Return an observation.\"\"\"
@@ -228,8 +228,8 @@ def __main__(*, mutate=False):
     )
 
     expected = gateway("version")
-    with gateway.authorized(operations={"inspect"}):
-        assert gateway("inspect") == expected
+    with gateway.authorized(operations={"snapshot"}):
+        assert gateway("snapshot") == expected
 
 
 def test_external_authority_cannot_configure_operation_roots(tmp_path):
@@ -287,7 +287,7 @@ def test_first_explicit_root_precedes_later_root_for_recipe_operation(tmp_path):
 def test_leading_recipe_comments_become_help_without_companion(tmp_path):
     gateway, root = _root_gateway(tmp_path)
     _write(
-        root / "inspect.rx",
+        root / "snapshot.rx",
         """# Inspect the current node.
 #
 # Returns a bounded observation snapshot.
@@ -306,9 +306,9 @@ version
 
 def test_companion_main_docstring_overrides_leading_recipe_help(tmp_path):
     gateway, root = _root_gateway(tmp_path)
-    _write(root / "inspect.rx", "# Recipe comment help.\nversion\n")
+    _write(root / "snapshot.rx", "# Recipe comment help.\nversion\n")
     _write(
-        root / "inspect.py",
+        root / "snapshot.py",
         '''
 def __main__(*, mutate=False):
     """Companion main help."""
