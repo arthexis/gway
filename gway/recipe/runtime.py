@@ -13,6 +13,11 @@ from .path import companion_path
 from .require import collect_recipe_requirements, prepare_required_companion
 
 
+def _recipe_label(path):
+    """Return the public recipe label for direct and directory entry recipes."""
+    return path.parent.name if path.stem == "__main__" else path.stem
+
+
 _NO_PIPELINE = object()
 
 
@@ -45,6 +50,7 @@ def execute_recipe(
 ):
     """Execute one recipe in the caller's runtime and return its internal results."""
     path = Path(recipe_filename).expanduser().resolve()
+    label = _recipe_label(path)
     runtime.launchables.recipe(
         path,
         metadata={"recipe": str(path)},
@@ -70,10 +76,10 @@ def execute_recipe(
             if context:
                 runtime.context.update(context)
 
-            with timed(runtime, f"recipe {path.stem} load"):
+            with timed(runtime, f"recipe {label} load"):
                 commands, _ = load_recipe(path, section=section)
 
-            with timed(runtime, f"recipe {path.stem} parse"):
+            with timed(runtime, f"recipe {label} parse"):
                 statement_list = []
                 for command in commands:
                     statement_list.extend(statements(command.get("tokens", ())))
@@ -101,7 +107,7 @@ def execute_recipe(
 
             from ..dispatch import dispatch_program
 
-            with timed(runtime, f"recipe {path.stem} execute"):
+            with timed(runtime, f"recipe {label} execute"):
                 if pipeline is _NO_PIPELINE:
                     return dispatch_program(
                         runtime,
