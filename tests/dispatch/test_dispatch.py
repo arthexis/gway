@@ -291,3 +291,23 @@ def test_exact_plural_subject_wins_over_inferred_singular(gateway):
     assert resolution.callable is not singular_wrapped
     assert resolution.subject == "chargers"
     assert resolution.cardinality is Cardinality.ONE
+
+
+def test_operation_resolution_does_not_consume_structural_pipeline_dash(gateway):
+    gateway.probe = gateway.wrap("probe", lambda: "ready")
+
+    def consume(value):
+        return f"seen:{value}"
+
+    gateway.consume = gateway.wrap("consume", consume)
+
+    assert dispatch(gateway, "probe - consume") == "seen:ready"
+
+
+def test_quoted_dash_remains_operation_argument_data(gateway):
+    def echo(value):
+        return value
+
+    gateway.echo = gateway.wrap("echo", echo)
+
+    assert dispatch(gateway, 'echo "-"') == "-"
