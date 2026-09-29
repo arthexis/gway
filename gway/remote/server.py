@@ -8,7 +8,7 @@ from ..authorization import AuthorizationError
 from ..dispatch import resolve_operation
 from ..mutation import MutationError
 from ..security.authentication import BearerAuthenticationError
-from ..security.defaults import CORE_SCOPE_DEFINITIONS, CORE_SCOPE_NAMES
+from ..security.defaults import CORE_SCOPE_NAMES, converge_scope_registry
 from ..security.oauth import OAuthAuthenticationError, OAuthRegistry
 from ..security.tokens import TokenRegistry
 from ..tokens import tokenize
@@ -95,23 +95,10 @@ class RemoteApplication(RemoteDiscoveryApplication):
                 operation_resolver=resolve_runtime_operation,
             )
         self.account = RemoteAccountApplication() if account is None else account
-        for name, definition in CORE_SCOPE_DEFINITIONS.items():
-            self.account.oauth.scopes.replace(
-                name,
-                operations=definition["operations"],
-                environment=definition["environment"],
-            )
         published_scopes = (
             {} if runtime is None else getattr(runtime, "_published_scopes", {})
         )
-        for name, definition in sorted(published_scopes.items()):
-            if name in CORE_SCOPE_NAMES:
-                raise ValueError(f"Published security scope shadows Gway core scope: {name}")
-            self.account.oauth.scopes.replace(
-                name,
-                operations=definition["operations"],
-                environment=definition["environment"],
-            )
+        converge_scope_registry(self.account.oauth.scopes, published_scopes)
         self.oauth = RemoteOAuthProtocol(
             metadata,
             self.account,
