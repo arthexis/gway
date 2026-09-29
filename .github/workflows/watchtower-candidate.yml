@@ -83,8 +83,8 @@ jobs:
             deploy="$(cat /tmp/deploy)"
           fi
           labels="$(gh api "repos/${GITHUB_REPOSITORY}/commits/${AFTER_SHA}/pulls" --jq '[.[] | select(.merge_commit_sha == "'"$AFTER_SHA"'") | .labels[].name] | unique | .[]')"
-          if grep -Fxq remote <<<"$labels"; then
-            stage="remote"
+          if grep -Fxq remote-only <<<"$labels"; then
+            stage="remote-only"
           fi
           if grep -Fxq deploy <<<"$labels"; then
             force_deploy=true
