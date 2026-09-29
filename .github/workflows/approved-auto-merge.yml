@@ -31,6 +31,8 @@ jobs:
       - name: Resolve pull request
         id: pr
         env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
           EVENT_NAME: ${{ github.event_name }}
           INPUT_PR: ${{ inputs.pr_number }}
         shell: bash
@@ -40,6 +42,12 @@ jobs:
           case "$EVENT_NAME" in
             workflow_run)
               pr_number="$(jq -r '.workflow_run.pull_requests[0].number // empty' "$GITHUB_EVENT_PATH")"
+              if [[ -z "$pr_number" ]]; then
+                head_sha="$(jq -r '.workflow_run.head_sha // empty' "$GITHUB_EVENT_PATH")"
+                if [[ -n "$head_sha" ]]; then
+                  pr_number="$(gh api "repos/$REPOSITORY/commits/$head_sha/pulls" --jq '[.[] | select(.state == "open")][0].number // empty')"
+                fi
+              fi
               ;;
             workflow_dispatch)
               pr_number="$INPUT_PR"
