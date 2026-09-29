@@ -1,6 +1,8 @@
 name: python / Python compatibility
 
 on:
+  push:
+    branches: [main]
   pull_request:
     types: [opened, synchronize, reopened, labeled, unlabeled]
   workflow_dispatch:
@@ -50,9 +52,9 @@ jobs:
           if [[ "$INTEGRATION_PR" == "true" ]]; then
             timeout -s ABRT 300s python -m gway ci
           elif [[ "$WORKFLOW_PR" == "true" ]]; then
-            timeout -s ABRT 300s python -m gway test run architecture
+            timeout -s ABRT 300s python -m gway test run architecture - check --is 0
           else
-            timeout -s ABRT 300s python -m gway test run --keyword "not architecture"
+            timeout -s ABRT 300s python -m gway test run --keyword "not architecture" - check --is 0
           fi
 
   forward-compatibility:
