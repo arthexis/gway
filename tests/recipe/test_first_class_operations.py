@@ -185,9 +185,9 @@ def test_recipe_operation_participates_in_normal_chaining(tmp_path):
 
 def test_non_mutating_recipe_respects_outer_no_mutate_for_child_operations(tmp_path):
     gateway, root = _root_gateway(tmp_path)
-    _write(root / "observe.rx", "danger\n")
+    _write(root / "snapshot.rx", "danger\n")
     _write(
-        root / "observe.py",
+        root / "snapshot.py",
         """
 def __main__(*, mutate=False):
     \"\"\"Observe without mutation.\"\"\"
@@ -202,7 +202,7 @@ def __main__(*, mutate=False):
     gateway.wrap("danger", danger)
 
     with pytest.raises(MutationError, match="does not support non-mutating execution"):
-        gateway.execute("observe", mutate=False)
+        gateway.execute("snapshot", mutate=False)
 
     assert calls == []
 
@@ -218,9 +218,9 @@ def test_recipe_without_non_mutating_contract_is_conservatively_mutating(tmp_pat
 
 def test_authorized_external_execution_accepts_recipe_operation_name(tmp_path):
     gateway, root = _root_gateway(tmp_path)
-    _write(root / "observe.rx", "version\n")
+    _write(root / "snapshot.rx", "version\n")
     _write(
-        root / "observe.py",
+        root / "snapshot.py",
         """
 def __main__(*, mutate=False):
     \"\"\"Return an observation.\"\"\"
@@ -228,8 +228,8 @@ def __main__(*, mutate=False):
     )
 
     expected = gateway("version")
-    with gateway.authorized(operations={"observe"}):
-        assert gateway("observe") == expected
+    with gateway.authorized(operations={"snapshot"}):
+        assert gateway("snapshot") == expected
 
 
 def test_external_authority_cannot_configure_operation_roots(tmp_path):
