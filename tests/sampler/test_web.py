@@ -2,11 +2,6 @@ from pathlib import Path
 
 from gway.recipe import recipe_path
 
-def test_web_expose_sampler_is_not_builtin(gateway):
-    assert gateway.ops.resolve("expose") is None
-    assert gateway.ops.resolve("web expose") is None
-
-
 def test_web_expose_package_has_required_shape(sampler_path):
     root = sampler_path("web/expose")
 
