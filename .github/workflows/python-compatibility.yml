@@ -4,11 +4,40 @@ on:
   push:
     branches: [main]
   pull_request:
-    types: [opened, synchronize, reopened, labeled, unlabeled]
+    types: [opened, synchronize, reopened]
   workflow_dispatch:
+    inputs:
+      pr_number:
+        description: Pull request number for label-driven CI
+        required: false
+        type: number
+      base_sha:
+        description: Pull request base SHA
+        required: false
+        type: string
+      head_sha:
+        description: Pull request head SHA
+        required: false
+        type: string
+      head_repo:
+        description: Pull request head repository
+        required: false
+        type: string
+      version_pr:
+        description: Whether version-only is active
+        required: false
+        type: boolean
+      workflow_pr:
+        description: Whether workflow scope is active
+        required: false
+        type: boolean
+      integration_pr:
+        description: Whether integration scope is active
+        required: false
+        type: boolean
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-${{ github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && !contains(fromJSON('["workflow","integration","version-only","on-hold","on hold"]'), github.event.label.name) && github.run_id || 'ci' }}
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || inputs.pr_number || github.ref }}
   cancel-in-progress: true
 
 permissions:
@@ -17,15 +46,16 @@ permissions:
 jobs:
   regression:
     name: Tests (Python 3.10)
-    if: ${{ github.event_name != 'pull_request' || ((!contains(github.event.pull_request.labels.*.name, 'on-hold') && !contains(github.event.pull_request.labels.*.name, 'on hold')) && ((github.event.action != 'labeled' && github.event.action != 'unlabeled') || contains(fromJSON('["workflow","integration","version-only","on-hold","on hold"]'), github.event.label.name))) }}
     env:
-      VERSION_PR: ${{ github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'version-only') }}
-      BASE_SHA: ${{ github.event.pull_request.base.sha || '' }}
-      HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+      VERSION_PR: ${{ inputs.version_pr || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'version-only')) }}
+      BASE_SHA: ${{ inputs.base_sha || github.event.pull_request.base.sha || '' }}
+      HEAD_SHA: ${{ inputs.head_sha || github.event.pull_request.head.sha || github.sha }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
         with:
+          repository: ${{ inputs.head_repo || github.repository }}
+          ref: ${{ inputs.head_sha || github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
           persist-credentials: false
       - name: Validate version-only PR
@@ -46,8 +76,8 @@ jobs:
         if: env.VERSION_PR != 'true'
         env:
           PYTHONFAULTHANDLER: '1'
-          WORKFLOW_PR: ${{ contains(github.event.pull_request.labels.*.name, 'workflow') }}
-          INTEGRATION_PR: ${{ github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'integration') }}
+          WORKFLOW_PR: ${{ inputs.workflow_pr || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'workflow')) }}
+          INTEGRATION_PR: ${{ inputs.integration_pr || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'integration')) || (github.event_name != 'pull_request' && github.event_name != 'workflow_dispatch') }}
         run: |
           if [[ "$INTEGRATION_PR" == "true" ]]; then
             timeout -s ABRT 300s python -m gway ci
@@ -59,15 +89,16 @@ jobs:
 
   forward-compatibility:
     name: Compatibility (Python 3.13)
-    if: ${{ github.event_name != 'pull_request' || ((!contains(github.event.pull_request.labels.*.name, 'on-hold') && !contains(github.event.pull_request.labels.*.name, 'on hold')) && ((github.event.action != 'labeled' && github.event.action != 'unlabeled') || contains(fromJSON('["workflow","integration","version-only","on-hold","on hold"]'), github.event.label.name))) }}
     env:
-      VERSION_PR: ${{ github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'version-only') }}
-      BASE_SHA: ${{ github.event.pull_request.base.sha || '' }}
-      HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+      VERSION_PR: ${{ inputs.version_pr || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'version-only')) }}
+      BASE_SHA: ${{ inputs.base_sha || github.event.pull_request.base.sha || '' }}
+      HEAD_SHA: ${{ inputs.head_sha || github.event.pull_request.head.sha || github.sha }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
         with:
+          repository: ${{ inputs.head_repo || github.repository }}
+          ref: ${{ inputs.head_sha || github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
           persist-credentials: false
       - name: Validate version-only PR
@@ -105,7 +136,7 @@ jobs:
   compatibility:
     name: python / Python compatibility
     needs: [regression, forward-compatibility]
-    if: ${{ always() && (github.event_name != 'pull_request' || ((!contains(github.event.pull_request.labels.*.name, 'on-hold') && !contains(github.event.pull_request.labels.*.name, 'on hold')) && ((github.event.action != 'labeled' && github.event.action != 'unlabeled') || contains(fromJSON('["workflow","integration","version-only","on-hold","on hold"]'), github.event.label.name)))) }}
+    if: ${{ always() }}
     runs-on: ubuntu-latest
     steps:
       - name: Require baseline regression and forward compatibility
