@@ -317,7 +317,7 @@ def test_public_install_classifies_external_project_as_product(
 ):
     from gway.install.ops import install
 
-    monkeypatch.setattr(transaction, "_provision_product_runtime", _fake_product_runtime)
+    monkeypatch.setattr(transaction, "_converge_product_runtime", _fake_product_runtime)
     source = make_project("arthexis", launcher=True)
     installed = install(source, paths=managed_paths)
 
@@ -342,7 +342,7 @@ def test_forced_kind_migration_replaces_matching_existing_product_target(
     managed_paths,
     monkeypatch,
 ):
-    monkeypatch.setattr(transaction, "_provision_product_runtime", _fake_product_runtime)
+    monkeypatch.setattr(transaction, "_converge_product_runtime", _fake_product_runtime)
     source = make_project("arthexis")
     extension = transaction.install_local(
         InstallRequest(str(source), kind="extension"),
@@ -370,7 +370,7 @@ def test_kind_migration_rejects_existing_product_target_without_force(
     managed_paths,
     monkeypatch,
 ):
-    monkeypatch.setattr(transaction, "_provision_product_runtime", _fake_product_runtime)
+    monkeypatch.setattr(transaction, "_converge_product_runtime", _fake_product_runtime)
     source = make_project("arthexis")
     transaction.install_local(
         InstallRequest(str(source), kind="extension"),
@@ -391,7 +391,7 @@ def test_forced_kind_migration_rejects_different_project_target(
     managed_paths,
     monkeypatch,
 ):
-    monkeypatch.setattr(transaction, "_provision_product_runtime", _fake_product_runtime)
+    monkeypatch.setattr(transaction, "_converge_product_runtime", _fake_product_runtime)
     source = make_project("arthexis")
     transaction.install_local(
         InstallRequest(str(source), kind="extension"),
@@ -408,7 +408,7 @@ def test_forced_kind_migration_rejects_different_project_target(
         )
 
 
-def test_product_runtime_uses_uv_to_install_project_dependencies(
+def test_product_runtime_uses_uv_to_install_declared_dependencies(
     make_project,
     managed_paths,
     monkeypatch,
@@ -431,13 +431,26 @@ def test_product_runtime_uses_uv_to_install_project_dependencies(
 
     monkeypatch.setattr(transaction.subprocess, "run", run)
 
-    transaction._provision_product_runtime(project, managed_paths)
+    transaction._converge_product_runtime(project, managed_paths)
 
     python = _product_python(project)
     assert calls == [
         ((str(uv), "venv", ".venv"), project, True),
         (
-            (str(uv), "pip", "install", "--python", str(python), "."),
+            (
+                str(uv),
+                "pip",
+                "install",
+                "--python",
+                str(python),
+                "--requirements",
+                "pyproject.toml",
+            ),
+            project,
+            True,
+        ),
+        (
+            (str(uv), "pip", "check", "--python", str(python)),
             project,
             True,
         ),
@@ -490,7 +503,7 @@ def test_product_script_runs_with_product_owned_dependency(
             encoding="utf-8",
         )
 
-    monkeypatch.setattr(transaction, "_provision_product_runtime", provision)
+    monkeypatch.setattr(transaction, "_converge_product_runtime", provision)
 
     installed = install(source, paths=managed_paths)
 
@@ -512,7 +525,7 @@ def test_reinstall_repairs_missing_product_runtime(
         calls.append(Path(project))
         _fake_product_runtime(project, selected)
 
-    monkeypatch.setattr(transaction, "_provision_product_runtime", provision)
+    monkeypatch.setattr(transaction, "_converge_product_runtime", provision)
 
     source = make_project("arthexis", launcher=True)
     first = install(source, paths=managed_paths)
@@ -538,7 +551,7 @@ def test_no_upgrade_still_repairs_missing_product_runtime(
 ):
     from gway.install.ops import install
 
-    monkeypatch.setattr(transaction, "_provision_product_runtime", _fake_product_runtime)
+    monkeypatch.setattr(transaction, "_converge_product_runtime", _fake_product_runtime)
 
     source = make_project("arthexis", launcher=True)
     first = install(source, paths=managed_paths)
@@ -563,7 +576,7 @@ def test_product_runtime_is_provisioned_at_final_destination(
         observed.append(Path(project))
         _fake_product_runtime(project, selected)
 
-    monkeypatch.setattr(transaction, "_provision_product_runtime", provision)
+    monkeypatch.setattr(transaction, "_converge_product_runtime", provision)
 
     source = make_project("arthexis", launcher=True)
     installed = install(source, paths=managed_paths)
@@ -572,7 +585,7 @@ def test_product_runtime_is_provisioned_at_final_destination(
     assert ".stage-" not in str(observed[0])
 
 
-def test_product_runtime_health_checks_installed_packages(
+def test_product_runtime_convergence_reinstalls_declared_dependencies(
     make_project,
     managed_paths,
     monkeypatch,
@@ -588,19 +601,28 @@ def test_product_runtime_health_checks_installed_packages(
 
     def run(command, **kwargs):
         observed.append((tuple(command), kwargs))
-        return subprocess.CompletedProcess(command, 1)
+        return subprocess.CompletedProcess(command, 0)
 
     monkeypatch.setattr(transaction.subprocess, "run", run)
 
-    assert transaction._product_runtime_ready(project, managed_paths) is False
+    transaction._converge_product_runtime(project, managed_paths)
+
     assert observed[0][0] == (
+        str(uv),
+        "pip",
+        "install",
+        "--python",
+        str(_product_python(project)),
+        "--requirements",
+        "pyproject.toml",
+    )
+    assert observed[1][0] == (
         str(uv),
         "pip",
         "check",
         "--python",
         str(_product_python(project)),
     )
-
 
 def test_failed_product_provisioning_restores_previous_install(
     make_project,
@@ -609,8 +631,8 @@ def test_failed_product_provisioning_restores_previous_install(
 ):
     from gway.install.ops import install
 
-    monkeypatch.setattr(transaction, "_provision_product_runtime", _fake_product_runtime)
-    monkeypatch.setattr(transaction, "_product_runtime_ready", lambda *args: True)
+    monkeypatch.setattr(transaction, "_converge_product_runtime", _fake_product_runtime)
+    monkeypatch.setattr(transaction, "_converge_product_runtime", lambda *args: True)
 
     source = make_project("arthexis", launcher=True)
     first = install(source, paths=managed_paths)
@@ -626,7 +648,7 @@ def test_failed_product_provisioning_restores_previous_install(
     def fail(project, selected):
         raise RuntimeError("dependency install failed")
 
-    monkeypatch.setattr(transaction, "_provision_product_runtime", fail)
+    monkeypatch.setattr(transaction, "_converge_product_runtime", fail)
 
     with pytest.raises(RuntimeError, match="dependency install failed"):
         install(source, paths=managed_paths)
