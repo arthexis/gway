@@ -17,8 +17,8 @@ else
 fi
 
 # Install the exact Gway revision certified by Watchtower instead of depending
-# on PyPI publication. The accepted manifest pins the Gway/Arthexis pair that
-# was successfully deployed together.
+# on PyPI publication. Use GitHub's immutable source archive so a fresh machine
+# does not need a system Git executable just to bootstrap Gway.
 CERTIFIED_MANIFEST_URL="https://raw.githubusercontent.com/arthexis/arthexis/watchtower-state/.watchtower/accepted.json"
 MANIFEST="$(mktemp)"
 trap 'rm -f "$MANIFEST"' EXIT
@@ -39,7 +39,7 @@ case "$GWAY_SHA" in
         ;;
 esac
 
-GWAY_SOURCE="git+https://github.com/arthexis/gway.git@$GWAY_SHA"
+GWAY_SOURCE="gway @ https://github.com/arthexis/gway/archive/$GWAY_SHA.tar.gz"
 "$UV" tool install --force --upgrade "$GWAY_SOURCE"
 
 # Persist uv's configured tool executable directory for future shells before
