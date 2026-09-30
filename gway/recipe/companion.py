@@ -18,6 +18,62 @@ from ..tokens import tokenize
 
 
 _HEADER = struct.Struct("!Q")
+_WIRE_TAG = "__gway_wire__"
+
+
+def _wire_encode(value):
+    """Reduce a protocol value to dependency-neutral built-in wire types."""
+    if value is None or isinstance(value, (bool, int, float, str)):
+        return value
+    if isinstance(value, bytes):
+        return {_WIRE_TAG: "bytes", "hex": value.hex()}
+    if isinstance(value, list):
+        return [_wire_encode(item) for item in value]
+    if isinstance(value, tuple):
+        return {_WIRE_TAG: "tuple", "items": [_wire_encode(item) for item in value]}
+    if isinstance(value, set):
+        return {_WIRE_TAG: "set", "items": [_wire_encode(item) for item in value]}
+    if isinstance(value, frozenset):
+        return {_WIRE_TAG: "frozenset", "items": [_wire_encode(item) for item in value]}
+    if isinstance(value, dict):
+        return {
+            _WIRE_TAG: "dict",
+            "items": [
+                [_wire_encode(key), _wire_encode(item)]
+                for key, item in value.items()
+            ],
+        }
+    if isinstance(value, Path):
+        return {_WIRE_TAG: "path", "value": str(value)}
+    raise TypeError(
+        "companion protocol value is not transportable: "
+        f"{type(value).__module__}.{type(value).__qualname__}"
+    )
+
+
+def _wire_decode(value):
+    """Restore one dependency-neutral wire tree into host-safe values."""
+    if isinstance(value, list):
+        return [_wire_decode(item) for item in value]
+    if not isinstance(value, dict) or _WIRE_TAG not in value:
+        return value
+    kind = value[_WIRE_TAG]
+    if kind == "bytes":
+        return bytes.fromhex(value["hex"])
+    if kind == "tuple":
+        return tuple(_wire_decode(item) for item in value["items"])
+    if kind == "set":
+        return set(_wire_decode(item) for item in value["items"])
+    if kind == "frozenset":
+        return frozenset(_wire_decode(item) for item in value["items"])
+    if kind == "dict":
+        return {
+            _wire_decode(key): _wire_decode(item)
+            for key, item in value["items"]
+        }
+    if kind == "path":
+        return Path(value["value"])
+    raise ValueError(f"Unknown companion wire type: {kind!r}")
 
 
 def _read_message(stream):
@@ -30,11 +86,11 @@ def _read_message(stream):
     payload = stream.read(size)
     if len(payload) != size:
         raise EOFError("truncated companion worker message")
-    return pickle.loads(payload)
+    return _wire_decode(pickle.loads(payload))
 
 
 def _write_message(stream, value):
-    payload = pickle.dumps(value, protocol=pickle.HIGHEST_PROTOCOL)
+    payload = pickle.dumps(_wire_encode(value), protocol=pickle.HIGHEST_PROTOCOL)
     stream.write(_HEADER.pack(len(payload)))
     stream.write(payload)
     stream.flush()
@@ -50,6 +106,64 @@ import sys
 import traceback
 
 HEADER = struct.Struct("!Q")
+WIRE_TAG = "__gway_wire__"
+
+
+def wire_encode(value):
+    if value is None or isinstance(value, (bool, int, float, str)):
+        return value
+    if isinstance(value, bytes):
+        return {WIRE_TAG: "bytes", "hex": value.hex()}
+    if isinstance(value, list):
+        return [wire_encode(item) for item in value]
+    if isinstance(value, tuple):
+        return {WIRE_TAG: "tuple", "items": [wire_encode(item) for item in value]}
+    if isinstance(value, set):
+        return {WIRE_TAG: "set", "items": [wire_encode(item) for item in value]}
+    if isinstance(value, frozenset):
+        return {
+            WIRE_TAG: "frozenset",
+            "items": [wire_encode(item) for item in value],
+        }
+    if isinstance(value, dict):
+        return {
+            WIRE_TAG: "dict",
+            "items": [
+                [wire_encode(key), wire_encode(item)]
+                for key, item in value.items()
+            ],
+        }
+    if isinstance(value, Path):
+        return {WIRE_TAG: "path", "value": str(value)}
+    raise TypeError(
+        "companion protocol value is not transportable: "
+        f"{type(value).__module__}.{type(value).__qualname__}"
+    )
+
+
+def wire_decode(value):
+    if isinstance(value, list):
+        return [wire_decode(item) for item in value]
+    if not isinstance(value, dict) or WIRE_TAG not in value:
+        return value
+    kind = value[WIRE_TAG]
+    if kind == "bytes":
+        return bytes.fromhex(value["hex"])
+    if kind == "tuple":
+        return tuple(wire_decode(item) for item in value["items"])
+    if kind == "set":
+        return set(wire_decode(item) for item in value["items"])
+    if kind == "frozenset":
+        return frozenset(wire_decode(item) for item in value["items"])
+    if kind == "dict":
+        return {
+            wire_decode(key): wire_decode(item)
+            for key, item in value["items"]
+        }
+    if kind == "path":
+        return Path(value["value"])
+    raise ValueError(f"Unknown companion wire type: {kind!r}")
+
 
 environment_path = Path(sys.argv[2]).expanduser().resolve()
 environment_spec = importlib.util.spec_from_file_location(
@@ -73,11 +187,11 @@ def read_message():
     payload = sys.stdin.buffer.read(size)
     if len(payload) != size:
         raise EOFError
-    return pickle.loads(payload)
+    return wire_decode(pickle.loads(payload))
 
 
 def write_message(value):
-    payload = pickle.dumps(value, protocol=pickle.HIGHEST_PROTOCOL)
+    payload = pickle.dumps(wire_encode(value), protocol=pickle.HIGHEST_PROTOCOL)
     sys.__stdout__.buffer.write(HEADER.pack(len(payload)))
     sys.__stdout__.buffer.write(payload)
     sys.__stdout__.buffer.flush()
@@ -158,8 +272,8 @@ def safe_default(value):
     if value is inspect.Parameter.empty:
         return ("empty", None)
     try:
-        pickle.dumps(value, protocol=pickle.HIGHEST_PROTOCOL)
-    except Exception:
+        wire_encode(value)
+    except TypeError:
         return ("repr", repr(value))
     return ("value", value)
 
@@ -472,8 +586,8 @@ def _describe_parent_operation(runtime, name):
             default = None
         else:
             try:
-                pickle.dumps(parameter.default, protocol=pickle.HIGHEST_PROTOCOL)
-            except Exception:
+                _wire_encode(parameter.default)
+            except TypeError:
                 default_kind = "repr"
                 default = repr(parameter.default)
             else:
