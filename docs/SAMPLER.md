@@ -42,7 +42,7 @@ The fallback order is:
 Examples:
 
 ```console
-gway -R ./ops watch
+gway -R ./ops survey
 gway -R ./primary -R ./secondary deploy
 ```
 
@@ -157,19 +157,19 @@ maintained recipe resolver where appropriate.
 
 ## Operation and capability reference
 
-### `watch`
+### `survey`
 
-`watch` is the reference first-class sampler operation.
+`survey` is the reference first-class sampler operation.
 
 ```console
 gway watch
-gway watch --scope operations-basic
-gway watch --only node,services
-gway watch --except errors,wire
-gway watch --since "10 minutes ago"
-gway watch --problems
-gway watch --changed --cursor <cursor>
-gway -t watch
+gway survey --scope operations-basic
+gway survey --only node,services
+gway survey --except errors,wire
+gway survey --since "10 minutes ago"
+gway survey --problems
+gway survey --changed --cursor <cursor>
+gway -t survey
 ```
 
 It is strictly non-mutating and safe under query/no-mutate execution.
@@ -197,7 +197,7 @@ Every successful snapshot returns an opaque versioned cursor. Incremental
 comparison is stateless:
 
 ```console
-gway watch --changed --cursor <previous-cursor>
+gway survey --changed --cursor <previous-cursor>
 ```
 
 Sections lost because later authority is narrower are not exposed as removals.
@@ -208,7 +208,9 @@ The recipe does not branch on transport.
 
 `-t/--timed` is also generic: route discovery, recipe load/parse/execute, each
 nested operation, and the overall first-class operation can be measured without
-changing the watch result.
+changing the survey result.
+
+`watch` remains a temporary compatibility spelling for this snapshot during the migration tracked in #1311. New callers, scopes, documentation, and integrations should use `survey`; the compatibility surface will be removed before `watch` is reused for persistent monitoring.
 
 ### `ci`
 
@@ -444,11 +446,11 @@ For a first-class recipe it can expose:
 
 ```text
 [timed] route sampler discovery ...
-[timed] recipe watch load ...
-[timed] recipe watch parse ...
-[timed] recipe watch execute ...
+[timed] recipe survey load ...
+[timed] recipe survey parse ...
+[timed] recipe survey execute ...
 [timed] operation node ...
-[timed] operation watch ...
+[timed] operation survey ...
 ```
 
 A future `.qz` implementation may reduce discovery/loading/parsing or execution

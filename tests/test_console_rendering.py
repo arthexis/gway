@@ -37,7 +37,7 @@ def test_human_output_collapses_success_envelopes_and_formats_sections():
     assert "Changed at: —" in output
 
 
-def test_watch_cli_uses_generic_human_renderer(run_cli, tmp_path, monkeypatch):
+def test_survey_cli_uses_generic_human_renderer(run_cli, tmp_path, monkeypatch):
     (tmp_path / "pyproject.toml").write_text(
         """
 [project]
@@ -50,7 +50,7 @@ role = "control"
     )
     monkeypatch.chdir(tmp_path)
 
-    status, stdout, stderr = run_cli("watch", "--only", "node")
+    status, stdout, stderr = run_cli("survey", "--only", "node")
 
     assert status == 0
     assert stderr == ""
@@ -85,7 +85,7 @@ role = "control"
     )
     monkeypatch.chdir(tmp_path)
 
-    status, stdout, _ = run_cli("-t", "-j", "watch", "--only", "node")
+    status, stdout, _ = run_cli("-t", "-j", "survey", "--only", "node")
 
     assert status == 0
     payload = json.loads(stdout)

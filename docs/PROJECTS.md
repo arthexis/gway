@@ -184,6 +184,20 @@ At this point the remaining role-specific work is the generic `node <verb>`
 execution/discovery surface itself; that is a separate role-dispatch layer rather
 than another guide information source.
 
+### `[[tool.gway.survey]]`
+
+Projects may publish bounded read-only sections that participate in the top-level `survey` snapshot:
+
+```toml
+[[tool.gway.survey]]
+section = "example"
+command = ["example", "status"]
+```
+
+Each declaration requires a non-empty `section` and a non-empty token-array `command`. The command runs through the normal read-only observation boundary under the caller's effective authority. Duplicate section names are rejected.
+
+Legacy `[[tool.gway.watch]]` declarations remain temporarily accepted during the survey migration, but a project must not declare both forms. New metadata should use `survey`.
+
 ### `[tool.gway.sous-chef.<job>]`
 
 Sous Chef jobs are project-owned recipe jobs:
