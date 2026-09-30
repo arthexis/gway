@@ -113,6 +113,17 @@ def _section_filter(value):
     return tuple(dict.fromkeys(part.strip() for part in parts if part.strip()))
 
 
+def _observed_problem(value):
+    """Return whether a successful observation result reports a domain problem."""
+    if isinstance(value, dict):
+        if value.get("problem") is True:
+            return True
+        return any(_observed_problem(item) for item in value.values())
+    if isinstance(value, (list, tuple)):
+        return any(_observed_problem(item) for item in value)
+    return False
+
+
 def _enabled(value):
     """Normalize bool-like recipe context values."""
     if isinstance(value, bool):
@@ -291,14 +302,21 @@ class Controller:
             status = envelope.get("status", "unavailable")
             if status == "unauthorized":
                 continue
+            observed_problem = (
+                status == "ok" and _observed_problem(envelope.get("result"))
+            )
+            effective_status = "problem" if observed_problem else status
             if _enabled(problems):
                 has_log_errors = name == "errors" and bool(envelope.get("result"))
-                if status not in {"error", "blocked"} and not has_log_errors:
+                if (
+                    effective_status not in {"error", "blocked", "problem"}
+                    and not has_log_errors
+                ):
                     continue
             result[name] = envelope
-            states[name] = status
-            counts[status] = counts.get(status, 0) + 1
-            if status in {"error", "blocked"}:
+            states[name] = effective_status
+            counts[effective_status] = counts.get(effective_status, 0) + 1
+            if effective_status in {"error", "blocked", "problem"}:
                 degraded.append(name)
 
         visible_sections = dict(result)
