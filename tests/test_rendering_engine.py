@@ -19,7 +19,7 @@ def test_render_validation_uses_resolved_text_before_mutation(tmp_path, monkeypa
     )
     seen = {}
 
-    def reject(engine, content, *, executable=None):
+    def reject(engine, content, *, executable=None, identity=None):
         seen["engine"] = engine
         seen["content"] = content
         raise EngineValidationError("candidate rejected")
