@@ -1,3 +1,4 @@
+import logging
 import subprocess
 
 import pytest
@@ -129,3 +130,59 @@ def test_explicit_relative_process_path_becomes_stable_absolute_path(
 
     assert result.argv[0] == str(tool)
     assert result.stdout.strip() == str(tool)
+
+
+def test_process_success_logs_bounded_diagnostics(caplog, tmp_path):
+    tool = tmp_path / "ok"
+    tool.write_text("#!/bin/sh\necho hello\necho warning >&2\n", encoding="utf-8")
+    tool.chmod(0o755)
+    runtime = Gateway()
+    runtime.ingest(str(tool), kind="proc")
+
+    with caplog.at_level(logging.INFO, logger="gway"):
+        runtime("ok")
+
+    messages = [record.getMessage() for record in caplog.records]
+    assert any("[proc] event=start tool=ok" in message for message in messages)
+    success = next(message for message in messages if "[proc] event=success tool=ok" in message)
+    assert "returncode=0" in success
+    assert "stdout='hello'" in success
+    assert "stderr='warning'" in success
+
+
+def test_process_failure_logs_stderr_and_preserves_exception(caplog, tmp_path):
+    tool = tmp_path / "bad-log"
+    tool.write_text("#!/bin/sh\necho nginx-detail >&2\nexit 9\n", encoding="utf-8")
+    tool.chmod(0o755)
+    runtime = Gateway()
+    runtime.ingest(str(tool), kind="proc")
+
+    with caplog.at_level(logging.ERROR, logger="gway"):
+        with pytest.raises(subprocess.CalledProcessError) as error:
+            runtime("bad-log")
+
+    assert error.value.returncode == 9
+    failure = next(
+        record.getMessage()
+        for record in caplog.records
+        if "[proc] event=failure tool=bad-log" in record.getMessage()
+    )
+    assert "returncode=9" in failure
+    assert "stderr='nginx-detail'" in failure
+
+
+def test_process_logs_redact_sensitive_arguments(caplog, tmp_path):
+    tool = tmp_path / "safe"
+    tool.write_text("#!/bin/sh\necho ok\n", encoding="utf-8")
+    tool.chmod(0o755)
+    runtime = Gateway()
+    runtime.ingest(str(tool), kind="proc")
+
+    with caplog.at_level(logging.INFO, logger="gway"):
+        runtime("safe --token super-secret --url https://user:pass@example.com/path?token=x")
+
+    combined = "\n".join(record.getMessage() for record in caplog.records)
+    assert "super-secret" not in combined
+    assert "user:pass" not in combined
+    assert "?token=x" not in combined
+    assert "<redacted>" in combined
