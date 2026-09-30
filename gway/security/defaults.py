@@ -66,6 +66,8 @@ CORE_SCOPE_DEFINITIONS = {
                 "node",
                 "products",
                 "extensions",
+                "builtins",
+                "filter",
                 "service.list",
                 "service.status",
                 "service.statuses",

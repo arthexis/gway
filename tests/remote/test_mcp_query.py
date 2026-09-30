@@ -341,3 +341,19 @@ role = "control"
     assert watch["wire"]["status"] == "ok"
     assert isinstance(watch["cursor"], str)
     assert result.structured_content["output"] == []
+
+
+def test_mcp_globals_and_structured_filter_use_real_parent(gateway):
+    server = _server_module()
+    server._gway_parent = gateway
+
+    async def run():
+        async with Client(server.mcp) as client:
+            plain = await client.call_tool('query', {'command': 'builtins - filter --name version'})
+            timed = await client.call_tool('query', {'command': '-j --timed builtins - filter --name version'})
+            return plain, timed
+
+    plain, timed = asyncio.run(run())
+    assert plain.structured_content == timed.structured_content
+    assert timed.structured_content['result'][0]['name'] == 'version'
+    assert gateway.call_timed is False

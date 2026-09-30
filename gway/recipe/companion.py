@@ -539,7 +539,7 @@ def _service_parent_request(runtime, stream, request):
                         mutate=params["mutate"],
                     )
                 else:
-                    result = runtime(params["command"])
+                    result = runtime.execute(params["command"])
         elif method in {
             "gateway.authenticate_bearer",
             "gateway.execute_authenticated",

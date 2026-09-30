@@ -78,6 +78,9 @@ class Gateway(Resolver):
         self.silent = bool(silent)
         self.interactive_enabled = bool(interactive)
         self.timed_enabled = bool(timed)
+        self._call_options = ContextVar(
+            f"gway_call_options_{id(self)}", default={}
+        )
 
         if context:
             self.context.update(context)
@@ -103,6 +106,7 @@ class Gateway(Resolver):
             ]
         )
 
+        self._registering_builtins = True
         from . import builtin
         from .ingestion.python import ingest_module
 
@@ -112,6 +116,7 @@ class Gateway(Resolver):
         self.uninstall = self.wrap("uninstall", self._uninstall)
         self.products = self.wrap("products", self._products)
         self.extensions = self.wrap("extensions", self._extensions)
+        self.builtins = self.wrap("builtins", self._builtins)
 
         from .source import inspect_source, search_source_corpus
 
@@ -193,7 +198,11 @@ class Gateway(Resolver):
         from .install.identity import running_gway_identity
 
         self.gway_identity = running_gway_identity(paths=self.install_paths())
-        bootstrap(self)
+        self._registering_builtins = False
+        try:
+            bootstrap(self)
+        finally:
+            self._registering_builtins = True
 
         if isinstance(cache, Cache):
             self.cache = cache
@@ -317,6 +326,7 @@ class Gateway(Resolver):
         self._souschef_controller = SousChefController(self)
         ingest_python(self, self._souschef_controller, path=("sous", "chef"))
         self._sigil_dispatch_enabled = True
+        self._registering_builtins = False
 
     def converge_security_scopes(self, *, retire_missing=True):
         """Converge discovered scope policy into durable security state on demand."""
@@ -637,6 +647,26 @@ class Gateway(Resolver):
         from .recipe.validation import validate_recipes
 
         return validate_recipes(self, target)
+
+    def _builtins(self, mutate=False):
+        """List authorized GWAY-owned operations without extensions or products."""
+        from .documentation import describe
+
+        return [
+            {
+                "name": record.name,
+                "summary": describe(record.callable).summary,
+                "topics": list(
+                    (getattr(record.callable, "__gway_metadata__", {}) or {}).get(
+                        "topics", ()
+                    )
+                ),
+                "mutates": record.callable.mutates,
+            }
+            for record in sorted(self.ops.records(), key=lambda record: record.name)
+            if getattr(record.callable, "__gway_builtin__", False)
+            and self._source_operation_visible(record.name)
+        ]
 
     def _products(self, mutate=False):
         """List installed products without inspecting GWAY extensions."""
@@ -1548,13 +1578,31 @@ class Gateway(Resolver):
             return self.environment.names()
         return tuple(name for name in allowed if name in self.environment)
 
+    @contextmanager
+    def call_options(self, options):
+        """Apply request-local execution instrumentation without changing authority."""
+        variable = self._call_options
+        token = variable.set({**variable.get(), **options})
+        try:
+            yield
+        finally:
+            variable.reset(token)
+
+    @property
+    def call_timed(self):
+        return self.timed_enabled or self._call_options.get().get("timed", False)
+
     def execute(self, command, *args, mutate=MUTATE_UNSET, **kwargs):
         """Execute a GWAY command under a trusted mutation policy."""
         from .dispatch import dispatch
+        from .globals import command_options
 
+        command, options = command_options(command)
+        if options.get("no_mutate"):
+            mutate = False
         outermost = self.execution_depth == 0
         observational = self.mutation_policy is not False and mutate is False
-        with self.mutation_scope(mutate=mutate):
+        with self.call_options(options), self.mutation_scope(mutate=mutate):
             if observational:
                 with self.observational_state_scope():
                     result = dispatch(self, command, *args, **kwargs)
@@ -1597,14 +1645,7 @@ class Gateway(Resolver):
 
     def __call__(self, command, *args, **kwargs):
         """Execute a GWAY command while preserving inherited mutation policy."""
-        from .dispatch import dispatch
-
-        outermost = self.execution_depth == 0
-        with self.mutation_scope():
-            result = dispatch(self, command, *args, **kwargs)
-        if outermost and self.execution is not None:
-            return self.execution.present(result)
-        return result
+        return self.execute(command, *args, **kwargs)
 
     def chain(self, command, *args, **kwargs):
         """Create a scoped manual pipeline rooted in an initial command."""
@@ -1677,6 +1718,7 @@ class Gateway(Resolver):
             wrapped.__signature__ = signature
         wrapped.mutates = mutates(func_obj)
         wrapped.__gway_mutates__ = wrapped.mutates
+        wrapped.__gway_builtin__ = getattr(self, "_registering_builtins", False)
         wrapped.__gway_supports_no_mutate__ = supports_no_mutate(func_obj)
         wrapped.__gway_operation__ = op or func_name
         wrapped.__gway_subject__ = subject
