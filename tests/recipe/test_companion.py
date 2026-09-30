@@ -351,3 +351,23 @@ def test_parent_rpc_opaque_result_becomes_structured_companion_error(
     )
 
     assert gateway(recipe) is True
+
+def test_managed_companion_normalizes_scalar_subclasses(
+    gateway, recipe_factory, required_runtime
+):
+    recipe = recipe_factory(
+        body="require placeholder\ndemo scalar\n",
+        companion=(
+            "from enum import IntEnum\n"
+            "class DependencyOnlyInt(IntEnum):\n"
+            "    VALUE = 7\n"
+            "def scalar(value=DependencyOnlyInt.VALUE):\n"
+            "    return value\n"
+        ),
+    )
+
+    result = gateway(recipe)
+
+    assert result == 7
+    assert type(result) is int
+
