@@ -197,6 +197,16 @@ def _register_matching_first_class_recipe(runtime, tokens, root_path, *, route_n
     values = _semantic_values(tokens)
     if not values:
         return False
+    # Only fast-path a bare operation name. Commands with additional positional
+    # tokens must retain normal longest-prefix registration so child recipes and
+    # recipe arguments are resolved without being captured by the directory main.
+    raw_tokens = [
+        str(getattr(token, "value", token)).strip()
+        for token in tokens
+        if str(getattr(token, "value", token)).strip()
+    ]
+    if len(raw_tokens) != 1:
+        return False
 
     candidates = {
         name.replace(".", "_"): (name, recipe)
