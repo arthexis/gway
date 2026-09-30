@@ -158,7 +158,27 @@ for part in attribute.split("."):
     value = getattr(value, part)
 with open(request_path, "rb") as stream:
     args, kwargs = pickle.load(stream)
-result = value(*args, **kwargs)
+
+parameters = inspect.signature(value).parameters
+if not parameters:
+    arguments = [str(argument) for argument in args]
+    for key, item in kwargs.items():
+        option = "--" + str(key).replace("_", "-")
+        if isinstance(item, bool):
+            arguments.append(option if item else "--no-" + str(key).replace("_", "-"))
+        elif isinstance(item, (list, tuple)):
+            for nested in item:
+                arguments.extend((option, str(nested)))
+        else:
+            arguments.extend((option, str(item)))
+    previous = sys.argv
+    sys.argv = [module_name, *arguments]
+    try:
+        result = value()
+    finally:
+        sys.argv = previous
+else:
+    result = value(*args, **kwargs)
 if inspect.isawaitable(result):
     result = asyncio.run(result)
 with open(response_path, "wb") as stream:
