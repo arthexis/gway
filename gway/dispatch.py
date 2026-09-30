@@ -580,20 +580,34 @@ def _operation_candidate_tokens(tokens):
 
 
 def _operation_spelling_candidates(values):
-    """Return normal, underscore, and dotted spellings for operation-name words."""
+    """Return literal and semantic-normalized spellings for operation-name words."""
     if not values:
         return ()
     normalized = tuple(
         token if token == "-" or token.startswith("--") else token.replace("-", "_")
         for token in values
     )
+    semantic = tuple(
+        word
+        for token in normalized
+        for word in (
+            (token,)
+            if token == "-" or token.startswith("--")
+            else _semantic_name_words(token)
+        )
+    )
     candidates = [
         " ".join(values),
         "_".join(normalized),
         ".".join(normalized),
+        " ".join(semantic),
+        "_".join(semantic),
+        ".".join(semantic),
     ]
     if len(normalized) > 1:
         candidates.append(f"{normalized[0]}.{'_'.join(normalized[1:])}")
+    if len(semantic) > 1:
+        candidates.append(f"{semantic[0]}.{'_'.join(semantic[1:])}")
     return tuple(dict.fromkeys(candidates))
 
 
