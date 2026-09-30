@@ -38,3 +38,29 @@ def test_render_validation_uses_resolved_text_before_mutation(tmp_path, monkeypa
         "content": "listen [::]:80;\nserver_name example.test;\n",
     }
     assert destination.read_text(encoding="utf-8") == "known-good\n"
+
+
+def test_engine_validation_error_includes_bounded_candidate_excerpt(monkeypatch):
+    from types import SimpleNamespace
+
+    from gway import engine
+
+    monkeypatch.setattr(
+        engine.subprocess,
+        "run",
+        lambda *args, **kwargs: SimpleNamespace(
+            returncode=1,
+            stderr="nginx parse error",
+            stdout="",
+        ),
+    )
+
+    content = "\n".join(f"line-{index}" for index in range(1, 12))
+    with pytest.raises(EngineValidationError) as raised:
+        engine.validate_text("nginx", content)
+
+    message = str(raised.value)
+    assert "nginx parse error" in message
+    assert "  1: line-1" in message
+    assert "  8: line-8" in message
+    assert "line-9" not in message
