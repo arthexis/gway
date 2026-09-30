@@ -40,7 +40,14 @@ def _render_nginx_template(source: str, tmp_path: Path) -> str:
         raise AssertionError(f"missing nginx template fixture for [{name}]")
 
     rendered = _SIGIL.sub(replace, source)
-    return rendered.replace("[[", "[").replace("]]", "]")
+    rendered = rendered.replace("[[", "[").replace("]]", "]")
+    return (
+        rendered
+        .replace("listen 80;", "listen 18080;")
+        .replace("listen [::]:80;", "listen [::]:18080;")
+        .replace("listen 443 ssl;", "listen 18443 ssl;")
+        .replace("listen [::]:443 ssl;", "listen [::]:18443 ssl;")
+    )
 
 
 @pytest.mark.parametrize("template", NGINX_TEMPLATES)
