@@ -9,7 +9,7 @@ CORE_SCOPE_DEFINITIONS = {
     "logs-read": {
         "operations": frozenset(
             {
-                "watch",
+                "survey",
                 "help",
                 "guide",
                 "version",
@@ -26,7 +26,7 @@ CORE_SCOPE_DEFINITIONS = {
     "source-read": {
         "operations": frozenset(
             {
-                "watch",
+                "survey",
                 "source",
                 "search.source",
                 "node.deploy.status",
@@ -62,7 +62,7 @@ CORE_SCOPE_DEFINITIONS = {
     "operator-read": {
         "operations": frozenset(
             {
-                "watch",
+                "survey",
                 "node",
                 "products",
                 "extensions",
