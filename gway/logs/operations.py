@@ -189,12 +189,12 @@ def _selection(source, *, all=False):
 def read(*source, since=None, until=None, limit=_DEFAULT_QUERY_LIMIT, all=False):
     """Read bounded records from one or many managed log sources.
 
-    With no source and without all=True, return the available source catalog
-    instead of reading logs.
+    With no source, read all managed sources. The default limit keeps the
+    implicit broad query bounded.
     """
     requested = _selection(source, all=all)
     if requested is None:
-        return sources()
+        requested = ()
     return _read(requested, since=since, until=until, limit=limit)
 
 
