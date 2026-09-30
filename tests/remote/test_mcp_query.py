@@ -54,7 +54,7 @@ def test_mcp_query_projection_is_read_only_in_active_pr_suite():
 
     tools, query, safe, generic, query_aggregate, gway_aggregate = asyncio.run(run())
 
-    assert [tool.name for tool in tools] == ["gway", "query"]
+    assert [tool.name for tool in tools] == ["gway", "query", "tail"]
     gway = next(tool for tool in tools if tool.name == "gway")
     assert query.annotations.read_only_hint is True
     assert query.annotations.destructive_hint is False
@@ -253,14 +253,14 @@ def test_mcp_tool_projection_hides_gway_for_read_only_authority():
         def __init__(self, name):
             self.name = name
 
-    tools = [Tool("gway"), Tool("query")]
+    tools = [Tool("gway"), Tool("query"), Tool("tail")]
 
     projected = server._project_tools(
         tools,
         {"mutation_capable": False},
     )
 
-    assert [tool.name for tool in projected] == ["query"]
+    assert [tool.name for tool in projected] == ["query", "tail"]
 
 
 def test_mcp_tool_projection_keeps_gway_for_mutation_capable_authority():
@@ -270,14 +270,14 @@ def test_mcp_tool_projection_keeps_gway_for_mutation_capable_authority():
         def __init__(self, name):
             self.name = name
 
-    tools = [Tool("gway"), Tool("query")]
+    tools = [Tool("gway"), Tool("query"), Tool("tail")]
 
     projected = server._project_tools(
         tools,
         {"mutation_capable": True},
     )
 
-    assert [tool.name for tool in projected] == ["gway", "query"]
+    assert [tool.name for tool in projected] == ["gway", "query", "tail"]
 
 
 def test_mcp_tool_projection_is_conservative_without_capability_metadata():
@@ -287,11 +287,11 @@ def test_mcp_tool_projection_is_conservative_without_capability_metadata():
         def __init__(self, name):
             self.name = name
 
-    tools = [Tool("gway"), Tool("query")]
+    tools = [Tool("gway"), Tool("query"), Tool("tail")]
 
     projected = server._project_tools(tools, {})
 
-    assert [tool.name for tool in projected] == ["gway", "query"]
+    assert [tool.name for tool in projected] == ["gway", "query", "tail"]
 
 
 def test_mcp_query_returns_survey_as_structured_mapping(gateway, tmp_path, monkeypatch):

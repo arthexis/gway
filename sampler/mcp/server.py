@@ -1,6 +1,7 @@
 """FastMCP surface for native GWAY command execution."""
 
 from contextlib import contextmanager
+import asyncio
 import base64
 import json
 from pathlib import Path  # noqa: F401 - exposed to managed companion probes
@@ -8,14 +9,19 @@ import secrets
 import socket
 import struct
 import threading
+import time
 from urllib.parse import urlsplit
 from fastmcp import FastMCP as _FastMCP
+from fastmcp.dependencies import Progress
 from fastmcp.tools import ToolResult
 from fastmcp.server.auth import TokenVerifier as _TokenVerifier
 from fastmcp.server.auth.auth import AccessToken as _AccessToken
 from fastmcp.server.dependencies import get_http_headers as _get_http_headers
 from fastmcp.server.dependencies import get_http_request as _get_http_request
 from fastmcp.server.middleware import Middleware
+from gway.tailing import _event as _tail_event
+from gway.tailing import _fingerprint as _tail_fingerprint
+from gway.tailing import terminal as _tail_terminal
 
 
 _DEFAULT_PUBLIC_ORIGIN = "http://127.0.0.1:8000"
@@ -453,6 +459,94 @@ def query(command: str):
             )
         )
     return _tool_result(parent.execute(command, mutate=False))
+
+
+@mcp.tool(
+    run_in_thread=False,
+    output_schema=_OUTPUT_SCHEMA,
+    annotations={
+        "readOnlyHint": True,
+        "destructiveHint": False,
+        "openWorldHint": True,
+    },
+)
+async def tail(
+    command: str,
+    interval: float = 2.0,
+    timeout: float | None = None,
+    progress: Progress = Progress(),
+):
+    """Stream changed read-only results until the operation naturally completes.
+
+    GitHub check, job, and run status operations stop when they reach terminal
+    state. Other operations continue until cancellation or timeout. Each changed
+    snapshot is emitted as a JSON progress message and the last snapshot is
+    returned as the normal tool result.
+    """
+    if not str(command).strip():
+        raise ValueError("tail command cannot be empty")
+    interval = float(interval)
+    if interval < 0:
+        raise ValueError("tail interval cannot be negative")
+    if timeout is not None:
+        timeout = float(timeout)
+        if timeout < 0:
+            raise ValueError("tail timeout cannot be negative")
+
+    parent = _parent()
+    bearer = _bearer_from_http() if _has_http_request() else None
+    started = time.monotonic()
+    previous = None
+    observed = False
+    sequence = 0
+    value = None
+
+    while True:
+        if bearer is not None:
+            value = parent.execute_authenticated(
+                bearer,
+                command,
+                _auth.resource,
+                mutate=False,
+            )
+        else:
+            value = parent.execute(command, mutate=False)
+
+        fingerprint = _tail_fingerprint(value)
+        done = _tail_terminal(str(command), value)
+        if not observed or fingerprint != previous or done:
+            sequence += 1
+            event = _tail_event(
+                sequence,
+                "complete" if done else "update",
+                str(command),
+                value,
+                terminal=done,
+            )
+            await progress.set_message(
+                json.dumps(event, allow_nan=False, separators=(",", ":"))
+            )
+
+        if done:
+            return _tool_result(value)
+        if timeout is not None and time.monotonic() - started >= timeout:
+            sequence += 1
+            event = _tail_event(
+                sequence,
+                "timeout",
+                str(command),
+                value,
+                terminal=True,
+            )
+            await progress.set_message(
+                json.dumps(event, allow_nan=False, separators=(",", ":"))
+            )
+            return _tool_result(value)
+
+        observed = True
+        previous = fingerprint
+        if interval:
+            await asyncio.sleep(interval)
 
 
 def _endpoint_origin(endpoint, path):

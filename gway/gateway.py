@@ -301,6 +301,10 @@ class Gateway(Resolver):
         from .observation import register as register_observation
 
         register_observation(self)
+
+        from .tailing import register as register_tailing
+
+        register_tailing(self)
         for record in self.ops.records():
             if record.name.startswith("github."):
                 operation = record.name.removeprefix("github.")

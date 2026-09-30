@@ -343,7 +343,7 @@ def test_deployed_mcp_service_accepts_real_http_bearer_client(tmp_path, monkeypa
                 time.sleep(0.05)
 
         tools, sources = asyncio.run(call())
-        assert tools == ["query"]
+        assert tools == ["query", "tail"]
         assert any(item["identity"] == "gway" for item in sources)
     finally:
         stopped = gateway._service_controller.stop(
