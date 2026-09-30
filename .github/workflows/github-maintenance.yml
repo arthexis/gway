@@ -184,11 +184,15 @@ jobs:
               continue
             fi
 
-            mapfile -t run_ids < <(
+            run_ids_output="$(
               gh api --paginate \
                 "repos/$REPOSITORY/actions/workflows/$workflow_id/runs?per_page=100" \
                 --jq '.workflow_runs[].id'
-            )
+            )"
+            run_ids=()
+            if [[ -n "$run_ids_output" ]]; then
+              mapfile -t run_ids <<< "$run_ids_output"
+            fi
             run_count="${#run_ids[@]}"
             total_runs=$((total_runs + run_count))
 
