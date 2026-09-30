@@ -339,8 +339,9 @@ def install_units(
     system=False,
     root=None,
     timeout=SYSTEMCTL_TIMEOUT,
+    enable=True,
 ):
-    """Write and enable selected service units as additive upserts."""
+    """Write service units and optionally enable them for boot activation."""
     services = list(services)
 
     target_root = unit_root(system=system) if root is None else Path(root)
@@ -391,8 +392,18 @@ def install_units(
             )
 
         _systemctl("daemon-reload", system=system, timeout=timeout)
-        for record in records:
-            _systemctl("enable", record.backend_id, system=system, timeout=timeout)
+        if enable:
+            for record in records:
+                _systemctl("enable", record.backend_id, system=system, timeout=timeout)
+        else:
+            for record in records:
+                _systemctl(
+                    "disable",
+                    record.backend_id,
+                    system=system,
+                    check=False,
+                    timeout=timeout,
+                )
         retained = [record for record in previous_all if record.service not in selected]
         state.put(project, [*retained, *records])
         return records
