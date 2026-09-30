@@ -54,3 +54,20 @@ def test_published_render_templates_escape_literal_square_brackets():
         "use [[...]] for literal square brackets and reserve [...] "
         f"for Gway sigils: {failures}"
     )
+
+
+
+def test_template_bracket_policy_distinguishes_literals_from_gway_sigils():
+    content = (
+        "[site]\n"
+        "[host|127.0.0.1]\n"
+        "[[Unit]]\n"
+        "[[::]]\n"
+        "[Unit]\n"
+        "[::]\n"
+    )
+
+    assert _unescaped_bracket_lines(content) == [
+        (5, "[Unit]"),
+        (6, "[::]"),
+    ]
