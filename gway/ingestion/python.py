@@ -42,6 +42,14 @@ def _class_subject(source):
     return "_".join(_class_subject_words(source))
 
 
+def _class_semantic_subject(source, root):
+    """Return the class subject, preserving a genuine explicit path rename."""
+    words = _class_subject_words(source)
+    if words and len(root) >= len(words) and tuple(root[-len(words):]) == words:
+        return "_".join(words)
+    return root[-1]
+
+
 def _symbol_words(name):
     """Return command words for collision checks across Python symbol spellings."""
     words = []
@@ -216,22 +224,20 @@ def _receiver_subject(source, root, name, child):
         inspect.Parameter.POSITIONAL_OR_KEYWORD,
     ):
         return None
-    return _class_subject(source)
+    return _class_semantic_subject(source, root)
 
 
 def _child_operation(source, root, name, child):
     """Describe one callable child and any semantic instance receiver."""
     metadata = {"object": child, "owner": source, "attribute": name}
     receiver = _receiver_subject(source, root, name, child)
-    aliases = ()
     op = None
     sub = None
     if inspect.isclass(source):
-        subject = _class_subject(source)
+        subject = _class_semantic_subject(source, root)
         if subject:
             op = name
             sub = subject
-            aliases = (f"{name}.{subject}",)
             metadata["subject"] = subject
     if receiver is not None:
         metadata["receiver"] = receiver
@@ -241,7 +247,6 @@ def _child_operation(source, root, name, child):
         child,
         source=source,
         kind="python",
-        aliases=aliases,
         op=op,
         sub=sub,
         metadata=metadata,
@@ -441,7 +446,7 @@ def ingest_python(gateway, source, *, path=None, **kwargs):
             wrapped.append(registered)
 
     for name, child in _public_members(source):
-        if name == "__main__" and callable(child) and not inspect.isclass(source):
+        if name == "__main__" and callable(child):
             child_path = root
             child_record = _remember_child(gateway, child, child_path)
             metadata = {"object": child, "entrypoint": "callable", "owner": source, "attribute": "__main__"}
