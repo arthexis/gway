@@ -171,6 +171,17 @@ callable. GWAY tries space-separated, underscore-separated, and dotted forms,
 so an exposed `get_charger` operation can be addressed naturally as
 `get charger` when the runtime exposes that callable.
 
+Python classes are semantic subjects, not operations. When a class is ingested
+without an explicit alternate path, each uppercase character starts a new
+lowercase subject word: `ChargingStation` becomes `charging station` and
+`HTTPClient` becomes `h t t p client`. Public methods are the operations on
+that complete subject; all class-name words remain part of the subject identity
+(for example `charging_station` internally). The class constructor itself is
+not exposed as an operation. If that normalized class spelling collides with a
+more specific non-class symbol in the same module, such as a `sales_order`
+function or instance beside `SalesOrder`, the concrete symbol wins and the
+class is not exposed.
+
 ## Arguments and Python signatures
 
 Explicit command arguments are bound against the Python callable signature.

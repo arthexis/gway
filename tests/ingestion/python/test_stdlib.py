@@ -5,6 +5,8 @@ import operator
 
 import pytest
 
+from gway.dispatch import resolve_operation
+
 
 @pytest.mark.parametrize(
     ("module", "operation"),
@@ -37,8 +39,12 @@ def test_math_ingestion_does_not_descend_into_scalar_values(gateway):
 def test_json_class_members_remain_lazy(gateway):
     gateway.ingest(json)
 
-    assert gateway.ops.resolve("json.JSONDecoder") is not None
-    assert gateway.ops.resolve("json.JSONDecoder.decode") is None
+    assert gateway.ops.resolve("json.j.s.o.n.decoder") is None
+    assert gateway.ops.resolve("json.j.s.o.n.decoder.decode") is None
+
+    resolve_operation(gateway, ["json", "JSONDecoder", "decode"])
+
+    assert gateway.ops.resolve("json.j.s.o.n.decoder.decode") is not None
 
 
 def test_hashlib_container_members_are_not_eagerly_ingested(gateway):
