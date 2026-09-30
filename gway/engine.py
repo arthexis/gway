@@ -12,6 +12,21 @@ class EngineValidationError(RuntimeError):
     """Raised when an engine rejects rendered candidate configuration."""
 
 
+_DIAGNOSTIC_TOKEN = re.compile(r"[A-Za-z0-9_./@+=-]+")
+
+
+def _diagnostic_excerpt(content, *, max_lines=8, max_line_chars=160, max_chars=800):
+    """Return a bounded structural excerpt without resolved values."""
+    rendered = []
+    for index, raw in enumerate(str(content).splitlines()[:max_lines], start=1):
+        line = raw[:max_line_chars]
+        shaped = _DIAGNOSTIC_TOKEN.sub("<text>", line)
+        if len(raw) > max_line_chars:
+            shaped += "…"
+        rendered.append(f"{index:>3}: {shaped}")
+    return "\n".join(rendered)[:max_chars]
+
+
 def _nginx(content, *, executable=None, identity=None):
     executable = str(executable or shutil.which("nginx") or "nginx")
     with tempfile.TemporaryDirectory(prefix="gway-nginx-check-") as directory:
@@ -52,14 +67,10 @@ def _nginx(content, *, executable=None, identity=None):
             )
     if completed.returncode:
         detail = completed.stderr.strip() or completed.stdout.strip()
-        excerpt_lines = str(content).splitlines()[:8]
-        excerpt = "\n".join(
-            f"{index:>3}: {line}"
-            for index, line in enumerate(excerpt_lines, start=1)
-        )
+        excerpt = _diagnostic_excerpt(content)
         raise EngineValidationError(
             "nginx rejected rendered configuration: "
-            f"{detail}\nrendered candidate excerpt:\n{excerpt}"
+            f"{detail}\nrendered candidate shape:\n{excerpt}"
         )
 
 
