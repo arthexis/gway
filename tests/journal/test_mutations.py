@@ -2,6 +2,7 @@ import os
 
 import pytest
 
+from gway.gateway import Gateway
 from gway.journal import (
     JournalError,
     MutationState,
@@ -328,3 +329,36 @@ def test_post_mutation_fingerprint_failure_retains_unsealed_journal(
 
     with pytest.raises(JournalError, match="unsealed mutations"):
         gateway.journal.commit("deploy")
+
+
+def test_recover_path_restores_persisted_owned_state(gateway, tmp_path):
+    source = tmp_path / "source.txt"
+    source.write_text("new", encoding="utf-8")
+    target = tmp_path / "target.txt"
+    target.write_text("old", encoding="utf-8")
+
+    gateway.copy(str(source), to=str(target), rollback="deploy")
+    assert target.read_text(encoding="utf-8") == "new"
+
+    recovery = Gateway(cache=gateway.cache.root)
+    result = recovery.recover_path(str(target))
+
+    assert result["status"] == "recovered"
+    assert result["operation"] == "copy"
+    assert target.read_text(encoding="utf-8") == "old"
+
+
+def test_recover_path_refuses_drifted_managed_state(gateway, tmp_path):
+    source = tmp_path / "source.txt"
+    source.write_text("new", encoding="utf-8")
+    target = tmp_path / "target.txt"
+    target.write_text("old", encoding="utf-8")
+
+    gateway.copy(str(source), to=str(target), rollback="deploy")
+    target.write_text("administrator-change", encoding="utf-8")
+
+    recovery = Gateway(cache=gateway.cache.root)
+    with pytest.raises(Exception):
+        recovery.recover_path(str(target))
+
+    assert target.read_text(encoding="utf-8") == "administrator-change"
