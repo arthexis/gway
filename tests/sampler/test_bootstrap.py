@@ -126,14 +126,14 @@ def test_arthexis_roles_share_one_installer_template(sampler_path):
     assert 'ARTHEXIS_DATA_DIR="$ARTHEXIS_DATA_DIR" "$GWAY" arthexis seed' in script
     assert 'ARTHEXIS_BOOTSTRAP_VERIFY_ONLY' in script
     assert 'Arthexis bootstrap verification complete.' in script
-    assert '"$GWAY" service install -- arthexis web' in script
-    assert '"$GWAY" service install -- arthexis worker' in script
-    assert '"$GWAY" service install -- arthexis beat' in script
+    assert '"$GWAY" service install --environment "ARTHEXIS_DATA_DIR=$ARTHEXIS_DATA_DIR" -- arthexis web' in script
+    assert '"$GWAY" service install --environment "ARTHEXIS_DATA_DIR=$ARTHEXIS_DATA_DIR" -- arthexis worker' in script
+    assert '"$GWAY" service install --environment "ARTHEXIS_DATA_DIR=$ARTHEXIS_DATA_DIR" -- arthexis beat' in script
     assert '"$GWAY" service restart -- arthexis web' in script
     assert '"$GWAY" service restart -- arthexis worker' in script
     assert '"$GWAY" service restart -- arthexis beat' in script
     assert script.index('"$GWAY" arthexis seed') < script.index('"$GWAY" service install -- arthexis web')
-    assert script.index('"$GWAY" service install -- arthexis beat') < script.index('"$GWAY" service restart -- arthexis web')
+    assert script.index('"$GWAY" service install --environment "ARTHEXIS_DATA_DIR=$ARTHEXIS_DATA_DIR" -- arthexis beat') < script.index('"$GWAY" service restart -- arthexis web')
     assert "[installer_title]" in script
     assert "[installer_description]" in script
     assert "satellite" not in script.lower()
@@ -176,3 +176,15 @@ def test_arthexis_bootstrap_overrides_ambient_data_dir_for_database_setup(sample
     assert script.index(data_assignment) < script.index(migrate)
     assert script.index(data_assignment) < script.index(seed)
     assert 'ARTHEXIS_DATA_DIR="${ARTHEXIS_DATA_DIR:-' not in script
+
+
+def test_arthexis_bootstrap_persists_data_dir_in_installed_services(sampler_path):
+    script = sampler_path("bootstrap/arthexis.sh").read_text(encoding="utf-8")
+
+    for service in ("web", "worker", "beat"):
+        command = (
+            '"$GWAY" service install --environment '
+            '"ARTHEXIS_DATA_DIR=$ARTHEXIS_DATA_DIR" -- arthexis '
+            + service
+        )
+        assert command in script
