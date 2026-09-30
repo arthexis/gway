@@ -37,8 +37,12 @@ def test_math_ingestion_does_not_descend_into_scalar_values(gateway):
 def test_json_class_members_remain_lazy(gateway):
     gateway.ingest(json)
 
-    assert gateway.ops.resolve("json.JSONDecoder") is not None
-    assert gateway.ops.resolve("json.JSONDecoder.decode") is None
+    assert gateway.ops.resolve("json.json.decoder") is None
+    assert gateway.ops.resolve("json.json.decoder.decode") is None
+
+    gateway("json JSONDecoder decode", "{}")
+
+    assert gateway.ops.resolve("json.json.decoder.decode") is not None
 
 
 def test_hashlib_container_members_are_not_eagerly_ingested(gateway):
