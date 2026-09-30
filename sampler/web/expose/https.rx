@@ -1,4 +1,5 @@
 # Obtain/reuse the HTTP-01 certificate, then promote Nginx to TLS.
+expose normalize site [site] --as site_key
 ingest [nginx_executable|nginx] --kind proc --sudo
 ingest [certbot_executable|certbot] --kind proc --sudo
 
