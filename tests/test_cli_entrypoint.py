@@ -404,3 +404,31 @@ def test_cli_json_structured_results_remain_machine_readable(tmp_path):
     assert logs["environment"] == ["LOG_LEVEL"]
     assert logs["owner"] is None
     assert any(item["name"] == "full-access" for item in payload)
+
+
+def test_cli_missing_required_argument_is_clean_usage_error(monkeypatch, capsys):
+    monkeypatch.setattr(
+        "sys.argv",
+        ["gway", "security", "token", "create"],
+    )
+
+    from gway.console import cli_main
+
+    assert cli_main() == 2
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == "gway: missing required argument: name\n"
+    assert "Traceback" not in captured.err
+
+
+def test_cli_debug_preserves_missing_argument_traceback(monkeypatch):
+    monkeypatch.setattr(
+        "sys.argv",
+        ["gway", "--debug", "security", "token", "create"],
+    )
+
+    from gway.console import cli_main
+    from gway.normalization import MissingArgumentError
+
+    with pytest.raises(MissingArgumentError, match="missing required argument: name"):
+        cli_main()
