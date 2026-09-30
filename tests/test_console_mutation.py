@@ -52,7 +52,6 @@ def test_cli_no_mutate_reaches_compatible_callable(gateway):
     assert seen == [False]
 
 
-
 def test_cli_silent_consumes_lazy_stream(gateway):
     consumed = []
 
@@ -60,6 +59,25 @@ def test_cli_silent_consumes_lazy_stream(gateway):
         def generate():
             consumed.append("started")
             yield "one"
+            consumed.append("finished")
+
+        return generate()
+
+    gateway.stream = gateway.wrap("stream", stream)
+
+    assert _run_cli(None, _args(), ["stream"], runtime=gateway) == 0
+    assert consumed == ["started", "finished"]
+
+
+def test_cli_silent_stream_does_not_structure_discarded_values(gateway):
+    recursive = []
+    recursive.append(recursive)
+    consumed = []
+
+    def stream():
+        def generate():
+            consumed.append("started")
+            yield recursive
             consumed.append("finished")
 
         return generate()

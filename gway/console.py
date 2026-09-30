@@ -5,13 +5,18 @@ from contextlib import nullcontext
 from collections.abc import Iterator, Mapping, Sequence, Set
 from dataclasses import fields, is_dataclass
 import json
+import os
 import sys
 from .gateway import Gateway
 from .mutation import MUTATE_UNSET
 from .normalization import MissingArgumentError
+from .output import OutputWriteError, write_json_atomic
 from .recipe import execute_recipe, parse_recipe_context
 from .dispatch import dispatch_program
 from .tokens import statements
+
+
+_RELOAD_OUTPUT_ENV = "GWAY_RELOAD_OUTPUT"
 
 
 def _coerce_mutation_policy(value):
@@ -154,8 +159,8 @@ def _extract_mutation_policy(argv):
 
 
 _COMMAND_HELP_VALUE_OPTIONS = {
-    "-L", "--log-level", "--logfile", "-r", "--recipe", "-R", "--root",
-    "--resume",
+    "-L", "--log-level", "--logfile", "-o", "--output", "-r", "--recipe",
+    "-R", "--root", "--resume",
 }
 _COMMAND_HELP_MODE_OPTIONS = {"-r", "--recipe", "--resume"}
 
@@ -191,7 +196,7 @@ def _extract_command_help(argv):
             continue
         matched_short = next(
             (
-                option for option in {"-L", "-r"}
+                option for option in {"-L", "-o", "-r"}
                 if token.startswith(option) and token != option
             ),
             None,
@@ -219,6 +224,11 @@ def cli_main():
     parser.add_argument("-j", "--json", action="store_true")
     parser.add_argument("-L", "--log-level")
     parser.add_argument("--logfile")
+    parser.add_argument(
+        "-o",
+        "--output",
+        help="write the canonical final result to a JSON sidecar without changing stdout",
+    )
     parser.add_argument("-r", "--recipe")
     parser.add_argument(
         "-R",
@@ -252,6 +262,9 @@ def cli_main():
     args.mutation_policy = mutation_policy
     args.command_help = command_help
 
+    if args.resume and args.output is None:
+        args.output = os.environ.get(_RELOAD_OUTPUT_ENV)
+
     runtime = Gateway(
         debug=args.debug,
         interactive=args.interactive,
@@ -273,14 +286,24 @@ def cli_main():
     }
     if args.log_level is not None:
         log_kwargs["level"] = args.log_level
-    with gway_log.output_scope(**log_kwargs):
-        try:
-            return _run_cli(parser, args, unknown, runtime=runtime)
-        except (LookupError, MissingArgumentError) as exception:
-            if args.debug:
-                raise
-            print(f"gway: {exception}", file=sys.stderr)
-            return 2
+
+    previous_reload_output = os.environ.get(_RELOAD_OUTPUT_ENV)
+    if args.output is not None:
+        os.environ[_RELOAD_OUTPUT_ENV] = args.output
+    try:
+        with gway_log.output_scope(**log_kwargs):
+            try:
+                return _run_cli(parser, args, unknown, runtime=runtime)
+            except (LookupError, MissingArgumentError, OutputWriteError) as exception:
+                if args.debug:
+                    raise
+                print(f"gway: {exception}", file=sys.stderr)
+                return 2
+    finally:
+        if previous_reload_output is None:
+            os.environ.pop(_RELOAD_OUTPUT_ENV, None)
+        else:
+            os.environ[_RELOAD_OUTPUT_ENV] = previous_reload_output
 
 
 def _run_cli(parser, args, unknown, *, runtime=None):
@@ -292,6 +315,7 @@ def _run_cli(parser, args, unknown, *, runtime=None):
         verbose=args.verbose,
         silent=args.silent,
     )
+    output_path = getattr(args, "output", None)
 
     from .reload import ReloadTransferred
 
@@ -354,17 +378,28 @@ def _run_cli(parser, args, unknown, *, runtime=None):
             return exception.returncode if exception.returncode > 0 else 1
 
     if isinstance(output, Iterator):
+        sidecar_items = [] if output_path else None
         try:
             for item in output:
+                structured = None
+                if sidecar_items is not None or (not args.silent and args.json):
+                    structured = _structured_value(item)
+                if sidecar_items is not None:
+                    sidecar_items.append(structured)
                 if args.silent:
                     continue
                 if args.json:
-                    print(json.dumps(_structured_value(item), default=str), flush=True)
+                    print(json.dumps(structured, default=str), flush=True)
                 else:
                     print(_human_output(item), flush=True)
         except KeyboardInterrupt:
             return 130
+        if output_path:
+            write_json_atomic(output_path, sidecar_items)
         return 0
+
+    if output_path:
+        write_json_atomic(output_path, _structured_value(output))
 
     if output is not None and not args.silent:
         if args.json:
