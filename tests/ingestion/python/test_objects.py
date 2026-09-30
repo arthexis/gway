@@ -163,20 +163,113 @@ def test_transparent_module_does_not_apply_module_main_family_semantics(gateway)
     assert gateway.ops.resolve("demo.transparent") is None
 
 
-def test_class_factory_and_instance_methods_use_generic_semantic_subject(gateway):
-    class Device:
-        def __init__(self, serial):
-            self.serial = serial
-
+def test_class_is_subject_and_not_constructor_operation(gateway):
+    class ChargingStation:
         def label(self, prefix):
-            return f"{prefix}:{self.serial}"
+            return f"{prefix}:station"
 
-    ingest_python(gateway, Device, path=("device",))
+    ingest_python(gateway, ChargingStation)
 
-    created = gateway("device ABC")
-    assert isinstance(created, Device)
-    assert gateway.results["device"] is created
+    assert gateway.ops.resolve("charging.station") is None
+    operation = gateway.ops.resolve("charging.station.label")
+    assert operation is not None
+    assert operation.__gway_operation__ == "label"
+    assert operation.__gway_subject__ == "charging_station"
+    assert operation.__gway_receiver__ == "charging_station"
+    assert gateway.ops["label"]["charging_station"] is operation
 
-    assert gateway("label device unit") == "unit:ABC"
-    assert gateway("device XYZ - label unit") == "unit:XYZ"
-    assert gateway.ops["label"]["device"] is gateway.ops.resolve("device.label")
+
+def test_multiword_class_methods_accept_operation_first_spelling_after_expansion(gateway):
+    class PaymentGateway:
+        @staticmethod
+        def ping():
+            return "pong"
+
+    ingest_python(gateway, PaymentGateway)
+
+    assert gateway("payment gateway ping") == "pong"
+    assert gateway("ping payment gateway") == "pong"
+
+
+def test_module_class_name_is_split_into_lowercase_subject_words(gateway):
+    from types import ModuleType
+
+    module = ModuleType("demo")
+
+    class PaymentGateway:
+        @staticmethod
+        def ping():
+            return "pong"
+
+    module.PaymentGateway = PaymentGateway
+    ingest_python(gateway, module, path=("demo",))
+
+    assert gateway("demo payment gateway ping") == "pong"
+    operation = gateway.ops.resolve("demo.payment.gateway.ping")
+    assert operation.__gway_subject__ == "payment_gateway"
+
+
+def test_concrete_module_symbol_shadows_equivalent_class_subject(gateway):
+    from types import ModuleType
+
+    module = ModuleType("demo")
+
+    class SalesOrder:
+        @staticmethod
+        def status():
+            return "class"
+
+    def sales_order():
+        return "specific"
+
+    module.SalesOrder = SalesOrder
+    module.sales_order = sales_order
+
+    ingest_python(gateway, module, path=("demo",))
+
+    assert gateway("demo sales order") == "specific"
+    assert gateway.ops.resolve("demo.sales.order.status") is None
+
+
+def test_explicit_class_path_preserves_receiver_subject(gateway):
+    class Renamed:
+        def show(self):
+            return "shown"
+
+    ingest_python(gateway, Renamed, path=("api", "tools"))
+
+    operation = gateway.ops.resolve("api.tools.show")
+    assert operation.__gway_subject__ == "tools"
+    assert operation.__gway_receiver__ == "tools"
+    gateway.context["tools"] = Renamed()
+    assert gateway("api tools show") == "shown"
+
+
+def test_operation_first_multiword_subject_is_ambiguous_across_namespaces(gateway):
+    from types import ModuleType
+
+    first = ModuleType("first")
+    second = ModuleType("second")
+
+    class PaymentGateway:
+        @staticmethod
+        def ping():
+            return "first"
+
+    class OtherPaymentGateway:
+        pass
+
+    OtherPaymentGateway.__name__ = "PaymentGateway"
+    OtherPaymentGateway.ping = staticmethod(lambda: "second")
+
+    first.PaymentGateway = PaymentGateway
+    second.PaymentGateway = OtherPaymentGateway
+
+    ingest_python(gateway, first, path=("first",))
+    ingest_python(gateway, second, path=("second",))
+
+    from gway.dispatch import OperationLookupError
+    import pytest
+
+    with pytest.raises(OperationLookupError):
+        gateway("ping payment gateway")

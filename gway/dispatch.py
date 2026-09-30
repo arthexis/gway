@@ -522,9 +522,29 @@ def _resolved(func, arguments, candidate):
     )
 
 
+def _semantic_name_words(value):
+    """Split one command token at uppercase boundaries for semantic lookup."""
+    words = []
+    current = ""
+    for character in str(value):
+        if character.isupper() and current:
+            words.append(current.lower())
+            current = character
+        else:
+            current += character
+    if current:
+        words.append(current.lower())
+    return tuple(word for word in words if word)
+
+
 def _expand_candidate(runtime, candidate):
     """JIT-expand hierarchical and semantic branches for one candidate."""
-    path = tuple(part for part in candidate.replace(" ", ".").split(".") if part)
+    raw_path = tuple(part for part in candidate.replace(" ", ".").split(".") if part)
+    path = tuple(
+        word
+        for part in raw_path
+        for word in _semantic_name_words(part)
+    )
     expanded = False
     for size in range(1, len(path) + 1):
         expanded = expand_path(runtime, path[:size]) or expanded
@@ -560,22 +580,35 @@ def _operation_candidate_tokens(tokens):
 
 
 def _operation_spelling_candidates(values):
-    """Return normal, underscore, and dotted spellings for operation-name words."""
+    """Return literal and semantic-normalized spellings for operation-name words."""
     if not values:
         return ()
     normalized = tuple(
         token if token == "-" or token.startswith("--") else token.replace("-", "_")
         for token in values
     )
-    return tuple(
-        dict.fromkeys(
-            (
-                " ".join(values),
-                "_".join(normalized),
-                ".".join(normalized),
-            )
+    semantic = tuple(
+        word
+        for token in normalized
+        for word in (
+            (token,)
+            if token == "-" or token.startswith("--")
+            else _semantic_name_words(token)
         )
     )
+    candidates = [
+        " ".join(values),
+        "_".join(normalized),
+        ".".join(normalized),
+        " ".join(semantic),
+        "_".join(semantic),
+        ".".join(semantic),
+    ]
+    if len(normalized) > 1:
+        candidates.append(f"{normalized[0]}.{'_'.join(normalized[1:])}")
+    if len(semantic) > 1:
+        candidates.append(f"{semantic[0]}.{'_'.join(semantic[1:])}")
+    return tuple(dict.fromkeys(candidates))
 
 
 def _semantic_pipeline_operation(runtime, tokens, pipeline):

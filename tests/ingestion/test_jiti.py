@@ -34,9 +34,9 @@ def test_jiti_reuses_expanded_branch(gateway, make_ping_node):
 def test_stdlib_pathlib_can_jit_expand_class_branch(gateway):
     gateway.ingest(pathlib)
 
-    assert gateway.ops.resolve("pathlib.Path.cwd") is None
+    assert gateway.ops.resolve("pathlib.path.cwd") is None
 
     result = gateway("pathlib Path cwd")
 
     assert isinstance(result, pathlib.Path)
-    assert gateway.ops.resolve("pathlib.Path.cwd") is not None
+    assert gateway.ops.resolve("pathlib.path.cwd") is not None
