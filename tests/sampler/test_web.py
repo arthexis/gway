@@ -27,7 +27,8 @@ def test_web_expose_default_composes_http_then_https(recipe_commands):
 def test_web_expose_http_bootstraps_acme_and_nginx(recipe_commands):
     rendered = recipe_commands("web/expose/http.rx")
 
-    assert rendered[:2] == [
+    assert rendered[:3] == [
+        "expose normalize site [site] --as site_key",
         "ingest [nginx_executable|nginx] --kind proc --sudo",
         "ingest [mkdir_executable|mkdir] --kind proc --sudo",
     ]
@@ -43,7 +44,8 @@ def test_web_expose_http_bootstraps_acme_and_nginx(recipe_commands):
 def test_web_expose_https_uses_certbot_webroot_before_tls_render(recipe_commands):
     rendered = recipe_commands("web/expose/https.rx")
 
-    assert rendered[:2] == [
+    assert rendered[:3] == [
+        "expose normalize site [site] --as site_key",
         "ingest [nginx_executable|nginx] --kind proc --sudo",
         "ingest [certbot_executable|certbot] --kind proc --sudo",
     ]
@@ -225,3 +227,73 @@ def test_web_expose_https_template_sets_safe_edge_defaults(sampler_path):
     tls_server = content.rsplit("server {", 1)[1]
     location = tls_server.split("    location / {", 1)[1]
     assert "add_header" not in location
+
+
+def test_web_expose_https_rejects_common_scanner_paths_at_edge(sampler_path):
+    content = (
+        sampler_path("web/expose") / "nginx-https-[site].conf"
+    ).read_text(encoding="utf-8")
+
+    assert r"location ~* \.php(?:/|$) {" in content
+    assert "wp-admin|wp-content|wp-includes|wordpress" in content
+    assert r"location ~* ^/(?:\.env|\.git)(?:/|$) {" in content
+    assert content.count("return 404;") >= 6
+
+
+def test_web_expose_https_serves_robots_without_waking_application(sampler_path):
+    content = (
+        sampler_path("web/expose") / "nginx-https-[site].conf"
+    ).read_text(encoding="utf-8")
+
+    block = content.split("location = /robots.txt {", 1)[1].split("}", 1)[0]
+    assert "default_type text/plain;" in block
+    assert 'return 200 "User-agent: *\\nDisallow:\\n";' in block
+    assert "proxy_pass" not in block
+
+
+def test_web_expose_rate_limits_only_selected_auth_paths(sampler_path):
+    content = (
+        sampler_path("web/expose") / "nginx-https-[site].conf"
+    ).read_text(encoding="utf-8")
+
+    assert "map $uri $gway_expose_auth_key_[site_key] {" in content
+    assert 'default "";' in content
+    assert "admin(?:/|$)|login/?$|accounts/login/?$" in content
+    assert (
+        "limit_req_zone $gway_expose_auth_key_[site_key] "
+        "zone=gway_expose_auth_[site_key]:10m rate=5r/s;"
+    ) in content
+    assert "limit_req zone=gway_expose_auth_[site_key] burst=20 nodelay;" in content
+    assert "limit_req_status 429;" in content
+
+
+def test_web_expose_adds_bounded_client_and_upstream_timeouts(sampler_path):
+    content = (
+        sampler_path("web/expose") / "nginx-https-[site].conf"
+    ).read_text(encoding="utf-8")
+
+    assert "client_header_timeout 15s;" in content
+    assert "client_body_timeout 30s;" in content
+    assert "proxy_connect_timeout 10s;" in content
+
+
+def test_web_expose_normalizes_site_for_nginx_identifiers(sampler_path):
+    import runpy
+
+    namespace = runpy.run_path(str(sampler_path("web/expose/expose.py")))
+    normalize_site = namespace["normalize_site"]
+
+    assert normalize_site("arthexis.com") == "arthexis_com"
+    assert normalize_site("my-site") == "my_site"
+    assert normalize_site("9site") == "_9site"
+    assert normalize_site("site_name") == "site_name"
+
+
+def test_web_expose_rate_limit_identifiers_use_normalized_site_key(sampler_path):
+    content = (
+        sampler_path("web/expose") / "nginx-https-[site].conf"
+    ).read_text(encoding="utf-8")
+
+    assert "$gway_expose_auth_key_[site_key]" in content
+    assert "zone=gway_expose_auth_[site_key]:10m" in content
+    assert "$gway_expose_auth_key_[site]" not in content
