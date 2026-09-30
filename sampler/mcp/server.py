@@ -1,6 +1,8 @@
 """FastMCP surface for native GWAY command execution."""
 
 from contextlib import contextmanager
+from collections.abc import Mapping, Sequence
+from datetime import datetime, timezone
 import asyncio
 import base64
 import json
@@ -19,12 +21,86 @@ from fastmcp.server.auth.auth import AccessToken as _AccessToken
 from fastmcp.server.dependencies import get_http_headers as _get_http_headers
 from fastmcp.server.dependencies import get_http_request as _get_http_request
 from fastmcp.server.middleware import Middleware
-from gway.tailing import _event as _tail_event
-from gway.tailing import _fingerprint as _tail_fingerprint
-from gway.tailing import terminal as _tail_terminal
 
 
 _DEFAULT_PUBLIC_ORIGIN = "http://127.0.0.1:8000"
+
+_TERMINAL_GITHUB_STATES = {
+    "completed",
+    "success",
+    "failure",
+    "cancelled",
+    "canceled",
+    "skipped",
+    "neutral",
+    "timed_out",
+    "action_required",
+    "stale",
+}
+
+
+def _tail_stable(value):
+    if isinstance(value, Mapping):
+        return {
+            str(key): _tail_stable(item)
+            for key, item in sorted(value.items(), key=lambda pair: str(pair[0]))
+        }
+    if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
+        return [_tail_stable(item) for item in value]
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+    if hasattr(value, "isoformat") and callable(value.isoformat):
+        try:
+            return value.isoformat()
+        except (TypeError, ValueError):
+            pass
+    return str(value)
+
+
+def _tail_fingerprint(value):
+    return json.dumps(
+        _tail_stable(value),
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+    )
+
+
+def _tail_event(sequence, kind, operation, value, *, terminal=False):
+    return {
+        "sequence": sequence,
+        "kind": kind,
+        "operation": operation,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "value": _tail_stable(value),
+        "terminal": bool(terminal),
+    }
+
+
+def _tail_terminal(operation, value):
+    words = tuple(
+        word.casefold()
+        for word in str(operation).replace(".", " ").replace("_", " ").split()
+    )
+    if len(words) < 2 or words[0] != "github":
+        return False
+    if words[1] not in {"check", "checks", "job", "jobs", "run", "runs"}:
+        return False
+
+    records = value if isinstance(value, list) else [value]
+    if not records:
+        return False
+    for record in records:
+        if not isinstance(record, Mapping):
+            return False
+        status = str(record.get("status") or "").casefold()
+        conclusion = str(record.get("conclusion") or "").casefold()
+        if (
+            status not in _TERMINAL_GITHUB_STATES
+            and conclusion not in _TERMINAL_GITHUB_STATES
+        ):
+            return False
+    return True
 
 
 _OUTPUT_SCHEMA = {
