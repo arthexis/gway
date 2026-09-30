@@ -18,7 +18,9 @@ def test_gway_bootstrap_installs_watchtower_certified_source(sampler_path):
     assert "git+https://" not in script
     assert "pypi.org" not in script.lower()
     assert 'test "${#GWAY_SHA}" -ne 40' in script
-    assert "*[!0-9a-f]*" in script
+    assert "*[[!0-9a-f]]*" in script
+    assert "*[!0-9a-f]*" not in script
+    assert 'awk -F\'"\' \'/"gway_sha"/ { print $4; exit }\'' in script
 
 
 def test_gway_bootstrap_persists_tool_path_and_smoke_checks_cli(sampler_path):
@@ -103,7 +105,9 @@ def test_arthexis_roles_share_one_installer_template(sampler_path):
     assert 'command -v gway' not in script
     assert '"arthexis_sha"' in script
     assert 'test "${#ARTHEXIS_SHA}" -ne 40' in script
-    assert '*[!0-9a-f]*' in script
+    assert '*[[!0-9a-f]]*' in script
+    assert '*[!0-9a-f]*' not in script
+    assert 'awk -F\'"\' \'/"arthexis_sha"/ { print $4; exit }\'' in script
     assert '"$GWAY" install arthexis/arthexis --ref "$ARTHEXIS_SHA"' in script
     assert '"$GWAY" install arthexis/arthexis\n' not in script
     assert '"$GWAY" arthexis migrate --noinput' in script
