@@ -118,30 +118,8 @@ def _product_python(project):
     )
 
 
-def _product_runtime_ready(project, selected):
-    """Return whether a product runtime has an interpreter and consistent packages."""
-    from ..recipe.uv import ensure_uv
-
-    python = _product_python(project)
-    if not python.is_file():
-        return False
-
-    uv = ensure_uv(
-        system=selected.scope == "system",
-        root=selected.root,
-    )
-    result = subprocess.run(
-        [str(uv), "pip", "check", "--python", str(python)],
-        cwd=project,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        check=False,
-    )
-    return result.returncode == 0
-
-
-def _provision_product_runtime(project, selected):
-    """Create an isolated runtime and install one product with its dependencies."""
+def _converge_product_runtime(project, selected):
+    """Create or repair a product runtime from its declared dependencies."""
     from ..recipe.uv import ensure_uv
 
     uv = ensure_uv(
@@ -149,18 +127,34 @@ def _provision_product_runtime(project, selected):
         root=selected.root,
     )
     project = Path(project)
+    python = _product_python(project)
+    if not python.is_file():
+        subprocess.run(
+            [str(uv), "venv", ".venv"],
+            cwd=project,
+            check=True,
+        )
+        python = _product_python(project)
+        if not python.is_file():
+            raise RuntimeError(
+                f"uv completed without creating product interpreter: {python}"
+            )
+
     subprocess.run(
-        [str(uv), "venv", ".venv"],
+        [
+            str(uv),
+            "pip",
+            "install",
+            "--python",
+            str(python),
+            "--requirements",
+            "pyproject.toml",
+        ],
         cwd=project,
         check=True,
     )
-    python = _product_python(project)
-    if not python.is_file():
-        raise RuntimeError(
-            f"uv completed without creating product interpreter: {python}"
-        )
     subprocess.run(
-        [str(uv), "pip", "install", "--python", str(python), "."],
+        [str(uv), "pip", "check", "--python", str(python)],
         cwd=project,
         check=True,
     )
@@ -360,10 +354,16 @@ def install_materialized(
                     f"different project {destination_name!r}: {destination}"
                 )
 
-        runtime_ready = (
-            request.kind != "product"
-            or _product_runtime_ready(destination, selected)
-        )
+        runtime_ready = True
+        if (
+            request.kind == "product"
+            and not kind_changed
+            and not drifted
+            and destination.is_dir()
+            and existing.fingerprint == desired_fingerprint
+        ):
+            _converge_product_runtime(destination, selected)
+
         same = (
             not kind_changed
             and not drifted
@@ -439,7 +439,7 @@ def install_materialized(
 
         if request.kind == "product":
             try:
-                _provision_product_runtime(destination, selected)
+                _converge_product_runtime(destination, selected)
             except Exception as primary:
                 if destination.exists() or destination.is_symlink():
                     _attempt_recovery(
