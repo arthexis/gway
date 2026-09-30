@@ -587,15 +587,14 @@ def _operation_spelling_candidates(values):
         token if token == "-" or token.startswith("--") else token.replace("-", "_")
         for token in values
     )
-    return tuple(
-        dict.fromkeys(
-            (
-                " ".join(values),
-                "_".join(normalized),
-                ".".join(normalized),
-            )
-        )
-    )
+    candidates = [
+        " ".join(values),
+        "_".join(normalized),
+        ".".join(normalized),
+    ]
+    if len(normalized) > 1:
+        candidates.append(f"{normalized[0]}.{'_'.join(normalized[1:])}")
+    return tuple(dict.fromkeys(candidates))
 
 
 def _semantic_pipeline_operation(runtime, tokens, pipeline):
