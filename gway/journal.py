@@ -698,3 +698,94 @@ class JournalManager:
             self.session_root.rmdir()
         except OSError:
             pass
+
+
+def recover_persisted_path(root, path):
+    """Recover one path from persisted rollback state when ownership is provable.
+
+    Recovery is intentionally conservative: exactly one open APPLIED filesystem
+    entry must name the path, and the live path must still match that entry's
+    recorded post-mutation fingerprint. Ambiguous, mutated/unsealed, or drifted
+    state is refused.
+    """
+    from .identity import ExecutionIdentity
+    from .snapshot import restore_path, verify_fingerprint
+
+    root = Path(root).expanduser()
+    target = str(Path(path).expanduser())
+    matches = []
+
+    if not root.is_dir():
+        raise JournalError(f"No persisted rollback state under {root}")
+
+    for manifest in sorted(root.glob("*/ */manifest.json".replace(" ", ""))):
+        try:
+            payload = json.loads(manifest.read_text(encoding="utf-8"))
+            journal = Journal.from_dict(payload)
+        except (OSError, ValueError, KeyError, TypeError, json.JSONDecodeError):
+            continue
+        if journal.state is not JournalState.OPEN:
+            continue
+        for entry in journal.entries:
+            if entry.kind != "filesystem":
+                continue
+            snapshots = [dict(value) for value in entry.data.get("paths") or []]
+            for index, snapshot in enumerate(snapshots):
+                if str(snapshot.get("path")) == target:
+                    matches.append((manifest, journal, entry, index, snapshot))
+
+    if not matches:
+        raise JournalError(f"No persisted managed rollback state for {target}")
+    if len(matches) != 1:
+        raise JournalError(
+            f"Ambiguous persisted rollback ownership for {target}: "
+            f"{len(matches)} matching entries"
+        )
+
+    manifest, journal, entry, index, snapshot = matches[0]
+    if entry.state is MutationState.MUTATED:
+        raise JournalError(
+            f"Persisted rollback state for {target} is unsealed and cannot be "
+            "recovered safely"
+        )
+    if entry.state is not MutationState.APPLIED:
+        raise JournalError(
+            f"Persisted rollback state for {target} is {entry.state.value}, "
+            "not recoverable"
+        )
+
+    expected = [dict(value) for value in entry.data.get("expected") or []]
+    if len(expected) != len(entry.data.get("paths") or []):
+        raise JournalError(f"Persisted rollback state for {target} is incomplete")
+
+    identity = ExecutionIdentity.from_dict(entry.data.get("identity"))
+    verify_fingerprint(expected[index], identity=identity)
+
+    storage = manifest.parent / "entries" / f"{entry.sequence:06d}"
+    relative_storage = snapshot.get("storage")
+    if relative_storage is None:
+        raise JournalError(f"Persisted rollback snapshot for {target} has no storage")
+
+    restore_path(
+        snapshot,
+        storage / str(relative_storage),
+        identity=identity,
+    )
+
+    entry.state = MutationState.ROLLED_BACK
+    temporary = manifest.with_name(".manifest.json.tmp")
+    temporary.write_text(
+        json.dumps(journal.as_dict(), indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    temporary.chmod(0o600)
+    temporary.replace(manifest)
+
+    return {
+        "path": target,
+        "journal": journal.name,
+        "session": manifest.parent.parent.name,
+        "sequence": entry.sequence,
+        "operation": entry.data.get("operation"),
+        "status": "recovered",
+    }

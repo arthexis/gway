@@ -164,6 +164,7 @@ class Gateway(Resolver):
 
         self.commit = self.wrap("commit", self._commit_journal)
         self.rollback = self.wrap("rollback", self._rollback_journal)
+        self.recover_path = self.wrap("recover.path", self._recover_persisted_path, op="recover", sub="path")
         self.clear = self.wrap("clear", self._clear_context)
         self.default = self.wrap("default", self._default_context, op="default", sub="default")
         self.pipe = self.wrap("pipe", self._pipe_context, op="pipe", sub="pipe")
@@ -858,6 +859,12 @@ class Gateway(Resolver):
         """Roll back one named journal and discard it after full success."""
         self.journal.rollback(name)
         return name
+
+    def _recover_persisted_path(self, path):
+        """Recover a path from persisted rollback state when ownership is provable."""
+        from .journal import recover_persisted_path
+
+        return recover_persisted_path(self.cache.root / "rollback", path)
 
     def _clear_context(self, **values):
         """Clear accumulated semantic context.
