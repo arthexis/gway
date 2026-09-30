@@ -31,12 +31,16 @@ def _fallback(path):
             parsed = ast.literal_eval(value)
         except (SyntaxError, ValueError):
             continue
-        if not isinstance(parsed, str):
-            continue
-
         if section == "project":
-            result["project"][key] = parsed
-        elif section == "project.scripts":
+            if isinstance(parsed, str):
+                result["project"][key] = parsed
+            elif (
+                key == "dependencies"
+                and isinstance(parsed, list)
+                and all(isinstance(item, str) for item in parsed)
+            ):
+                result["project"][key] = parsed
+        elif section == "project.scripts" and isinstance(parsed, str):
             result["project"]["scripts"][key] = parsed
 
     return result
