@@ -5,12 +5,14 @@ import shutil
 import subprocess
 import tempfile
 
+from .host import run_as_identity
+
 
 class EngineValidationError(RuntimeError):
     """Raised when an engine rejects rendered candidate configuration."""
 
 
-def _nginx(content, *, executable=None):
+def _nginx(content, *, executable=None, identity=None):
     executable = str(executable or shutil.which("nginx") or "nginx")
     with tempfile.TemporaryDirectory(prefix="gway-nginx-check-") as directory:
         root = Path(directory)
@@ -32,12 +34,22 @@ def _nginx(content, *, executable=None):
             ),
             encoding="utf-8",
         )
-        completed = subprocess.run(
-            [executable, "-t", "-c", str(config), "-p", str(root)],
-            check=False,
-            capture_output=True,
-            text=True,
-        )
+        argv = [executable, "-t", "-c", str(config), "-p", str(root)]
+        if identity is None:
+            completed = subprocess.run(
+                argv,
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+        else:
+            completed = run_as_identity(
+                identity,
+                *argv,
+                check=False,
+                capture_output=True,
+                text=True,
+            )
     if completed.returncode:
         detail = completed.stderr.strip() or completed.stdout.strip()
         raise EngineValidationError(f"nginx rejected rendered configuration: {detail}")
@@ -48,7 +60,7 @@ _VALIDATORS = {
 }
 
 
-def validate_text(engine, content, *, executable=None):
+def validate_text(engine, content, *, executable=None, identity=None):
     """Validate fully rendered text with a named engine before mutation."""
     name = str(engine).strip().lower()
     try:
@@ -58,5 +70,5 @@ def validate_text(engine, content, *, executable=None):
         raise ValueError(
             f"Unknown render validation engine {engine!r}; supported: {supported}"
         ) from error
-    validator(str(content), executable=executable)
+    validator(str(content), executable=executable, identity=identity)
     return content
