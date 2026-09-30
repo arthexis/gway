@@ -16,6 +16,8 @@ certbot certonly
 render nginx-https-[site].conf
 --to [nginx_available|/etc/nginx/sites-available]/[site]
 --as root
+--rollback web-expose-https
 
 nginx -t
 nginx -s reload
+commit web-expose-https
