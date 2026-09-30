@@ -2,6 +2,7 @@
 
 import json
 import re
+from collections.abc import Mapping
 
 from ..semantic import AmbiguousKeyError
 from .paths import follow_path
@@ -137,6 +138,13 @@ def resolve_single(raw, lookup, evaluate=None, *, depth=0):
     raise UnresolvedSigilError(f"Unresolved sigil: [{original_raw}]")
 
 
+def _simplify_embedded_value(value):
+    """Collapse one-item mappings for scalar sigil interpolation."""
+    if isinstance(value, Mapping) and len(value) == 1:
+        return next(iter(value.values()))
+    return value
+
+
 def resolve_text(text, lookup, evaluate=None, *, depth=0):
     if depth > MAX_RESOLUTION_DEPTH:
         raise RecursionError("sigil resolution exceeded maximum depth")
@@ -168,6 +176,7 @@ def resolve_text(text, lookup, evaluate=None, *, depth=0):
 
     def replacer(match):
         value = resolve_single(match.group(1), lookup, evaluate=evaluate, depth=depth)
+        value = _simplify_embedded_value(value)
         if isinstance(value, str):
             return value
         return json.dumps(value, default=str)
