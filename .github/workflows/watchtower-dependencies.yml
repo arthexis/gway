@@ -83,9 +83,12 @@ jobs:
                 pr_json="$(gh api "repos/$REPOSITORY/pulls/$number")"
                 draft="$(jq -r '.draft' <<< "$pr_json")"
                 on_hold="$(jq -r '[.labels[].name | ascii_downcase] | any(. == "on-hold" or . == "on hold")' <<< "$pr_json")"
+                auto_merge="$(jq -r '.auto_merge != null' <<< "$pr_json")"
                 if [[ "$draft" != "true" && "$on_hold" != "true" ]]; then
-                  gh pr merge "$number" --repo "$REPOSITORY" --auto --squash
-                  echo "PR #$number: dependency certified; label removed and native auto-merge restored."
+                  if [[ "$auto_merge" != "true" ]]; then
+                    gh pr merge "$number" --repo "$REPOSITORY" --auto --squash
+                  fi
+                  echo "PR #$number: dependency certified; label removed and native auto-merge is enabled."
                 else
                   echo "PR #$number: dependency certified; label removed, but draft/on-hold state prevents auto-merge."
                 fi
