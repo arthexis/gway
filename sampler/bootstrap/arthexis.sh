@@ -27,16 +27,13 @@ MANIFEST="$(mktemp)"
 trap 'rm -f "$MANIFEST"' EXIT
 curl -fsSL "$CERTIFIED_MANIFEST_URL" -o "$MANIFEST"
 
-ARTHEXIS_SHA="$(
-    sed -n 's/.*"arthexis_sha"[[:space:]]*:[[:space:]]*"\([0-9a-f]\{40\}\)".*/\1/p' "$MANIFEST" |
-        head -n 1
-)"
+ARTHEXIS_SHA="$(awk -F'"' '/"arthexis_sha"/ { print $4; exit }' "$MANIFEST")"
 if test "${#ARTHEXIS_SHA}" -ne 40; then
     echo "Arthexis bootstrap: accepted Watchtower manifest has no valid arthexis_sha" >&2
     exit 1
 fi
 case "$ARTHEXIS_SHA" in
-    *[!0-9a-f]*)
+    *[[!0-9a-f]]*)
         echo "Arthexis bootstrap: accepted Watchtower manifest has an invalid arthexis_sha" >&2
         exit 1
         ;;
