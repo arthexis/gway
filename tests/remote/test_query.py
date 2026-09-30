@@ -60,7 +60,7 @@ def test_full_access_scope_authorizes_operation_added_after_token_creation(gatew
     assert payload == {"result": "future-ok"}
 
 
-def test_read_scopes_include_watch(gateway):
+def test_read_scopes_include_survey(gateway):
     metadata = RemoteOAuthMetadata.from_origin(
         "https://remote.example.test",
         resource_path="/mcp",
@@ -69,7 +69,7 @@ def test_read_scopes_include_watch(gateway):
     scopes = ScopeRegistry(gateway.security_path)
 
     for name in ("logs-read", "source-read", "operator-read"):
-        assert "watch" in scopes.require(name).operations
+        assert "survey" in scopes.require(name).operations
 
 
 def test_query_executes_authorized_non_mutating_operation(gateway):
@@ -232,7 +232,7 @@ role = "{role}"
     return gateway
 
 
-def test_remote_query_executes_first_class_watch_under_no_mutate(
+def test_remote_query_executes_first_class_survey_under_no_mutate(
     gateway,
     tmp_path,
     monkeypatch,
@@ -241,7 +241,7 @@ def test_remote_query_executes_first_class_watch_under_no_mutate(
     application, bearer = _remote(
         gateway,
         operations={
-            "watch",
+            "survey",
             "node",
             "service.statuses",
             "wire.check",
@@ -249,7 +249,7 @@ def test_remote_query_executes_first_class_watch_under_no_mutate(
         },
     )
 
-    status, headers, payload = _get(application, bearer, "watch --only node,wire")
+    status, headers, payload = _get(application, bearer, "survey --only node,wire")
 
     assert status == 200
     assert headers["cache-control"] == "no-store"
@@ -262,7 +262,7 @@ def test_remote_query_executes_first_class_watch_under_no_mutate(
     assert result["cursor"]
 
 
-def test_remote_watch_reduces_output_to_component_scope(
+def test_remote_survey_reduces_output_to_component_scope(
     gateway,
     tmp_path,
     monkeypatch,
@@ -270,10 +270,10 @@ def test_remote_watch_reduces_output_to_component_scope(
     _watch_gateway(gateway, tmp_path, monkeypatch)
     application, bearer = _remote(
         gateway,
-        operations={"watch", "node"},
+        operations={"survey", "node"},
     )
 
-    status, _, payload = _get(application, bearer, "watch")
+    status, _, payload = _get(application, bearer, "survey")
 
     assert status == 200
     result = payload["result"]
@@ -282,7 +282,7 @@ def test_remote_watch_reduces_output_to_component_scope(
     assert result["health"]["sections"] == {"node": "ok"}
 
 
-def test_remote_watch_blocks_mutating_component_without_side_effect(
+def test_remote_survey_blocks_mutating_component_without_side_effect(
     gateway,
     tmp_path,
     monkeypatch,
@@ -297,10 +297,10 @@ def test_remote_watch_blocks_mutating_component_without_side_effect(
     gateway.wrap("wire.check", mutate_wire, op="check", sub="wire")
     application, bearer = _remote(
         gateway,
-        operations={"watch", "wire.check"},
+        operations={"survey", "wire.check"},
     )
 
-    status, _, payload = _get(application, bearer, "watch --only wire")
+    status, _, payload = _get(application, bearer, "survey --only wire")
 
     assert status == 200
     result = payload["result"]
@@ -310,7 +310,7 @@ def test_remote_watch_blocks_mutating_component_without_side_effect(
     assert calls == []
 
 
-def test_remote_watch_aggregates_authorized_published_contributor(
+def test_remote_survey_aggregates_authorized_published_contributor(
     gateway,
     tmp_path,
     monkeypatch,
@@ -330,10 +330,10 @@ def test_remote_watch_aggregates_authorized_published_contributor(
     )
     application, bearer = _remote(
         gateway,
-        operations={"watch", "demo.status"},
+        operations={"survey", "demo.status"},
     )
 
-    status, _, payload = _get(application, bearer, "watch --only demo")
+    status, _, payload = _get(application, bearer, "survey --only demo")
 
     assert status == 200, payload
     result = payload["result"]
@@ -342,7 +342,7 @@ def test_remote_watch_aggregates_authorized_published_contributor(
     assert result["health"]["sections"] == {"demo": "ok"}
 
 
-def test_remote_watch_omits_unauthorized_published_contributor(
+def test_remote_survey_omits_unauthorized_published_contributor(
     gateway,
     tmp_path,
     monkeypatch,
@@ -361,15 +361,15 @@ def test_remote_watch_omits_unauthorized_published_contributor(
             "source": "demo",
         },
     )
-    application, bearer = _remote(gateway, operations={"watch"})
+    application, bearer = _remote(gateway, operations={"survey"})
 
-    status, _, payload = _get(application, bearer, "watch")
+    status, _, payload = _get(application, bearer, "survey")
 
     assert status == 200
     assert "demo" not in payload["result"]
 
 
-def test_remote_watch_missing_component_scope_is_not_transport_error(
+def test_remote_survey_missing_component_scope_is_not_transport_error(
     gateway,
     tmp_path,
     monkeypatch,
@@ -377,10 +377,10 @@ def test_remote_watch_missing_component_scope_is_not_transport_error(
     _watch_gateway(gateway, tmp_path, monkeypatch)
     application, bearer = _remote(
         gateway,
-        operations={"watch"},
+        operations={"survey"},
     )
 
-    status, _, payload = _get(application, bearer, "watch")
+    status, _, payload = _get(application, bearer, "survey")
 
     assert status == 200
     result = payload["result"]
