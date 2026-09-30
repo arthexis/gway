@@ -3,11 +3,13 @@
 import os
 from pathlib import Path
 import shutil
+import subprocess
 import tempfile
 import uuid
 
 from .. import log as gway_log
 from .activation import activate as activate_project, deactivate as deactivate_project
+from .metadata import load as load_metadata
 from .model import Installation, InstallRequest, UninstallRequest, validate_name
 from .paths import install_paths
 from .source import fingerprint, local_source, project_name
@@ -107,6 +109,68 @@ def _handle_drift(
         existing.name,
     )
     return None
+
+
+def _product_python(project):
+    """Return the interpreter path inside a product-owned virtual environment."""
+    project = Path(project)
+    return project / ".venv" / (
+        "Scripts/python.exe" if os.name == "nt" else "bin/python"
+    )
+
+
+def _product_dependencies(project):
+    """Return declared PEP 621 runtime dependencies without requiring build metadata."""
+    data = load_metadata(Path(project) / "pyproject.toml")
+    project_data = data.get("project") if isinstance(data, dict) else None
+    dependencies = (
+        project_data.get("dependencies", [])
+        if isinstance(project_data, dict)
+        else ()
+    )
+    if dependencies is None:
+        return ()
+    if not isinstance(dependencies, list) or not all(
+        isinstance(item, str) and item.strip() for item in dependencies
+    ):
+        raise ValueError("[project].dependencies must be a list of non-empty strings")
+    return tuple(item.strip() for item in dependencies)
+
+
+def _converge_product_runtime(project, selected):
+    """Create or repair a product runtime from its declared dependencies."""
+    from ..recipe.uv import ensure_uv
+
+    uv = ensure_uv(
+        system=selected.scope == "system",
+        root=selected.root,
+    )
+    project = Path(project)
+    python = _product_python(project)
+    if not python.is_file():
+        subprocess.run(
+            [str(uv), "venv", ".venv"],
+            cwd=project,
+            check=True,
+        )
+        python = _product_python(project)
+        if not python.is_file():
+            raise RuntimeError(
+                f"uv completed without creating product interpreter: {python}"
+            )
+
+    dependencies = _product_dependencies(project)
+    if dependencies:
+        subprocess.run(
+            [str(uv), "pip", "install", "--python", str(python), *dependencies],
+            cwd=project,
+            check=True,
+        )
+    subprocess.run(
+        [str(uv), "pip", "check", "--python", str(python)],
+        cwd=project,
+        check=True,
+    )
 
 
 def _stage_project(source, name, desired_fingerprint, projects):
@@ -303,11 +367,22 @@ def install_materialized(
                     f"different project {destination_name!r}: {destination}"
                 )
 
+        runtime_ready = True
+        if (
+            request.kind == "product"
+            and not kind_changed
+            and not drifted
+            and destination.is_dir()
+            and existing.fingerprint == desired_fingerprint
+        ):
+            _converge_product_runtime(destination, selected)
+
         same = (
             not kind_changed
             and not drifted
             and not desired_changed
             and destination.is_dir()
+            and runtime_ready
         )
         if same:
             if request.kind == "extension":
@@ -320,6 +395,7 @@ def install_materialized(
             and not drifted
             and destination.is_dir()
             and existing.fingerprint == desired_fingerprint
+            and runtime_ready
         ):
             if not request.upgrade:
                 return existing
@@ -355,7 +431,7 @@ def install_materialized(
                     f"Managed project {name!r} is missing and desired state changed; "
                     "repair would require an upgrade"
                 )
-            if destination.is_dir() and not drifted:
+            if destination.is_dir() and not drifted and runtime_ready:
                 return existing
 
     stage = _stage_project(
@@ -373,6 +449,25 @@ def install_materialized(
 
         os.replace(stage, destination)
         activated = True
+
+        if request.kind == "product":
+            try:
+                _converge_product_runtime(destination, selected)
+            except Exception as primary:
+                if destination.exists() or destination.is_symlink():
+                    _attempt_recovery(
+                        primary,
+                        "failed product removal",
+                        lambda: _remove_path(destination),
+                    )
+                if backup is not None and (backup.exists() or backup.is_symlink()):
+                    _attempt_recovery(
+                        primary,
+                        "previous product restoration",
+                        lambda: os.replace(backup, destination),
+                    )
+                activated = False
+                raise
 
         record = _record_for(
             source_identity,

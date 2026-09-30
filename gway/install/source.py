@@ -12,6 +12,7 @@ from .model import validate_name
 _IGNORED_PARTS = frozenset(
     {
         ".git",
+        ".venv",
         "__pycache__",
         ".pytest_cache",
         ".mypy_cache",
