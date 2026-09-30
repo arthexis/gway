@@ -108,6 +108,9 @@ semantic_terms = ["read", "cards", "odoo"]
         encoding="utf-8",
     )
     gateway.security_path = tmp_path / "security.sqlite"
+    operation = gateway.wrap("odoo.cards.list", lambda: None)
+    operation.mutates = False
+    operation.__gway_mutates__ = False
     gateway(f"security scope apply {source}")
     scope = ScopeRegistry(gateway.security_path).require("odoo-cards-read")
     assert scope.semantic_terms == frozenset({"odoo", "cards", "read"})
