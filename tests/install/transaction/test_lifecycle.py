@@ -599,6 +599,14 @@ def test_product_runtime_convergence_reinstalls_declared_dependencies(
     tmp_path,
 ):
     project = make_project("arthexis", launcher=True)
+    (project / "pyproject.toml").write_text(
+        "[project]\n"
+        "name = 'arthexis'\n"
+        "dependencies = ['example-dependency>=1']\n"
+        "\n[project.scripts]\n"
+        "arthexis = 'arthexis:main'\n",
+        encoding="utf-8",
+    )
     _fake_product_runtime(project, managed_paths)
     uv = tmp_path / "uv"
     uv.write_text("", encoding="utf-8")
@@ -638,7 +646,6 @@ def test_failed_product_provisioning_restores_previous_install(
     from gway.install.ops import install
 
     monkeypatch.setattr(transaction, "_converge_product_runtime", _fake_product_runtime)
-    monkeypatch.setattr(transaction, "_converge_product_runtime", lambda *args: True)
 
     source = make_project("arthexis", launcher=True)
     first = install(source, paths=managed_paths)
