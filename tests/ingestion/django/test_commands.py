@@ -94,7 +94,7 @@ def test_management_command_passes_positionals_and_boolean_flags_to_django(
 
 
 
-def test_management_command_passes_noinput_option_to_django(
+def test_management_command_normalizes_no_input_option_for_django(
     gateway,
     django_project,
     django_setup,
@@ -106,17 +106,17 @@ def test_management_command_passes_noinput_option_to_django(
 
     django_ingestor.ingest_project(gateway, root, name="arthexis")
 
-    result = gateway("arthexis migrate --noinput")
+    result = gateway("arthexis migrate --no-input")
 
     assert result == {
         "command": "migrate",
         "args": (),
-        "options": {"noinput": True},
+        "options": {"no_input": True},
     }
     assert calls[-1] == (
         "migrate",
         (),
-        {"noinput": True},
+        {"no_input": True},
     )
 
 
