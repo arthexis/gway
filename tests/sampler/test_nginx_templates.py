@@ -39,7 +39,8 @@ def _render_nginx_template(source: str, tmp_path: Path) -> str:
             return fallback
         raise AssertionError(f"missing nginx template fixture for [{name}]")
 
-    return _SIGIL.sub(replace, source)
+    rendered = _SIGIL.sub(replace, source)
+    return rendered.replace("[[", "[").replace("]]", "]")
 
 
 @pytest.mark.parametrize("template", NGINX_TEMPLATES)
