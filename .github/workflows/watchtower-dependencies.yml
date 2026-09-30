@@ -1,0 +1,111 @@
+name: Watchtower Dependencies
+
+on:
+  push:
+    branches: [main]
+  pull_request_target:
+    types: [labeled, unlabeled, edited, reopened, synchronize, ready_for_review]
+  repository_dispatch:
+    types: [watchtower-accepted]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+
+concurrency:
+  group: watchtower-dependencies-${{ github.repository }}
+  cancel-in-progress: false
+
+jobs:
+  reconcile:
+    name: Reconcile Watchtower dependencies
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: main
+          persist-credentials: false
+
+      - name: Ensure needs-watchtower label
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! gh api "repos/$REPOSITORY/labels/needs-watchtower" >/dev/null 2>&1; then
+            gh api "repos/$REPOSITORY/labels" \
+              --method POST \
+              -f "name=needs-watchtower" \
+              -f "color=5319e7" \
+              -f "description=PR waits for another PR to be certified on Watchtower" >/dev/null
+          fi
+
+      - name: Reconcile dependent PRs
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_PR: ${{ github.event.pull_request.number }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          reconcile_pr() {
+            local number="$1"
+            local pr_json result status auto_merge draft on_hold
+            pr_json="$(gh api "repos/$REPOSITORY/pulls/$number")"
+            [[ "$(jq -r '.state' <<< "$pr_json")" == "open" ]] || return 0
+            jq -e '[.labels[].name | ascii_downcase] | any(. == "needs-watchtower")' <<< "$pr_json" >/dev/null || return 0
+
+            set +e
+            result="$(python .github/scripts/watchtower_dependency.py "$REPOSITORY" "$number")"
+            rc=$?
+            set -e
+            echo "PR #$number: $result"
+            status="$(jq -r '.status' <<< "$result")"
+            auto_merge="$(jq -r '.auto_merge != null' <<< "$pr_json")"
+
+            case "$status" in
+              waiting-merge|waiting-watchtower|invalid)
+                if [[ "$auto_merge" == "true" ]]; then
+                  gh pr merge "$number" --repo "$REPOSITORY" --disable-auto
+                  echo "PR #$number: native auto-merge paused for Watchtower dependency."
+                fi
+                if [[ "$status" == "invalid" ]]; then
+                  echo "::error title=Invalid Watchtower dependency::PR #$number: $(jq -r '.error' <<< "$result")"
+                fi
+                ;;
+              satisfied)
+                gh api "repos/$REPOSITORY/issues/$number/labels/needs-watchtower" --method DELETE >/dev/null 2>&1 || true
+                pr_json="$(gh api "repos/$REPOSITORY/pulls/$number")"
+                draft="$(jq -r '.draft' <<< "$pr_json")"
+                on_hold="$(jq -r '[.labels[].name | ascii_downcase] | any(. == "on-hold" or . == "on hold")' <<< "$pr_json")"
+                auto_merge="$(jq -r '.auto_merge != null' <<< "$pr_json")"
+                if [[ "$draft" != "true" && "$on_hold" != "true" ]]; then
+                  if [[ "$auto_merge" != "true" ]]; then
+                    gh pr merge "$number" --repo "$REPOSITORY" --auto --squash
+                  fi
+                  echo "PR #$number: dependency certified; label removed and native auto-merge is enabled."
+                else
+                  echo "PR #$number: dependency certified; label removed, but draft/on-hold state prevents auto-merge."
+                fi
+                ;;
+            esac
+            return "$rc"
+          }
+
+          failed=0
+          if [[ "$EVENT_NAME" == "pull_request_target" && -n "${EVENT_PR:-}" ]]; then
+            reconcile_pr "$EVENT_PR" || failed=1
+          else
+            while IFS= read -r number; do
+              reconcile_pr "$number" || failed=1
+            done < <(
+              gh pr list --repo "$REPOSITORY" --state open --limit 1000 \
+                --label needs-watchtower --json number --jq '.[].number'
+            )
+          fi
+          exit "$failed"
