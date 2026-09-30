@@ -31,7 +31,15 @@ runtime value with the same parameter name.
 Keep Python responsible for Python control flow and domain logic. Recipes are
 for declaring and composing operations.
 
-## Pull request lifecycle
+## Repository operation rules
+
+Agents working on this repository should treat repository state as part of the
+implementation, not as incidental project-management metadata. A change is not
+operationally complete merely because its code is correct; the pull request,
+review state, CI state, and merge authorization must also be left in a coherent
+state.
+
+### Pull request lifecycle
 
 Use GitHub-native pull request state as the primary workflow signal.
 
@@ -42,6 +50,8 @@ Use GitHub-native pull request state as the primary workflow signal.
 - The **`approved`** label may be used as an informational, human-visible mirror that native auto-merge is enabled. It is not the authorization mechanism and workflows must not depend on the label to trigger or revoke merging.
 - **`on-hold`** is the explicit pause state. A held PR should not remain authorized for native auto-merge.
 - Do not infer merge authorization from historical label conventions. Check the PR's actual native auto-merge state.
+- Treat review-thread state as a merge requirement, not just discussion history. When a review comment has been addressed by code or is otherwise no longer actionable, mark its review thread **resolved**. Do not leave fixed/outdated review threads unresolved: the repository ruleset requires review-thread resolution and an unresolved thread can keep an otherwise green, up-to-date PR in a blocked merge state.
+- Before considering a PR ready to merge or leaving it to auto-merge, verify all of the following together: required CI is green, the branch is current with the base branch when required, there are no unresolved actionable review threads, addressed/outdated review threads have been resolved, and native auto-merge is enabled when the change is authorized to merge.
 
 The usual completed-work flow is therefore:
 
