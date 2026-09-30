@@ -588,7 +588,7 @@ def _publish_project_capabilities(runtime, data, *, source):
             by_section[contributor["section"]] = contributor
 
     runtime._published_scopes = scopes
-    runtime._watch_contributors = tuple(contributors)
+    runtime._survey_contributors = tuple(contributors)
     return scopes, tuple(contributors)
 
 
