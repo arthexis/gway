@@ -36,6 +36,10 @@ def test_gway_bootstrap_persists_tool_path_and_smoke_checks_cli(sampler_path):
     assert "could not persist tool PATH for future shells" in script
     assert '"$GWAY" version' not in script
     assert "already-running parent shell" in script or "cannot mutate its parent" in script
+    assert 'if ! command -v gway >/dev/null 2>&1; then' in script
+    assert "current shell PATH is unchanged by a piped installer" in script
+    assert "activate Gway now with:" in script
+    assert 'echo "    export PATH=\\\"$TOOL_BIN:\\$PATH\\\""' in script
 
 
 def test_watchtower_bootstrap_recipe_owns_installer_site_dns_and_tls(recipe_commands):

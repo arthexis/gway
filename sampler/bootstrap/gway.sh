@@ -59,3 +59,8 @@ fi
 
 "$GWAY" --help >/dev/null
 echo "gway bootstrap: installation verified ($GWAY_SHA)"
+if ! command -v gway >/dev/null 2>&1; then
+    echo "gway bootstrap: current shell PATH is unchanged by a piped installer"
+    echo "gway bootstrap: activate Gway now with:"
+    echo "    export PATH=\"$TOOL_BIN:\$PATH\""
+fi
