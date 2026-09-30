@@ -1,4 +1,3 @@
-expose normalize site key [site]
 expose validate site [site]
 # Obtain/reuse the HTTP-01 certificate, then promote remote routing to TLS.
 ingest [nginx_executable|nginx] --kind proc --sudo
