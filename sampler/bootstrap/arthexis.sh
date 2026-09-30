@@ -69,9 +69,9 @@ if test "${ARTHEXIS_BOOTSTRAP_VERIFY_ONLY:-0}" = "1"; then
     exit 0
 fi
 
-"$GWAY" service install -- arthexis web
-"$GWAY" service install -- arthexis worker
-"$GWAY" service install -- arthexis beat
+"$GWAY" service install --environment "ARTHEXIS_DATA_DIR=$ARTHEXIS_DATA_DIR" -- arthexis web
+"$GWAY" service install --environment "ARTHEXIS_DATA_DIR=$ARTHEXIS_DATA_DIR" -- arthexis worker
+"$GWAY" service install --environment "ARTHEXIS_DATA_DIR=$ARTHEXIS_DATA_DIR" -- arthexis beat
 
 "$GWAY" service restart -- arthexis web
 "$GWAY" service restart -- arthexis worker
