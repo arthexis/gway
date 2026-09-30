@@ -32,8 +32,11 @@ _SENSITIVE_OPTION_RE = re.compile(
     re.I,
 )
 _SENSITIVE_ASSIGNMENT_RE = re.compile(
-    r"(?i)\b(authorization|cookie|credential|password|passwd|secret|token|"
+    r"(?i)\b(cookie|credential|password|passwd|secret|token|"
     r"api[-_]?key|private[-_]?key|signature)\s*[:=]\s*([^\s&]+)"
+)
+_AUTHORIZATION_RE = re.compile(
+    r"(?im)\bauthorization\s*:\s*[^\r\n]*"
 )
 
 
@@ -52,9 +55,13 @@ def _safe_url(value):
         return str(value)
     if not parsed.scheme or not parsed.netloc:
         return str(value)
-    host = parsed.hostname or ""
-    if parsed.port is not None:
-        host = f"{host}:{parsed.port}"
+    try:
+        host = parsed.hostname or ""
+        port = parsed.port
+    except ValueError:
+        return str(value)
+    if port is not None:
+        host = f"{host}:{port}"
     return urlunsplit((parsed.scheme, host, parsed.path, "", ""))
 
 
@@ -62,6 +69,7 @@ def _redact_text(value):
     text = _bounded(value)
     if not text:
         return ""
+    text = _AUTHORIZATION_RE.sub("Authorization: <redacted>", text)
     text = _SENSITIVE_ASSIGNMENT_RE.sub(lambda m: f"{m.group(1)}=<redacted>", text)
     return text
 
@@ -84,7 +92,7 @@ def _safe_command(command):
                     safe.append(name)
                     redact_next = True
                 continue
-        safe.append(_safe_url(value))
+        safe.append(_redact_text(_safe_url(value)))
     return tuple(safe)
 
 
