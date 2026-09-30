@@ -28,9 +28,16 @@ class Controller:
         return timeout
 
     @staticmethod
-    def _service_name(launchable):
-        """Return the default stable service identity for one launchable."""
-        return launchable.name.replace(".", "-")
+    def _service_name(project, launchable):
+        """Return a project-relative stable service role for one launchable."""
+        metadata_service = launchable.metadata.get("service")
+        if metadata_service:
+            return str(metadata_service).replace(".", "-")
+
+        parts = [part for part in launchable.name.split(".") if part]
+        while len(parts) > 1 and parts[0] == project:
+            parts.pop(0)
+        return "-".join(parts)
 
     def _project_identity(self, launchable):
         """Infer project identity/root from launchable and current runtime."""
@@ -95,7 +102,7 @@ class Controller:
             project, root = self._project_identity(launchable)
             definition = Service.from_launchable(
                 project,
-                name or self._service_name(launchable),
+                name or self._service_name(project, launchable),
                 root,
                 launchable,
             )
