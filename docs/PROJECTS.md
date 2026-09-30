@@ -196,8 +196,6 @@ command = ["example", "status"]
 
 Each declaration requires a non-empty `section` and a non-empty token-array `command`. The command runs through the normal read-only observation boundary under the caller's effective authority. Duplicate section names are rejected.
 
-Legacy `[[tool.gway.watch]]` declarations remain temporarily accepted during the survey migration, but a project must not declare both forms. New metadata should use `survey`.
-
 ### `[tool.gway.sous-chef.<job>]`
 
 Sous Chef jobs are project-owned recipe jobs:

@@ -97,11 +97,6 @@ def project_survey(data, *, source=None):
     tool = data.get("tool")
     gway = tool.get("gway") if isinstance(tool, dict) else None
     entries = gway.get("survey") if isinstance(gway, dict) else None
-    legacy_entries = gway.get("watch") if isinstance(gway, dict) else None
-    if entries is not None and legacy_entries is not None:
-        raise ValueError("project cannot declare both [[tool.gway.survey]] and legacy [[tool.gway.watch]]")
-    if entries is None:
-        entries = legacy_entries
     if entries is None:
         return ()
     if not isinstance(entries, list):

@@ -69,6 +69,58 @@ class Controller:
             )
         return results
 
+    @staticmethod
+    def _failure_excerpt(content, *, limit=12):
+        """Return a bounded error-focused excerpt from one Actions job log."""
+        if isinstance(content, bytes):
+            content = content.decode("utf-8", errors="replace")
+        text = str(content or "")
+        needles = (
+            "error",
+            "failed",
+            "failure",
+            "traceback",
+            "calledprocesserror",
+            "non-zero",
+            "nginx",
+        )
+        lines = []
+        for raw in text.splitlines():
+            line = raw.strip()
+            if line and any(needle in line.casefold() for needle in needles):
+                lines.append(line[:500])
+        return lines[-limit:]
+
+    def _deploy_failure(self, repository, run):
+        """Return bounded failed-job/step/log detail for one failed run."""
+        if not run or not run.get("id"):
+            return None
+        jobs = self.github.jobs(repository, run["id"])
+        failed = []
+        excerpts = []
+        for job in jobs:
+            if job.get("conclusion") != "failure":
+                continue
+            steps = [
+                step.get("name")
+                for step in job.get("steps", ())
+                if step.get("conclusion") == "failure" and step.get("name")
+            ]
+            failed.append(
+                {
+                    "job_id": job.get("id"),
+                    "name": job.get("name"),
+                    "failed_steps": steps,
+                }
+            )
+            if len(excerpts) < 2 and job.get("id"):
+                log = self.github.job_logs(repository, job["id"])
+                excerpts.extend(self._failure_excerpt(log.get("content")))
+        return {
+            "jobs": failed[:4],
+            "excerpt": excerpts[-12:],
+        }
+
     def deploy_status(self, *repository, mutate=False):
         """Return the latest Watchtower-related Actions run for each repository."""
         del mutate
@@ -82,15 +134,26 @@ class Controller:
                 or "watchtower" in str(run.get("path", "")).casefold()
             ]
             run = relevant[0] if relevant else None
+            conclusion = None if run is None else run.get("conclusion")
+            problem = conclusion in {
+                "failure",
+                "timed_out",
+                "action_required",
+                "startup_failure",
+                "stale",
+            }
+            failure = self._deploy_failure(name, run) if problem else None
             results.append(
                 {
                     "repository": name,
                     "available": run is not None,
+                    "problem": problem,
+                    "failure": failure,
                     "run_id": None if run is None else run.get("id"),
                     "name": None if run is None else run.get("name"),
                     "event": None if run is None else run.get("event"),
                     "status": None if run is None else run.get("status"),
-                    "conclusion": None if run is None else run.get("conclusion"),
+                    "conclusion": conclusion,
                     "head_sha": None if run is None else run.get("head_sha"),
                     "head_branch": None if run is None else run.get("head_branch"),
                     "created_at": None if run is None else run.get("created_at"),
