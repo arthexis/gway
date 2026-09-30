@@ -86,26 +86,12 @@ def test_builtin_toml_routes_to_version_backend():
     assert gway_toml._backend().__name__ == expected
 
 
-def test_builtin_path_constructs_semantic_path(gateway, tmp_path):
+def test_builtin_path_is_explicit_function_not_exposed_class(gateway, tmp_path):
     result = gateway("path", str(tmp_path))
 
     assert result == Path(tmp_path)
-    assert gateway.results["path"] == result
-    assert gateway.ops["path"]["path"] is gateway.ops.resolve("path")
-
-
-def test_builtin_path_methods_become_semantic_operations(gateway, tmp_path):
-    first = tmp_path / "first.py"
-    second = tmp_path / "second.txt"
-    first.write_text("print('ok')\n", encoding="utf-8")
-    second.write_text("ignore\n", encoding="utf-8")
-
-    gateway("path", str(tmp_path))
-    matches = list(gateway("glob path", "*.py"))
-
-    assert matches == [first]
-    assert gateway.ops.resolve("path.glob") is not None
-    assert gateway.ops["glob"]["path"] is gateway.ops.resolve("glob path")
+    assert gateway.ops.resolve("path") is not None
+    assert gateway.ops.resolve("path.glob") is None
 
 
 def test_cli_invokes_path_builtin_without_internal_gway_prefix(
@@ -117,19 +103,14 @@ def test_cli_invokes_path_builtin_without_internal_gway_prefix(
     assert capsys.readouterr().out.strip() == str(tmp_path)
 
 
-def test_builtin_path_pipeline_infers_glob_from_subject_and_sigils(gateway, tmp_path):
-    first = tmp_path / "first.py"
-    second = tmp_path / "second.txt"
-    first.write_text("print('ok')\n", encoding="utf-8")
-    second.write_text("ignore\n", encoding="utf-8")
-    gateway.context["path"] = str(tmp_path)
-    gateway.context["pattern"] = "*.py"
+def test_builtin_path_can_feed_pipeline_as_plain_value(gateway, tmp_path):
+    def stringify(value):
+        return str(value)
 
-    matches = list(gateway("path [path] - glob [pattern]"))
+    gateway.wrap("stringify", stringify)
 
-    assert matches == [first]
-    assert gateway.ops.resolve("path.glob") is not None
-    assert gateway.ops["glob"]["path"] is gateway.ops.resolve("path.glob")
+    assert gateway("path", str(tmp_path)) == Path(tmp_path)
+    assert gateway("path", str(tmp_path)) == Path(tmp_path)
 
 
 def test_clear_builtin_clears_all_accumulated_context(gateway):
