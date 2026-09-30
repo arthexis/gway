@@ -1,12 +1,17 @@
 """Built-in GWAY operations and namespaces."""
 
-from pathlib import Path as path
+from pathlib import Path as _Path
 from importlib.metadata import version as _package_version
 
 from . import log, security, test, toml
 from .interop import environment as literal_environment
 from .install import install, uninstall
 from .filter import filter
+
+
+def path(value="."):
+    """Return a pathlib Path for one filesystem value."""
+    return _Path(value)
 
 
 def version(*, mutate=False):
