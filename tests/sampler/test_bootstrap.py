@@ -117,7 +117,7 @@ def test_arthexis_roles_share_one_installer_template(sampler_path):
     assert 'awk -F\'"\' \'/"arthexis_sha"/ { print $4; exit }\'' in script
     assert '"$GWAY" install arthexis/arthexis --ref "$ARTHEXIS_SHA"' in script
     assert '"$GWAY" install arthexis/arthexis\n' not in script
-    assert '"$GWAY" arthexis migrate --no-input' in script
+    assert '"$GWAY" arthexis migrate --no-interactive' in script
     assert '"$GWAY" arthexis seed' in script
     assert '"$GWAY" service install -- arthexis web' in script
     assert '"$GWAY" service install -- arthexis worker' in script
