@@ -1011,3 +1011,12 @@ def test_mcp_serve_recipe_reuses_shared_server_with_loopback_defaults():
     assert "[route|/mcp]" in recipe
     assert 'with_name("server.py")' in companion
     assert "_server().serve(" in companion
+
+
+def test_mcp_server_companion_does_not_import_host_gway_package():
+    source = Path("sampler/mcp/server.py").read_text(encoding="utf-8")
+
+    assert "from gway." not in source
+    assert "import gway" not in source
+    assert "_tail_fingerprint" in source
+    assert "_tail_terminal" in source
