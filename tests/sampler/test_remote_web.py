@@ -525,3 +525,9 @@ def test_remote_production_style_identifier_renders_valid_nginx_variable_names()
     assert "$gway_remote_cache_control_remote_arthexis_com" in rendered
     assert "zone=gway_remote_auth_remote_arthexis_com:10m" in rendered
     assert "remote.arthexis.com" not in rendered
+
+
+def test_remote_consent_template_does_not_render_literal_newlines(sampler_path):
+    template = sampler_path("remote/templates/consent.html").read_text(encoding="utf-8")
+
+    assert r"\n" not in template
