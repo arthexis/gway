@@ -37,6 +37,12 @@ def test_automatic_watchtower_candidate_flow_classifies_main_pushes() -> None:
     assert 'client_payload[timing]="$TIMING"' in workflow
     assert "default: queued" in workflow
     assert "- immediate" in workflow
+    assert "default: 2-remote" in workflow
+    assert "- 0-gway" in workflow
+    assert "- 1-arthexis" in workflow
+    assert "- 2-remote" in workflow
+    assert "- 3-release" in workflow
+    assert "remote-only" not in workflow
 
 
 def test_cross_repo_trigger_uses_only_explicit_secret() -> None:

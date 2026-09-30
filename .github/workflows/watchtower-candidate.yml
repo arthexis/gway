@@ -9,6 +9,16 @@ on:
         description: "Exact merged Gway SHA to classify and certify"
         required: false
         type: string
+      stage:
+        description: "Highest cumulative certification stage"
+        required: true
+        default: 2-remote
+        type: choice
+        options:
+          - 0-gway
+          - 1-arthexis
+          - 2-remote
+          - 3-release
       timing:
         description: "Deployment timing"
         required: true
@@ -48,9 +58,10 @@ jobs:
         run: |
           set -Eeuo pipefail
           deploy=true
-          stage="arthexis"
+          stage="2-remote"
           timing="queued"
           if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+            stage="${{ inputs.stage }}"
             timing="${{ inputs.timing }}"
             if [[ "$AFTER_SHA" =~ ^[0-9a-f]{40}$ ]]; then
               BEFORE_SHA="$(git rev-parse "$AFTER_SHA^1")"
@@ -92,10 +103,6 @@ jobs:
           print("false" if version_only else "true")
           PY
             deploy="$(cat /tmp/deploy)"
-          fi
-          labels="$(gh api "repos/${GITHUB_REPOSITORY}/commits/${AFTER_SHA}/pulls" --jq '[.[] | select(.merge_commit_sha == "'"$AFTER_SHA"'") | .labels[].name] | unique | .[]')"
-          if grep -Fxq remote-only <<<"$labels"; then
-            stage="remote-only"
           fi
           run_name="$(git show -s --format=%s "$AFTER_SHA")"
           echo "deploy=$deploy" >> "$GITHUB_OUTPUT"
