@@ -109,19 +109,14 @@ def test_service_list_can_filter_presets_by_project():
 
 def test_default_service_name_is_relative_to_project_identity(tmp_path):
     gateway = Gateway()
-    launchable = gateway.launchables.register(
-        Launchable.operation(
-            "arthexis.arthexis.web",
-            root=tmp_path,
-            metadata={"project": "arthexis"},
-        )
+    launchable = Launchable.operation(
+        "arthexis.arthexis.web",
+        root=tmp_path,
+        metadata={"project": "arthexis"},
     )
 
-    definition = gateway._service_controller._definition(("arthexis", "arthexis", "web"))
-
     assert launchable.name == "arthexis.arthexis.web"
-    assert definition.project == "arthexis"
-    assert definition.name == "web"
+    assert gateway._service_controller._service_name("arthexis", launchable) == "web"
 
 
 def test_service_metadata_role_wins_over_qualified_launchable_name(tmp_path):
