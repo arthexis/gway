@@ -207,7 +207,7 @@ def test_remote_runtime_converges_logs_read_scope(tmp_path):
     scope = ScopeRegistry(runtime.security_path).require("logs-read")
     assert scope.operations == frozenset(
         {
-            "watch",
+            "survey",
             "help",
             "guide",
             "version",
@@ -239,7 +239,7 @@ def test_remote_runtime_converges_source_read_scope(tmp_path):
 
     assert source.operations == frozenset(
         {
-            "watch",
+            "survey",
             "source",
             "search.source",
             "node.deploy.status",
@@ -248,7 +248,7 @@ def test_remote_runtime_converges_source_read_scope(tmp_path):
         }
     )
     assert source.environment == frozenset()
-    assert source.operations & logs.operations == frozenset({"watch"})
+    assert source.operations & logs.operations == frozenset({"survey"})
 
 
 def test_remote_runtime_converges_source_admin_scope(tmp_path):
@@ -292,7 +292,7 @@ def test_remote_runtime_converges_operator_read_scope(tmp_path):
 
     assert operator.operations == frozenset(
         {
-            "watch",
+            "survey",
             "node",
             "products",
             "extensions",
@@ -307,7 +307,7 @@ def test_remote_runtime_converges_operator_read_scope(tmp_path):
         }
     )
     assert operator.environment == frozenset()
-    assert logs.operations & operator.operations == frozenset({"watch"})
+    assert logs.operations & operator.operations == frozenset({"survey"})
     assert registry.resolve({"logs-read", "operator-read"}).operations == (
         logs.operations | operator.operations
     )
@@ -357,7 +357,7 @@ def test_remote_runtime_registers_product_published_scopes(tmp_path):
     assert scope.environment == frozenset()
 
 
-def test_builtin_read_scope_union_covers_complete_builtin_watch(tmp_path):
+def test_builtin_read_scope_union_covers_complete_builtin_survey(tmp_path):
     from gway.gateway import Gateway
     from gway.security.scopes import ScopeRegistry
 
@@ -370,7 +370,7 @@ def test_builtin_read_scope_union_covers_complete_builtin_watch(tmp_path):
         {"logs-read", "source-read", "operator-read"}
     ).operations
     assert {
-        "watch",
+        "survey",
         "node",
         "service.statuses",
         "node.deploy.status",
