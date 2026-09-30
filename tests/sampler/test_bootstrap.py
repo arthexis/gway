@@ -132,7 +132,7 @@ def test_arthexis_roles_share_one_installer_template(sampler_path):
     assert '"$GWAY" service restart --name web -- arthexis web' in script
     assert '"$GWAY" service restart --name worker -- arthexis worker' in script
     assert '"$GWAY" service restart --name beat -- arthexis beat' in script
-    assert script.index('ARTHEXIS_DATA_DIR="$ARTHEXIS_DATA_DIR" "$GWAY" arthexis seed') < script.index('"$GWAY" service install --environment "ARTHEXIS_DATA_DIR=$ARTHEXIS_DATA_DIR" -- arthexis web')
+    assert script.index('ARTHEXIS_DATA_DIR="$ARTHEXIS_DATA_DIR" "$GWAY" arthexis seed') < script.index('"$GWAY" service install --name web --environment "ARTHEXIS_DATA_DIR=$ARTHEXIS_DATA_DIR" -- arthexis web')
     assert script.index('"$GWAY" service install --name beat --environment "ARTHEXIS_DATA_DIR=$ARTHEXIS_DATA_DIR" -- arthexis beat') < script.index('"$GWAY" service restart --name web -- arthexis web')
     assert "[installer_title]" in script
     assert "[installer_description]" not in script
