@@ -150,8 +150,6 @@ def test_first_class_survey_resolves_after_other_sampler_discovery():
 
 
 def test_first_class_fast_path_does_not_capture_directory_child_recipe(tmp_path, monkeypatch):
-    from gway.recipe.operation import execute_recipe as real_execute_recipe
-
     root = tmp_path / "ops"
     root.mkdir()
     (root / "watch").mkdir()
