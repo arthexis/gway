@@ -415,6 +415,14 @@ def test_product_runtime_uses_uv_to_install_declared_dependencies(
     tmp_path,
 ):
     project = make_project("arthexis", launcher=True)
+    (project / "pyproject.toml").write_text(
+        "[project]\n"
+        "name = 'arthexis'\n"
+        "dependencies = ['example-dependency>=1']\n"
+        "\n[project.scripts]\n"
+        "arthexis = 'arthexis:main'\n",
+        encoding="utf-8",
+    )
     uv = tmp_path / "uv"
     uv.write_text("", encoding="utf-8")
     calls = []
@@ -443,8 +451,7 @@ def test_product_runtime_uses_uv_to_install_declared_dependencies(
                 "install",
                 "--python",
                 str(python),
-                "--requirements",
-                "pyproject.toml",
+                "example-dependency>=1",
             ),
             project,
             True,
@@ -613,8 +620,7 @@ def test_product_runtime_convergence_reinstalls_declared_dependencies(
         "install",
         "--python",
         str(_product_python(project)),
-        "--requirements",
-        "pyproject.toml",
+        "example-dependency>=1",
     )
     assert observed[1][0] == (
         str(uv),
@@ -657,3 +663,23 @@ def test_failed_product_provisioning_restores_previous_install(
         encoding="utf-8"
     ) == original
     assert InstallState(managed_paths.state).get("arthexis") == first
+
+
+def test_product_dependencies_accept_minimal_project_metadata(make_project):
+    project = make_project("arthexis")
+    assert transaction._product_dependencies(project) == ()
+
+
+def test_product_dependencies_read_pep621_runtime_requirements(make_project):
+    project = make_project("arthexis")
+    (project / "pyproject.toml").write_text(
+        "[project]\n"
+        "name = 'arthexis'\n"
+        "dependencies = ['celery==5.5.3', 'Django==5.2.12']\n",
+        encoding="utf-8",
+    )
+
+    assert transaction._product_dependencies(project) == (
+        "celery==5.5.3",
+        "Django==5.2.12",
+    )
