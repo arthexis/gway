@@ -1,5 +1,6 @@
 """Convention-driven project discovery and ingestion bootstrap."""
 
+from dataclasses import dataclass
 from pathlib import Path
 
 from .ingestion.base import remember_object
@@ -533,6 +534,111 @@ def load_project_main_packages(
 
     return wrapped
 
+@dataclass(frozen=True)
+class _InstalledManagementCommand:
+    root: Path
+    project: str
+    command: str
+
+
+def _project_management_callable(root, command, *, mutate_default=None):
+    """Return a project-runtime Django management command callable."""
+    from .project import invoke_management_command
+
+    if mutate_default is not None:
+        def invoke(*args, mutate=mutate_default, **options):
+            options = dict(options)
+            options["mutate"] = mutate
+            return invoke_management_command(root, command, *args, **options)
+    else:
+        def invoke(*args, **options):
+            return invoke_management_command(root, command, *args, **options)
+
+    invoke.__name__ = str(command)
+    invoke.__doc__ = (
+        f"Run Django management command {command!r} inside the project runtime."
+    )
+    return invoke
+
+
+def _expand_project_management_command(runtime, descriptor, *, path=None):
+    """Register one previously indexed installed Django management command."""
+    from .ingestion.base import IngestedOperation, register_operation
+    from .project import project_management_command_contract
+
+    record = remember_object(
+        runtime,
+        descriptor,
+        path or (descriptor.project, descriptor.command),
+        expander=_expand_project_management_command,
+    )
+    if record.expanded:
+        return []
+
+    contract = project_management_command_contract(
+        descriptor.root,
+        descriptor.command,
+    )
+    mutate_default = contract.get("mutate_default")
+    callable_ = _project_management_callable(
+        descriptor.root,
+        descriptor.command,
+        mutate_default=mutate_default,
+    )
+    human = tuple(part for part in descriptor.command.split("_") if part)
+    aliases = (
+        f"{descriptor.command}.{descriptor.project}",
+        ".".join((*human, descriptor.project)),
+        ".".join((descriptor.project, *human)),
+    )
+    operation = IngestedOperation(
+        (descriptor.project, descriptor.command),
+        callable_,
+        source=descriptor.root,
+        kind="django-command",
+        aliases=tuple(dict.fromkeys(aliases)),
+        op=descriptor.command,
+        sub=descriptor.project,
+        metadata={
+            "project": descriptor.project,
+            "root": descriptor.root,
+            "command": descriptor.command,
+        },
+    )
+    wrapped = register_operation(runtime, operation)
+    record.operation = wrapped
+    record.operations[operation.path] = wrapped
+    record.registered = True
+    record.expanded = True
+    return [wrapped]
+
+
+def load_project_management_commands(runtime, root, project):
+    """Index installed Django management command names without loading commands."""
+    from .project import project_management_commands
+
+    root = Path(root).expanduser().resolve()
+    indexed = []
+    for command in project_management_commands(root):
+        descriptor = _InstalledManagementCommand(root, project, command)
+        human = tuple(part for part in command.split("_") if part)
+        record = remember_object(
+            runtime,
+            descriptor,
+            (project, command),
+            expander=_expand_project_management_command,
+        )
+        record.paths.update(
+            {
+                (project, *human),
+                (command, project),
+                (*human, project),
+            }
+        )
+        indexed.append(descriptor)
+    return indexed
+
+
 def expand_installed_project(runtime, installation, *, path=None):
     """Load one installed project's conventional execution surface once."""
     record = remember_object(
@@ -557,6 +663,14 @@ def expand_installed_project(runtime, installation, *, path=None):
             qualified=True,
         )
     )
+    if (Path(installation.install_path) / "manage.py").is_file():
+        loaded.extend(
+            load_project_management_commands(
+                runtime,
+                installation.install_path,
+                installation.name,
+            )
+        )
     record.expanded = True
     return loaded
 
