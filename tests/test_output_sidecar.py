@@ -4,6 +4,7 @@ import sys
 
 import pytest
 
+from gway import console
 from gway.globals import command_options
 from gway.output import OutputWriteError, write_json_atomic
 
@@ -84,6 +85,44 @@ def test_atomic_output_preserves_existing_file_on_serialization_failure(tmp_path
 
     assert json.loads(output.read_text(encoding="utf-8")) == {"old": True}
     assert list(tmp_path.glob(".result.json.*.tmp")) == []
+
+
+def test_reload_resume_inherits_requested_output_sidecar(monkeypatch, tmp_path):
+    output = tmp_path / "result.json"
+    observed = {}
+
+    def fake_run_cli(parser, args, unknown, *, runtime=None):
+        observed["resume"] = args.resume
+        observed["output"] = args.output
+        return 0
+
+    monkeypatch.setenv("GWAY_RELOAD_OUTPUT", str(output))
+    monkeypatch.setattr(sys, "argv", ["gway", "--resume", "checkpoint"])
+    monkeypatch.setattr(console, "_run_cli", fake_run_cli)
+
+    assert console.cli_main() == 0
+    assert observed == {"resume": "checkpoint", "output": str(output)}
+
+
+def test_explicit_resume_output_overrides_inherited_sidecar(monkeypatch, tmp_path):
+    inherited = tmp_path / "inherited.json"
+    explicit = tmp_path / "explicit.json"
+    observed = {}
+
+    def fake_run_cli(parser, args, unknown, *, runtime=None):
+        observed["output"] = args.output
+        return 0
+
+    monkeypatch.setenv("GWAY_RELOAD_OUTPUT", str(inherited))
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["gway", "--output", str(explicit), "--resume", "checkpoint"],
+    )
+    monkeypatch.setattr(console, "_run_cli", fake_run_cli)
+
+    assert console.cli_main() == 0
+    assert observed["output"] == str(explicit)
 
 
 def test_mcp_leading_globals_reject_output_sidecar_flag():
