@@ -103,6 +103,30 @@ def test_gateway_bootstrap_exposes_project_script_as_operation(tmp_path, monkeyp
     assert runtime("demo hello Ada") == "hello Ada"
 
 
+def test_zero_arg_project_script_receives_cli_arguments_via_sys_argv(
+    tmp_path,
+    monkeypatch,
+):
+    (tmp_path / "demo.py").write_text(
+        "import sys\n"
+        "def main():\n"
+        "    return tuple(sys.argv[1:])\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "pyproject.toml").write_text(
+        '[project]\nname = "demo"\n[project.scripts]\n'
+        'demo = "demo:main"\n',
+        encoding="utf-8",
+    )
+    monkeypatch.chdir(tmp_path)
+
+    from gway.gateway import Gateway
+
+    runtime = Gateway()
+
+    assert runtime("demo migrate --noinput") == ("migrate", "--noinput")
+
+
 def test_gateway_bootstrap_executes_project_script_out_of_process(
     tmp_path,
     monkeypatch,
