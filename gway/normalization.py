@@ -68,7 +68,7 @@ def complete_arguments(
             value = value.resolve(runtime)
 
         if value is inspect.Parameter.empty:
-            raise TypeError(f"missing required argument: {name}")
+            raise MissingArgumentError(f"missing required argument: {name}")
 
         if isinstance(value, Literal):
             value = str(value)
