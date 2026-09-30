@@ -1,7 +1,7 @@
 import pytest
 
 from gway import Gateway
-from gway.config import project_scopes, project_watch
+from gway.config import project_scopes, project_survey
 from gway.security.defaults import converge_scope_registry
 from gway.security.scopes import ScopeRegistry
 
@@ -16,7 +16,7 @@ def _document():
                         "environment": [],
                     }
                 },
-                "watch": [
+                "survey": [
                     {
                         "section": "demo",
                         "command": ["demo", "status"],
@@ -29,7 +29,7 @@ def _document():
 
 def test_project_capability_metadata_is_normalized():
     scopes = project_scopes(_document(), source="demo")
-    watch = project_watch(_document(), source="demo")
+    survey = project_survey(_document(), source="demo")
 
     assert scopes == {
         "demo-read": {
@@ -38,7 +38,7 @@ def test_project_capability_metadata_is_normalized():
             "source": "demo",
         }
     }
-    assert watch == (
+    assert survey == (
         {
             "section": "demo",
             "command": ("demo", "status"),
@@ -47,7 +47,7 @@ def test_project_capability_metadata_is_normalized():
     )
 
 
-def test_local_project_publishes_scopes_and_watch(tmp_path, monkeypatch):
+def test_local_project_publishes_scopes_and_survey(tmp_path, monkeypatch):
     (tmp_path / "pyproject.toml").write_text(
         """
 [project]
@@ -57,7 +57,7 @@ name = "demo"
 operations = ["demo.status"]
 environment = []
 
-[[tool.gway.watch]]
+[[tool.gway.survey]]
 section = "demo"
 command = ["demo", "status"]
 """.lstrip(),
@@ -79,7 +79,7 @@ command = ["demo", "status"]
 
     registered = ScopeRegistry(gateway.security_path).require("demo-read")
     assert registered.operations == frozenset({"demo.status"})
-    assert gateway._watch_contributors == (
+    assert gateway._survey_contributors == (
         {
             "section": "demo",
             "command": ("demo", "status"),
@@ -88,12 +88,12 @@ command = ["demo", "status"]
     )
 
 
-def test_project_watch_rejects_ambiguous_command_string():
+def test_project_survey_rejects_ambiguous_command_string():
     document = _document()
-    document["tool"]["gway"]["watch"][0]["command"] = "demo status"
+    document["tool"]["gway"]["survey"][0]["command"] = "demo status"
 
     with pytest.raises(ValueError, match="string array"):
-        project_watch(document)
+        project_survey(document)
 
 
 def test_published_scope_replaces_legacy_unowned_definition(tmp_path):
@@ -289,3 +289,20 @@ environment = []
 
     result = refreshed.execute_authenticated(bearer, "version")
     assert result is not None
+
+
+def test_project_survey_accepts_legacy_watch_declaration():
+    document = _document()
+    document["tool"]["gway"]["watch"] = document["tool"]["gway"].pop("survey")
+
+    survey = project_survey(document, source="demo")
+
+    assert survey[0]["section"] == "demo"
+
+
+def test_project_survey_rejects_mixed_survey_and_legacy_watch():
+    document = _document()
+    document["tool"]["gway"]["watch"] = list(document["tool"]["gway"]["survey"])
+
+    with pytest.raises(ValueError, match="both"):
+        project_survey(document)
