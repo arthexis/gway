@@ -8,7 +8,8 @@ except ModuleNotFoundError:
     import tomli as _toml
 
 from . import semantics as scope_semantics
-from .scopes import ScopeRegistry
+from .scopes import Scope, ScopeRegistry
+from .validation import require_valid_scope, validate_definitions, validate_scope
 
 
 __all__ = ()
@@ -96,6 +97,14 @@ class Controller:
         """Replace one scope using operation grants and optional metadata."""
         environment_values = self._environment_values(environment)
         semantic_values = self._semantic_values(semantic, semantic_terms)
+        candidate = Scope(
+            str(name),
+            frozenset(operations),
+            frozenset(environment_values),
+            None,
+            frozenset(str(value).strip().lower() for value in semantic_values),
+        )
+        require_valid_scope(self.gateway, candidate)
         return self.registry.replace(
             name,
             operations=operations,
@@ -105,6 +114,15 @@ class Controller:
 
     def add(self, name, *operations, environment=None):
         """Add operation and environment grants to an existing scope."""
+        existing = self.registry.require(name)
+        candidate = Scope(
+            existing.name,
+            existing.operations | frozenset(operations),
+            existing.environment | frozenset(self._environment_values(environment)),
+            existing.owner,
+            existing.semantic_terms,
+        )
+        require_valid_scope(self.gateway, candidate)
         return self.registry.update_grants(
             name,
             add_operations=operations,
@@ -152,6 +170,12 @@ class Controller:
             )
         return registry.resolve(values, readonly=not mutate)
 
+    def validate(self, name, *, mutate=True):
+        """Validate semantic safety of one existing scope."""
+        registry = self._registry(converge=mutate)
+        scope = registry.require(name, readonly=not mutate)
+        return validate_scope(self.gateway, scope)
+
     @staticmethod
     def _definitions(path):
         path = Path(path).expanduser()
@@ -165,13 +189,16 @@ class Controller:
     def apply(self, path, *, absolute=False):
         """Apply scope definitions, adding grants unless absolute is requested."""
         scopes = self._definitions(path)
+        validate_definitions(self.gateway, scopes)
         if absolute:
             return self.registry.replace_many(scopes)
         return self.registry.add_many(scopes)
 
     def replace_from(self, path):
         """Replace complete definitions for scopes declared in a TOML file."""
-        return self.registry.replace_many(self._definitions(path))
+        definitions = self._definitions(path)
+        validate_definitions(self.gateway, definitions)
+        return self.registry.replace_many(definitions)
 
     @staticmethod
     def _toml_string(value):
