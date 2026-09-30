@@ -294,7 +294,7 @@ def test_mcp_tool_projection_is_conservative_without_capability_metadata():
     assert [tool.name for tool in projected] == ["gway", "query"]
 
 
-def test_mcp_query_returns_watch_as_structured_mapping(gateway, tmp_path, monkeypatch):
+def test_mcp_query_returns_survey_as_structured_mapping(gateway, tmp_path, monkeypatch):
     (tmp_path / "pyproject.toml").write_text(
         """
 [project]
@@ -327,7 +327,7 @@ role = "control"
         async with Client(server.mcp) as client:
             result = await client.call_tool(
                 "query",
-                {"command": "watch --only node,wire"},
+                {"command": "survey --only node,wire"},
             )
             return result
 
@@ -335,11 +335,11 @@ role = "control"
 
     assert result.structured_content["ok"] is True
     assert result.structured_content["result_type"] == "mapping"
-    watch = result.structured_content["result"]
-    assert set(watch) == {"node", "wire", "health", "changed_at", "cursor"}
-    assert watch["node"]["status"] == "ok"
-    assert watch["wire"]["status"] == "ok"
-    assert isinstance(watch["cursor"], str)
+    survey = result.structured_content["result"]
+    assert set(survey) == {"node", "wire", "health", "changed_at", "cursor"}
+    assert survey["node"]["status"] == "ok"
+    assert survey["wire"]["status"] == "ok"
+    assert isinstance(survey["cursor"], str)
     assert result.structured_content["output"] == []
 
 
