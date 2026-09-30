@@ -1,5 +1,3 @@
-from types import SimpleNamespace
-
 from gway.logs.registry import recipe_sources, register_recipe_source
 
 
