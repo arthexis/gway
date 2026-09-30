@@ -16,10 +16,9 @@ else
     fi
 fi
 
-# Gway 1.0.x is an obsolete package-index release from the previous lineage.
-# Exclude only that version so bootstrap remains safe before 1.1.0 reaches
-# PyPI while allowing the active 1.1.x release line once it is published.
-"$UV" tool install --force --upgrade "gway!=1.0.*"
+# Install only from the active Gway lineage. Older package-index releases can
+# otherwise satisfy a loose constraint and silently replace a current install.
+"$UV" tool install --force --upgrade "gway>=1.1,<2"
 
 # Persist uv's configured tool executable directory for future shells before
 # exposing it to this child process. A piped shell cannot mutate its parent.
