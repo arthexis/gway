@@ -375,3 +375,38 @@ The current MCP implementation intentionally does not add generated per-operatio
 MCP tools, wildcard scopes, wildcard environment grants, dedicated logging routes,
 background MCP tasks, MCP Apps/UI, OpenAPI conversion, remote plugin loading, or a
 second transport abstraction around FastMCP.
+
+## Leading call globals and structured pipelines
+
+Leading `-j`/`--json`, `-t`/`--timed`, and `-M`/`--no-mutate` configure
+one parent Gateway execution. JSON is idempotent: MCP already returns a
+structured result and never double-encodes it. Timing uses the existing Gateway
+logger diagnostics and leaves the operation result unchanged. Timing settings
+are request-local and restored even after a failed call. No-mutate can only
+narrow the inherited policy; query remains non-mutating.
+
+Flags after the first operation token remain operation parameters, including
+flags in later pipeline stages or statements. Unsupported leading globals are
+rejected before invocation. Interactive mode, operation roots, logging
+destinations, recipe mode, and mutation-enabling globals are not accepted by
+this call boundary.
+
+```text
+-j --timed builtins - filter --name version
+log.tail --all --limit 100 - filter --level ERROR
+service.statuses - filter --field status --contains failed
+```
+
+`builtins` returns authorized canonical Gway-owned operation records with `name`,
+`summary`, `topics`, and `mutates`. It excludes operations supplied by products,
+extensions, or caller code, including caller overrides of built-in names.
+Aliases do not duplicate records. Discovery does not expand installed products.
+
+`filter` accepts a sequence and preserves matching items, their order, and their
+structure. Named criteria use equality and semantic mapping-key lookup; multiple
+criteria are combined with AND. An optional positional text pattern searches an
+item's textual representation. `--field` selects a mapping field for that pattern,
+`--contains`, or exclusive numeric `--gt`/`--lt` comparisons. Text matching is
+case-sensitive. Missing or ambiguous requested fields and invalid comparisons
+raise errors; empty input or no matches returns an empty list. Filtering applies
+only to already-returned records, so producer limits still bound the search.

@@ -6,6 +6,7 @@ from importlib.metadata import version as _package_version
 from . import log, security, test, toml
 from .interop import environment as literal_environment
 from .install import install, uninstall
+from .filter import filter
 
 
 def version(*, mutate=False):

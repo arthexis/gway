@@ -296,6 +296,8 @@ def test_remote_runtime_converges_operator_read_scope(tmp_path):
             "node",
             "products",
             "extensions",
+            "builtins",
+            "filter",
             "service.list",
             "service.status",
             "service.statuses",

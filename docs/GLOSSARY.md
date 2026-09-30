@@ -2255,7 +2255,7 @@ as required by the particular invocation.
 For example:
 
 ```text
-read log --tail 20
+log.tail --all --limit 20
 ```
 
 is a command containing an operation, a subject, and a flag with a value.
@@ -2263,7 +2263,7 @@ is a command containing an operation, a subject, and a flag with a value.
 A more complex command may contain a chain:
 
 ```text
-read log --tail 20 - filter error - print
+log.tail --all --limit 20 - filter error
 ```
 
 The chain contains several operations, but the complete expression remains one
@@ -2282,7 +2282,7 @@ Gway is designed so that every valid command can be expressed through the CLI.
 For example:
 
 ```text
-gway read log --tail 20 - filter error - print
+gway log.tail --all --limit 20 - filter error
 ```
 
 is a textual CLI representation of a Gway command.
@@ -2290,7 +2290,7 @@ is a textual CLI representation of a Gway command.
 The command itself is:
 
 ```text
-read log --tail 20 - filter error - print
+log.tail --all --limit 20 - filter error
 ```
 
 rather than the fact that it happened to arrive through a command-line process.

@@ -11,7 +11,7 @@ from contextlib import contextmanager
 @contextmanager
 def timed(runtime, label):
     """Emit one diagnostic wall-clock timing when timed mode is enabled."""
-    if not getattr(runtime, "timed_enabled", False):
+    if not getattr(runtime, "call_timed", getattr(runtime, "timed_enabled", False)):
         yield
         return
 
