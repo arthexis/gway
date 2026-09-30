@@ -469,6 +469,23 @@ copy new.conf /etc/app.conf --rollback deploy
 render app.conf.tmpl --to /etc/app.conf --rollback deploy
 ~~~
 
+Rendered engine configuration can also be validated before the destination is
+mutated:
+
+~~~text
+render nginx-site.conf
+--to /etc/nginx/sites-available/site
+--validate nginx
+--validator-executable nginx
+--rollback deploy
+~~~
+
+Validation runs on the fully resolved render result, after Gway sigils and
+escaped literal brackets such as `[[::]]` have been resolved. A validator
+failure therefore leaves the destination and rollback journal untouched. The
+normal post-install engine check should still be retained when integration with
+the complete host configuration matters.
+
 The journal opens implicitly on the first recorded mutation.
 
 Commit after validation:

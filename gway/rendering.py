@@ -7,6 +7,7 @@ import tempfile
 import uuid
 
 from .binding import Literal
+from .engine import validate_text
 from .host import run_as_identity
 from .identity import execution_identity
 from .recipe import recipe_base
@@ -145,7 +146,17 @@ class Renderer:
     def __init__(self, runtime):
         self.runtime = runtime
 
-    def render(self, template: Literal, to, sudo=False, rollback=None, mode=None, **options):
+    def render(
+        self,
+        template: Literal,
+        to,
+        sudo=False,
+        rollback=None,
+        mode=None,
+        validate=None,
+        validator_executable=None,
+        **options,
+    ):
         """Render a sigil-aware text template to an atomic destination.
 
         Args:
@@ -154,6 +165,9 @@ class Renderer:
             sudo: Execute the final write as root.
             rollback: Optional rollback journal name to capture destination state.
             mode: Optional destination permission mode, for example 0o600.
+            validate: Optional engine name used to validate fully rendered text
+                before the destination is mutated.
+            validator_executable: Optional executable override for the validator.
             options: Supports ``--as USER`` for execution identity.
         """
         identity = execution_identity(
@@ -165,6 +179,14 @@ class Renderer:
         rendered = self.runtime.resolve(content)
         if not isinstance(rendered, str):
             rendered = str(rendered)
+
+        if validate is not None:
+            validate_text(
+                validate,
+                rendered,
+                executable=validator_executable,
+                identity=identity,
+            )
 
         destination = _destination(self.runtime, to, resolved_template)
 
