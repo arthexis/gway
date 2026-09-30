@@ -354,15 +354,16 @@ def _run_cli(parser, args, unknown, *, runtime=None):
             return exception.returncode if exception.returncode > 0 else 1
 
     if isinstance(output, Iterator):
-        if not args.silent:
-            try:
-                for item in output:
-                    if args.json:
-                        print(json.dumps(_structured_value(item), default=str), flush=True)
-                    else:
-                        print(_human_output(item), flush=True)
-            except KeyboardInterrupt:
-                return 130
+        try:
+            for item in output:
+                if args.silent:
+                    continue
+                if args.json:
+                    print(json.dumps(_structured_value(item), default=str), flush=True)
+                else:
+                    print(_human_output(item), flush=True)
+        except KeyboardInterrupt:
+            return 130
         return 0
 
     if output is not None and not args.silent:
