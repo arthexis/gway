@@ -8,10 +8,13 @@ mkdir -p [acme_webroot|/var/www/gway-acme]
 render nginx-http-[site].conf
 --to [nginx_available|/etc/nginx/sites-available]/[site]
 --as root
+--rollback web-expose-http
 
 link [nginx_available|/etc/nginx/sites-available]/[site]
 --to [nginx_enabled|/etc/nginx/sites-enabled]/[site]
 --as root
+--rollback web-expose-http
 
 nginx -t
 nginx -s reload
+commit web-expose-http
