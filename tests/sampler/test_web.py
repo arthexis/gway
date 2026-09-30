@@ -16,7 +16,6 @@ def test_web_expose_package_has_required_shape(sampler_path):
     assert (root / "http.rx").is_file()
     assert (root / "https.rx").is_file()
     assert (root / "cleanup.rx").is_file()
-    assert (root / "godaddy-setup.rx").is_file()
     assert (root / "nginx-http-[site].conf").is_file()
     assert (root / "nginx-https-[site].conf").is_file()
 
@@ -194,17 +193,6 @@ def test_web_expose_cleanup_does_not_remove_certificates_or_shared_webroot(recip
     assert not any("certbot" in command for command in rendered)
     assert not any("letsencrypt" in command for command in rendered)
     assert not any("[acme_webroot" in command for command in rendered)
-
-
-def test_godaddy_setup_uses_generic_input_and_secret_store(recipe_commands):
-    rendered = recipe_commands("web/expose/godaddy-setup.rx")
-
-    assert rendered == [
-        "input GoDaddy key --as godaddy_key --secret",
-        "input GoDaddy secret --as godaddy_secret --secret",
-        "secret write dns godaddy key [godaddy_key]",
-        "secret write dns godaddy secret [godaddy_secret]",
-    ]
 
 
 def test_web_expose_templates_reject_unknown_or_missing_hosts(sampler_path):
