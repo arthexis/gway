@@ -2,6 +2,8 @@
 
 import re
 
+from gway.sampler import root as sampler_root
+
 
 _RENDER_SOURCE = re.compile(r"^\s*render\s+(\S+)", re.MULTILINE)
 _ESCAPED_LITERAL = re.compile(r"\[\[[^\[\]\n]*\]\]")
@@ -38,13 +40,14 @@ def _unescaped_bracket_lines(content):
     ]
 
 
-def test_published_render_templates_escape_literal_square_brackets(sampler_root):
+def test_published_render_templates_escape_literal_square_brackets():
     """Literal engine brackets must use [[...]] so Gway can render safely."""
+    root = sampler_root()
     failures = {}
-    for path in _published_render_templates(sampler_root):
+    for path in _published_render_templates(root):
         lines = _unescaped_bracket_lines(path.read_text(encoding="utf-8"))
         if lines:
-            failures[str(path.relative_to(sampler_root))] = lines
+            failures[str(path.relative_to(root))] = lines
 
     assert not failures, (
         "published templates contain single-bracket engine syntax; "
