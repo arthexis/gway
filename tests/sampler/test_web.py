@@ -37,7 +37,8 @@ def test_web_expose_http_bootstraps_acme_and_nginx(recipe_commands):
         command.startswith("render nginx-http-[site].conf") for command in rendered
     )
     assert any(command.startswith("link [nginx_available") for command in rendered)
-    assert rendered[-2:] == ["nginx -t", "nginx -s reload"]
+    assert "--rollback web-expose-http" in "\n".join(rendered)
+    assert rendered[-3:] == ["nginx -t", "nginx -s reload", "commit web-expose-http"]
     assert not any(command.startswith("certbot ") for command in rendered)
 
 
@@ -69,7 +70,8 @@ def test_web_expose_https_uses_certbot_webroot_before_tls_render(recipe_commands
     )
     certbot_index = rendered.index(certbot)
     assert certbot_index < render_index
-    assert rendered[-2:] == ["nginx -t", "nginx -s reload"]
+    assert "--rollback web-expose-https" in "\n".join(rendered)
+    assert rendered[-3:] == ["nginx -t", "nginx -s reload", "commit web-expose-https"]
 
 
 def test_web_expose_http_template_matches_certbot_webroot(sampler_path):
