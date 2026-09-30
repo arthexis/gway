@@ -1,3 +1,4 @@
+from gway.gateway import Gateway
 from gway.tailing import iter_events, terminal
 
 
@@ -66,3 +67,20 @@ def test_github_terminal_detection_is_limited_to_status_operations():
         {"status": "completed", "conclusion": "success"},
     )
     assert not terminal("survey", {"status": "ok"})
+
+
+def test_tail_root_operator_accepts_explicit_command_separator():
+    gateway = Gateway()
+    calls = []
+
+    def status(*, mutate=False):
+        calls.append(mutate)
+        return {"value": 1}
+
+    gateway.wrap("demo.status", status, op="status", sub="demo")
+
+    events = list(gateway("tail --timeout 0 -- demo status"))
+
+    assert events[0]["kind"] == "update"
+    assert events[-1]["kind"] == "timeout"
+    assert calls == [False]
