@@ -1,9 +1,10 @@
-import re
 import shutil
 import subprocess
 from pathlib import Path
 
 import pytest
+
+from gway.gateway import Gateway
 
 
 NGINX_TEMPLATES = (
@@ -14,8 +15,6 @@ NGINX_TEMPLATES = (
     "web/remote/nginx-http-[site].conf",
     "web/remote/nginx-https-[site].conf",
 )
-
-_SIGIL = re.compile(r"\[([A-Za-z_][A-Za-z0-9_]*)(?:\|([^\]]*))?\]")
 
 
 def _render_nginx_template(source: str, tmp_path: Path) -> str:
@@ -31,16 +30,9 @@ def _render_nginx_template(source: str, tmp_path: Path) -> str:
         "port": "8080",
     }
 
-    def replace(match: re.Match[str]) -> str:
-        name, fallback = match.groups()
-        if name in values:
-            return values[name]
-        if fallback is not None:
-            return fallback
-        raise AssertionError(f"missing nginx template fixture for [{name}]")
-
-    rendered = _SIGIL.sub(replace, source)
-    rendered = rendered.replace("[[", "[").replace("]]", "]")
+    gateway = Gateway(context=values, cache=tmp_path / "gway-cache")
+    rendered = gateway.resolve(source)
+    assert isinstance(rendered, str)
     return (
         rendered
         .replace("listen 80;", "listen 18080;")
