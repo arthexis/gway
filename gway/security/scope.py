@@ -82,13 +82,24 @@ class Controller:
             return tuple(item.strip() for item in environment.split(",") if item.strip())
         return tuple(environment)
 
-    def set(self, name, *operations, environment=None):
-        """Replace one scope using operation grants and optional environment names."""
+    @staticmethod
+    def _semantic_values(semantic=None, semantic_terms=None):
+        values = semantic_terms if semantic_terms is not None else semantic
+        if values is None:
+            return ()
+        if isinstance(values, str):
+            return tuple(item.strip() for item in values.split(",") if item.strip())
+        return tuple(values)
+
+    def set(self, name, *operations, environment=None, semantic=None, semantic_terms=None):
+        """Replace one scope using operation grants and optional metadata."""
         environment_values = self._environment_values(environment)
+        semantic_values = self._semantic_values(semantic, semantic_terms)
         return self.registry.replace(
             name,
             operations=operations,
             environment=environment_values,
+            semantic_terms=semantic_values,
         )
 
     def add(self, name, *operations, environment=None):
@@ -148,8 +159,13 @@ class Controller:
             environment = ", ".join(
                 self._toml_string(value) for value in sorted(scope.environment)
             )
+            semantic_terms = ", ".join(
+                self._toml_string(value) for value in sorted(scope.semantic_terms)
+            )
             lines.append(f"operations = [{operations}]")
             lines.append(f"environment = [{environment}]")
+            if scope.semantic_terms:
+                lines.append(f"semantic_terms = [{semantic_terms}]")
             lines.append("")
         rendered = "\n".join(lines)
         if to is None:
