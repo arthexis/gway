@@ -42,7 +42,7 @@ def catalog():
     }
 
 
-def installer(name):
+def installer(name, yes=False):
     """Publish one validated installer identity for endpoint rendering."""
     try:
         description = _INSTALLERS[name]
@@ -52,4 +52,5 @@ def installer(name):
         "installer": name,
         "installer_title": _title(name),
         "installer_description": description,
+        "installer_yes": "1" if yes else "0",
     }
