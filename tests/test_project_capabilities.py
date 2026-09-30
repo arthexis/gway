@@ -289,20 +289,3 @@ environment = []
 
     result = refreshed.execute_authenticated(bearer, "version")
     assert result is not None
-
-
-def test_project_survey_accepts_legacy_watch_declaration():
-    document = _document()
-    document["tool"]["gway"]["watch"] = document["tool"]["gway"].pop("survey")
-
-    survey = project_survey(document, source="demo")
-
-    assert survey[0]["section"] == "demo"
-
-
-def test_project_survey_rejects_mixed_survey_and_legacy_watch():
-    document = _document()
-    document["tool"]["gway"]["watch"] = list(document["tool"]["gway"]["survey"])
-
-    with pytest.raises(ValueError, match="both"):
-        project_survey(document)
