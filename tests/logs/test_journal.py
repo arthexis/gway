@@ -450,3 +450,60 @@ def test_service_and_identifier_sources_use_native_query_groups(monkeypatch):
         "arthexis/web",
         "recipe/deploy",
     ]
+
+
+def test_build_command_normalizes_compact_relative_time_window():
+    selected = [_service_source("arthexis/web", "arthexis-web.service")]
+
+    command = _build_command(
+        selected,
+        backend="systemd",
+        system=False,
+        since="24h",
+        until="30m",
+    )
+
+    assert command[command.index("--since") + 1] == "24 hours ago"
+    assert command[command.index("--until") + 1] == "30 minutes ago"
+
+
+def test_parse_output_skips_unattributable_systemd_init_scope_lifecycle_record():
+    selected = [
+        _service_source("arthexis/web", "arthexis-web.service"),
+        _service_source("arthexis/worker", "arthexis-worker.service"),
+    ]
+    lifecycle = json.dumps(
+        {
+            "__REALTIME_TIMESTAMP": "1700000000000000",
+            "_SYSTEMD_UNIT": "init.scope",
+            "SYSLOG_IDENTIFIER": "systemd",
+            "MESSAGE": "Stopping arthexis/web...",
+        }
+    )
+    service = _unit_entry(
+        "arthexis-web.service",
+        1_700_000_001_000_000,
+        "request complete",
+    )
+
+    records = _parse_output("\n".join((lifecycle, service)), selected)
+
+    assert [record.message for record in records] == ["request complete"]
+
+
+def test_parse_output_still_rejects_other_unattributable_multi_source_records():
+    selected = [
+        _service_source("arthexis/web", "arthexis-web.service"),
+        _service_source("arthexis/worker", "arthexis-worker.service"),
+    ]
+    output = json.dumps(
+        {
+            "__REALTIME_TIMESTAMP": "1700000000000000",
+            "_SYSTEMD_UNIT": "other.scope",
+            "SYSLOG_IDENTIFIER": "other",
+            "MESSAGE": "ambiguous",
+        }
+    )
+
+    with pytest.raises(JournalError, match="cannot be attributed"):
+        _parse_output(output, selected)
