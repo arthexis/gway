@@ -1,6 +1,7 @@
 """Syntax validation for rendered engine configuration candidates."""
 
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import tempfile
@@ -10,6 +11,21 @@ from .host import run_as_identity
 
 class EngineValidationError(RuntimeError):
     """Raised when an engine rejects rendered candidate configuration."""
+
+
+_DIAGNOSTIC_TOKEN = re.compile(r"[A-Za-z0-9_./@+=-]+")
+
+
+def _diagnostic_excerpt(content, *, max_lines=8, max_line_chars=160, max_chars=800):
+    """Return a bounded structural excerpt without resolved values."""
+    rendered = []
+    for index, raw in enumerate(str(content).splitlines()[:max_lines], start=1):
+        line = raw[:max_line_chars]
+        shaped = _DIAGNOSTIC_TOKEN.sub("<text>", line)
+        if len(raw) > max_line_chars:
+            shaped += "…"
+        rendered.append(f"{index:>3}: {shaped}")
+    return "\n".join(rendered)[:max_chars]
 
 
 def _nginx(content, *, executable=None, identity=None):
@@ -52,7 +68,11 @@ def _nginx(content, *, executable=None, identity=None):
             )
     if completed.returncode:
         detail = completed.stderr.strip() or completed.stdout.strip()
-        raise EngineValidationError(f"nginx rejected rendered configuration: {detail}")
+        excerpt = _diagnostic_excerpt(content)
+        raise EngineValidationError(
+            "nginx rejected rendered configuration: "
+            f"{detail}\nrendered candidate shape:\n{excerpt}"
+        )
 
 
 _VALIDATORS = {
