@@ -17,7 +17,7 @@ def __help__(topic=None):
             "gway survey --since \"10 minutes ago\"",
             "gway survey --problems",
             "gway survey --changed --cursor <cursor>",
-            "gway --json watch",
+            "gway --json survey",
         ],
         "notes": [
             "The base survey snapshot is read-only.",
