@@ -104,10 +104,6 @@ jobs:
           PY
             deploy="$(cat /tmp/deploy)"
           fi
-          labels="$(gh api "repos/${GITHUB_REPOSITORY}/commits/${AFTER_SHA}/pulls" --jq '[.[] | select(.merge_commit_sha == "'"$AFTER_SHA"'") | .labels[].name] | unique | .[]')"
-          if grep -Fxq remote-only <<<"$labels"; then
-            stage="remote-only"
-          fi
           run_name="$(git show -s --format=%s "$AFTER_SHA")"
           echo "deploy=$deploy" >> "$GITHUB_OUTPUT"
           echo "stage=$stage" >> "$GITHUB_OUTPUT"
