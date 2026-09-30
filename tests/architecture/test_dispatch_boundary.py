@@ -7,10 +7,24 @@ def test_dispatch_module_owns_operation_resolution():
     assert callable(dispatch.resolve_operation)
 
 
-def test_gateway_call_delegates_to_dispatch_module():
+def test_gateway_call_is_supported_public_execution_entrypoint():
     names = set(Gateway.__call__.__code__.co_names)
+    assert "execute" in names
+    assert "dispatch" not in names
+    assert "process" not in names
+
+
+def test_gateway_execute_is_supported_public_dispatch_entrypoint():
+    names = set(Gateway.execute.__code__.co_names)
     assert "dispatch" in names
     assert "process" not in names
+
+
+def test_gateway_call_and_execute_are_behaviorally_equivalent():
+    via_call = Gateway()
+    via_execute = Gateway()
+
+    assert via_call("version") == via_execute.execute("version")
 
 
 def test_console_process_uses_shared_dispatch_program():
