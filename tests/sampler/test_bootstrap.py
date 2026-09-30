@@ -54,8 +54,11 @@ def test_watchtower_bootstrap_recipe_owns_installer_site_dns_and_tls(recipe_comm
     assert any(command.startswith("render installer.html") for command in commands)
     assert any(command.startswith("render gway.sh") for command in commands)
     assert commands.count("watchtower installer satellite") == 1
+    assert commands.count("watchtower installer satellite --yes") == 1
     assert commands.count("watchtower installer control") == 1
-    assert sum(command.startswith("render arthexis.sh") for command in commands) == 2
+    assert commands.count("watchtower installer control --yes") == 1
+    assert sum(command.startswith("render arthexis.sh") for command in commands) == 4
+    assert any("--to [root]/[installer]-yes" in command for command in commands)
     assert any(command.startswith("dns create [domain]") for command in commands)
     assert any(command.startswith("dns ready [domain]") for command in commands)
     assert any(command.startswith("certbot certonly") for command in commands)
@@ -85,6 +88,14 @@ def test_installer_catalog_is_single_source_for_public_choices(sampler_path):
     ]
     assert all(item["description"] for item in catalog)
     assert all("url" not in item and "command" not in item for item in catalog)
+
+
+def test_installer_renderer_exposes_database_approval_variant(sampler_path):
+    namespace = runpy.run_path(str(sampler_path("bootstrap/watchtower.py")))
+    installer = namespace["installer"]
+
+    assert installer("satellite")["installer_yes"] == "0"
+    assert installer("satellite", yes=True)["installer_yes"] == "1"
 
 
 def test_installer_page_derives_endpoint_and_command_from_installer(sampler_path):
@@ -121,6 +132,7 @@ def test_arthexis_roles_share_one_installer_template(sampler_path):
     assert '"$GWAY" install "$ARTHEXIS_SOURCE" --ref "$ARTHEXIS_SHA"' in script
     assert 'ARTHEXIS_HOME="${ARTHEXIS_BOOTSTRAP_HOME:-$HOME/.local/opt/arthexis}"' in script
     assert 'ARTHEXIS_DATA_DIR="$ARTHEXIS_HOME/var"' in script
+    assert 'ARTHEXIS_DATABASE_PATH="$ARTHEXIS_DATA_DIR/db.sqlite3"' in script
     assert 'mkdir -p "$ARTHEXIS_DATA_DIR"' in script
     assert 'ARTHEXIS_DATA_DIR="$ARTHEXIS_DATA_DIR" "$GWAY" arthexis migrate --no-interactive' in script
     assert 'ARTHEXIS_DATA_DIR="$ARTHEXIS_DATA_DIR" "$GWAY" arthexis seed' in script
@@ -145,6 +157,26 @@ def test_arthexis_roles_share_one_installer_template(sampler_path):
     assert "control" not in script.lower()
 
 
+def test_arthexis_bootstrap_guards_existing_database_upgrades(sampler_path):
+    script = sampler_path("bootstrap/arthexis.sh").read_text(encoding="utf-8")
+
+    assert 'BOOTSTRAP_YES="${ARTHEXIS_BOOTSTRAP_YES:-[installer_yes|0]}"' in script
+    assert '--yes|-y)' in script
+    assert 'exec 3<>/dev/tty' in script
+    assert "Continue with the database update? [[y/N]]" in script
+    assert "sh -s -- --yes" in script
+    assert "?yes=1" in script
+    assert 'python3 - "$ARTHEXIS_DATABASE_PATH" "$DATABASE_BACKUP"' in script
+    assert "source.backup(target)" in script
+    assert 'RUNTIME_HOLD="$(mktemp -d ' in script
+    assert 'mv "$ARTHEXIS_DATA_DIR" "$RUNTIME_HOLD/var"' in script
+    assert 'mv "$RUNTIME_HOLD/var" "$ARTHEXIS_DATA_DIR"' in script
+    assert script.index('mv "$ARTHEXIS_DATA_DIR" "$RUNTIME_HOLD/var"') < script.index('"$GWAY" install "$ARTHEXIS_SOURCE" --ref "$ARTHEXIS_SHA"')
+    assert script.index('mv "$RUNTIME_HOLD/var" "$ARTHEXIS_DATA_DIR"') < script.index('ARTHEXIS_DATA_DIR="$ARTHEXIS_DATA_DIR" "$GWAY" arthexis migrate --no-interactive')
+    assert "--force" not in script
+    assert "--stash" not in script
+
+
 def test_bootstrap_https_site_serves_ui_and_exact_installer_paths(sampler_path):
     nginx = sampler_path("bootstrap/nginx-https-[site].conf").read_text(
         encoding="utf-8"
@@ -158,6 +190,10 @@ def test_bootstrap_https_site_serves_ui_and_exact_installer_paths(sampler_path):
     assert "location = /gway" in nginx
     assert "location = /satellite" in nginx
     assert "location = /control" in nginx
+    assert "$arg_yes" in nginx
+    assert "satellite-yes" in nginx
+    assert "control-yes" in nginx
+    assert '"^(1|true|yes)$"' in nginx
     assert "[headers|]" in nginx
     assert 'Cache-Control "no-store"' not in nginx
     assert nginx.count('Strict-Transport-Security "max-age=31536000" always') == 1

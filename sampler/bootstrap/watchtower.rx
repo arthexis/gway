@@ -39,10 +39,22 @@ render arthexis.sh
 --as root
 --mode 0644
 --rollback gway-bootstrap
+watchtower installer satellite --yes
+render arthexis.sh
+--to [root]/[installer]-yes
+--as root
+--mode 0644
+--rollback gway-bootstrap
 
 watchtower installer control
 render arthexis.sh
 --to [root]/[installer]
+--as root
+--mode 0644
+--rollback gway-bootstrap
+watchtower installer control --yes
+render arthexis.sh
+--to [root]/[installer]-yes
 --as root
 --mode 0644
 --rollback gway-bootstrap
