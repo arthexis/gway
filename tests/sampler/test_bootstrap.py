@@ -120,9 +120,10 @@ def test_arthexis_roles_share_one_installer_template(sampler_path):
     assert 'ARTHEXIS_BOOTSTRAP_SHA' in script
     assert '"$GWAY" install "$ARTHEXIS_SOURCE" --ref "$ARTHEXIS_SHA"' in script
     assert 'ARTHEXIS_HOME="${ARTHEXIS_BOOTSTRAP_HOME:-$HOME/.local/opt/arthexis}"' in script
-    assert 'mkdir -p "$ARTHEXIS_HOME/var"' in script
-    assert '"$GWAY" arthexis migrate --no-interactive' in script
-    assert '"$GWAY" arthexis seed' in script
+    assert 'ARTHEXIS_DATA_DIR="$ARTHEXIS_HOME/var"' in script
+    assert 'mkdir -p "$ARTHEXIS_DATA_DIR"' in script
+    assert 'ARTHEXIS_DATA_DIR="$ARTHEXIS_DATA_DIR" "$GWAY" arthexis migrate --no-interactive' in script
+    assert 'ARTHEXIS_DATA_DIR="$ARTHEXIS_DATA_DIR" "$GWAY" arthexis seed' in script
     assert 'ARTHEXIS_BOOTSTRAP_VERIFY_ONLY' in script
     assert 'Arthexis bootstrap verification complete.' in script
     assert '"$GWAY" service install -- arthexis web' in script
@@ -161,3 +162,17 @@ def test_bootstrap_https_site_serves_ui_and_exact_installer_paths(sampler_path):
     assert "add_header" not in tls_locations
     assert "location / {" in nginx
     assert "return 404;" in nginx
+
+
+def test_arthexis_bootstrap_overrides_ambient_data_dir_for_database_setup(sampler_path):
+    script = sampler_path("bootstrap/arthexis.sh").read_text(encoding="utf-8")
+
+    home_assignment = 'ARTHEXIS_HOME="${ARTHEXIS_BOOTSTRAP_HOME:-$HOME/.local/opt/arthexis}"'
+    data_assignment = 'ARTHEXIS_DATA_DIR="$ARTHEXIS_HOME/var"'
+    migrate = 'ARTHEXIS_DATA_DIR="$ARTHEXIS_DATA_DIR" "$GWAY" arthexis migrate --no-interactive'
+    seed = 'ARTHEXIS_DATA_DIR="$ARTHEXIS_DATA_DIR" "$GWAY" arthexis seed'
+
+    assert script.index(home_assignment) < script.index(data_assignment)
+    assert script.index(data_assignment) < script.index(migrate)
+    assert script.index(data_assignment) < script.index(seed)
+    assert 'ARTHEXIS_DATA_DIR="${ARTHEXIS_DATA_DIR:-' not in script
