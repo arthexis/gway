@@ -81,7 +81,7 @@ def _concrete_sources(sources):
     return selected
 
 
-_RELATIVE_TIME_RE = re.compile(r"^(?P<value>\\d+)\\s*(?P<unit>s|m|min|h|d|w)$", re.I)
+_RELATIVE_TIME_RE = re.compile(r"^(?P<value>\d+)\s*(?P<unit>s|m|min|h|d|w)$", re.I)
 
 _RELATIVE_TIME_UNITS = {
     "s": "seconds",
