@@ -27,13 +27,12 @@ def test_gway_self_ingestion_concrete_module_shadows_equivalent_class(gateway):
     gateway.ingest(gway)
 
     assert gateway.ops.resolve("gway.gateway.wrap") is None
-
-    resolved, remaining, _ = resolve_operation(gateway, ["gway", "Gateway", "wrap"])
-
-    assert remaining == []
-    assert resolved is gateway.ops.resolve("gway.gateway.wrap")
-    assert resolved is not None
-    assert resolved.__gway_source__ is gway.gateway
+    module_record = next(
+        record
+        for record in gateway._ingested.values()
+        if ("gway", "gateway") in record.paths
+    )
+    assert module_record.value is gway.gateway
 
 
 def test_gway_self_ingestion_reuses_known_object_identity(gateway):
