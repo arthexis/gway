@@ -27,6 +27,10 @@ on:
         description: Whether version-only is active
         required: false
         type: boolean
+      docs_pr:
+        description: Whether docs-only is active
+        required: false
+        type: boolean
       workflow_pr:
         description: Whether workflow scope is active
         required: false
@@ -48,6 +52,7 @@ jobs:
     name: Tests (Python 3.10)
     env:
       VERSION_PR: ${{ inputs.version_pr || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'version-only')) }}
+      DOCS_PR: ${{ inputs.docs_pr || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'docs-only')) }}
       BASE_SHA: ${{ inputs.base_sha || github.event.pull_request.base.sha || '' }}
       HEAD_SHA: ${{ inputs.head_sha || github.event.pull_request.head.sha || github.sha }}
     runs-on: ubuntu-latest
@@ -61,24 +66,27 @@ jobs:
       - name: Validate version-only PR
         if: env.VERSION_PR == 'true'
         run: python3 .github/scripts/validate_version_only_pr.py "$BASE_SHA" "$HEAD_SHA"
+      - name: Validate docs-only PR
+        if: env.DOCS_PR == 'true'
+        run: python3 .github/scripts/validate_docs_only_pr.py "$BASE_SHA" "$HEAD_SHA"
 
       - uses: actions/setup-python@v7
-        if: env.VERSION_PR != 'true'
+        if: env.VERSION_PR != 'true' && env.DOCS_PR != 'true'
         with:
           python-version: '3.10'
           cache: pip
       - name: Install Nginx template validation runtime
-        if: env.VERSION_PR != 'true'
+        if: env.VERSION_PR != 'true' && env.DOCS_PR != 'true'
         run: |
           sudo apt-get update
           sudo apt-get install --yes nginx openssl
       - name: Install project and test tools
-        if: env.VERSION_PR != 'true'
+        if: env.VERSION_PR != 'true' && env.DOCS_PR != 'true'
         run: |
           python -m pip install --upgrade pip
           python -m pip install -e '.[dev,toml]'
       - name: Run project CI through Gway
-        if: env.VERSION_PR != 'true'
+        if: env.VERSION_PR != 'true' && env.DOCS_PR != 'true'
         env:
           PYTHONFAULTHANDLER: '1'
           WORKFLOW_PR: ${{ inputs.workflow_pr || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'workflow')) }}
@@ -111,31 +119,31 @@ jobs:
         run: python3 .github/scripts/validate_version_only_pr.py "$BASE_SHA" "$HEAD_SHA"
 
       - uses: actions/setup-python@v7
-        if: env.VERSION_PR != 'true'
+        if: env.VERSION_PR != 'true' && env.DOCS_PR != 'true'
         with:
           python-version: '3.13'
           cache: pip
       - name: Install forward-compatibility surface
-        if: env.VERSION_PR != 'true'
+        if: env.VERSION_PR != 'true' && env.DOCS_PR != 'true'
         run: |
           python -m pip install --upgrade pip
           python -m pip install -e '.[toml]' pytest
       - name: Compile supported source tree
-        if: env.VERSION_PR != 'true'
+        if: env.VERSION_PR != 'true' && env.DOCS_PR != 'true'
         run: python -m compileall -q gway sampler
       - name: Validate maintained sampler recipes
-        if: env.VERSION_PR != 'true'
+        if: env.VERSION_PR != 'true' && env.DOCS_PR != 'true'
         run: python -m gway recipe check sampler
       - name: Smoke critical sampler recipes
-        if: env.VERSION_PR != 'true'
+        if: env.VERSION_PR != 'true' && env.DOCS_PR != 'true'
         run: python -m pytest -q --durations=20 tests/sampler/test_recipe_smoke.py
       - name: Verify newer-runtime contracts
-        if: env.VERSION_PR != 'true'
+        if: env.VERSION_PR != 'true' && env.DOCS_PR != 'true'
         run: |
           python -m pytest -q --durations=20 tests/gateway/test_builtins.py -k toml
           python -m pytest -q --durations=20 tests/install/test_metadata.py
       - name: CLI smoke
-        if: env.VERSION_PR != 'true'
+        if: env.VERSION_PR != 'true' && env.DOCS_PR != 'true'
         run: python -m gway help install >/dev/null
 
   compatibility:
