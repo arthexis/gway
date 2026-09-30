@@ -9,6 +9,7 @@ import uuid
 
 from .. import log as gway_log
 from .activation import activate as activate_project, deactivate as deactivate_project
+from .metadata import load as load_metadata
 from .model import Installation, InstallRequest, UninstallRequest, validate_name
 from .paths import install_paths
 from .source import fingerprint, local_source, project_name
@@ -118,6 +119,24 @@ def _product_python(project):
     )
 
 
+def _product_dependencies(project):
+    """Return declared PEP 621 runtime dependencies without requiring build metadata."""
+    data = load_metadata(Path(project) / "pyproject.toml")
+    project_data = data.get("project") if isinstance(data, dict) else None
+    dependencies = (
+        project_data.get("dependencies", ())
+        if isinstance(project_data, dict)
+        else ()
+    )
+    if dependencies is None:
+        return ()
+    if not isinstance(dependencies, list) or not all(
+        isinstance(item, str) and item.strip() for item in dependencies
+    ):
+        raise ValueError("[project].dependencies must be a list of non-empty strings")
+    return tuple(item.strip() for item in dependencies)
+
+
 def _converge_product_runtime(project, selected):
     """Create or repair a product runtime from its declared dependencies."""
     from ..recipe.uv import ensure_uv
@@ -140,19 +159,13 @@ def _converge_product_runtime(project, selected):
                 f"uv completed without creating product interpreter: {python}"
             )
 
-    subprocess.run(
-        [
-            str(uv),
-            "pip",
-            "install",
-            "--python",
-            str(python),
-            "--requirements",
-            "pyproject.toml",
-        ],
-        cwd=project,
-        check=True,
-    )
+    dependencies = _product_dependencies(project)
+    if dependencies:
+        subprocess.run(
+            [str(uv), "pip", "install", "--python", str(python), *dependencies],
+            cwd=project,
+            check=True,
+        )
     subprocess.run(
         [str(uv), "pip", "check", "--python", str(python)],
         cwd=project,
