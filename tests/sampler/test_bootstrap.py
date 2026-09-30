@@ -105,6 +105,7 @@ def test_installer_page_derives_endpoint_and_command_from_installer(sampler_path
 def test_arthexis_roles_share_one_installer_template(sampler_path):
     script = sampler_path("bootstrap/arthexis.sh").read_text(encoding="utf-8")
 
+    assert 'GWAY_BOOTSTRAP_GWAY' in script
     assert 'curl -fsSL "https://[domain]/gway" | sh' in script
     assert 'TOOL_BIN="$("$UV" tool dir --bin)"' in script
     assert 'if test -x "$TOOL_BIN/gway"; then' in script
@@ -115,10 +116,15 @@ def test_arthexis_roles_share_one_installer_template(sampler_path):
     assert '*[[!0-9a-f]]*' in script
     assert '*[!0-9a-f]*' not in script
     assert 'awk -F\'"\' \'/"arthexis_sha"/ { print $4; exit }\'' in script
-    assert '"$GWAY" install arthexis/arthexis --ref "$ARTHEXIS_SHA"' in script
-    assert '"$GWAY" install arthexis/arthexis\n' not in script
+    assert 'ARTHEXIS_BOOTSTRAP_SOURCE' in script
+    assert 'ARTHEXIS_BOOTSTRAP_SHA' in script
+    assert '"$GWAY" install "$ARTHEXIS_SOURCE" --ref "$ARTHEXIS_SHA"' in script
+    assert 'ARTHEXIS_HOME="${ARTHEXIS_BOOTSTRAP_HOME:-$HOME/.local/opt/arthexis}"' in script
+    assert 'mkdir -p "$ARTHEXIS_HOME/var"' in script
     assert '"$GWAY" arthexis migrate --no-interactive' in script
     assert '"$GWAY" arthexis seed' in script
+    assert 'ARTHEXIS_BOOTSTRAP_VERIFY_ONLY' in script
+    assert 'Arthexis bootstrap verification complete.' in script
     assert '"$GWAY" service install -- arthexis web' in script
     assert '"$GWAY" service install -- arthexis worker' in script
     assert '"$GWAY" service install -- arthexis beat' in script
