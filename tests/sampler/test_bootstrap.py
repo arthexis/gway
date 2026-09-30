@@ -117,15 +117,15 @@ def test_arthexis_roles_share_one_installer_template(sampler_path):
     assert 'awk -F\'"\' \'/"arthexis_sha"/ { print $4; exit }\'' in script
     assert '"$GWAY" install arthexis/arthexis --ref "$ARTHEXIS_SHA"' in script
     assert '"$GWAY" install arthexis/arthexis\n' not in script
-    assert '"$GWAY" migrate arthexis --noinput' in script
-    assert '"$GWAY" seed arthexis' in script
+    assert '"$GWAY" arthexis migrate --noinput' in script
+    assert '"$GWAY" arthexis seed' in script
     assert '"$GWAY" service install -- arthexis web' in script
     assert '"$GWAY" service install -- arthexis worker' in script
     assert '"$GWAY" service install -- arthexis beat' in script
     assert '"$GWAY" service restart -- arthexis web' in script
     assert '"$GWAY" service restart -- arthexis worker' in script
     assert '"$GWAY" service restart -- arthexis beat' in script
-    assert script.index('"$GWAY" seed arthexis') < script.index('"$GWAY" service install -- arthexis web')
+    assert script.index('"$GWAY" arthexis seed') < script.index('"$GWAY" service install -- arthexis web')
     assert script.index('"$GWAY" service install -- arthexis beat') < script.index('"$GWAY" service restart -- arthexis web')
     assert "[installer_title]" in script
     assert "[installer_description]" in script
@@ -155,12 +155,3 @@ def test_bootstrap_https_site_serves_ui_and_exact_installer_paths(sampler_path):
     assert "add_header" not in tls_locations
     assert "location / {" in nginx
     assert "return 404;" in nginx
-
-
-def test_arthexis_bootstrap_does_not_route_management_commands_through_project_script(sampler_path):
-    script = sampler_path("bootstrap/arthexis.sh").read_text(encoding="utf-8")
-
-    assert '"$GWAY" migrate arthexis --noinput' in script
-    assert '"$GWAY" seed arthexis' in script
-    assert '"$GWAY" arthexis migrate' not in script
-    assert '"$GWAY" arthexis seed' not in script
