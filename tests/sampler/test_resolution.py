@@ -124,3 +124,26 @@ def test_semantic_pipeline_operation_shadows_project_bare_recipe(tmp_path, monke
         )
         is None
     )
+
+
+def test_help_resolves_first_class_survey_recipe():
+    runtime = Gateway()
+
+    rendered = runtime._help("survey")
+
+    assert "Survey the current node." in rendered
+    assert runtime.ops.resolve("survey") is not None
+
+
+def test_first_class_survey_resolves_after_other_sampler_discovery():
+    runtime = Gateway()
+
+    resolve_recipe_stage(
+        runtime,
+        tokenize("wire watchtower --public-address 192.0.2.10"),
+        pipeline=None,
+    )
+    rendered = runtime._help("survey")
+
+    assert "Survey the current node." in rendered
+    assert runtime.ops.resolve("survey") is not None
