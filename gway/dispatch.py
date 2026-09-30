@@ -522,9 +522,29 @@ def _resolved(func, arguments, candidate):
     )
 
 
+def _semantic_name_words(value):
+    """Split one command token at uppercase boundaries for semantic lookup."""
+    words = []
+    current = ""
+    for character in str(value):
+        if character.isupper() and current:
+            words.append(current.lower())
+            current = character
+        else:
+            current += character
+    if current:
+        words.append(current.lower())
+    return tuple(word for word in words if word)
+
+
 def _expand_candidate(runtime, candidate):
     """JIT-expand hierarchical and semantic branches for one candidate."""
-    path = tuple(part for part in candidate.replace(" ", ".").split(".") if part)
+    raw_path = tuple(part for part in candidate.replace(" ", ".").split(".") if part)
+    path = tuple(
+        word
+        for part in raw_path
+        for word in _semantic_name_words(part)
+    )
     expanded = False
     for size in range(1, len(path) + 1):
         expanded = expand_path(runtime, path[:size]) or expanded
