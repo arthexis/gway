@@ -9,6 +9,8 @@ render nginx-http-[site].conf
 --to [nginx_available|/etc/nginx/sites-available]/[site]
 --as root
 --rollback remote-expose
+--validate nginx
+--validator-executable [nginx_executable|nginx]
 
 link [nginx_available|/etc/nginx/sites-available]/[site]
 --to [nginx_enabled|/etc/nginx/sites-enabled]/[site]
