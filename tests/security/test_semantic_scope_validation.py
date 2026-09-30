@@ -1,6 +1,6 @@
 import pytest
 
-from gway.security.scopes import Scope, ScopeRegistry
+from gway.security.scopes import ScopeRegistry
 from gway.security.validation import validate_scope
 
 
