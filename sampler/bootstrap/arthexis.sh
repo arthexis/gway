@@ -59,9 +59,10 @@ else
 fi
 
 ARTHEXIS_HOME="${ARTHEXIS_BOOTSTRAP_HOME:-$HOME/.local/opt/arthexis}"
-mkdir -p "$ARTHEXIS_HOME/var"
-"$GWAY" arthexis migrate --no-interactive
-"$GWAY" arthexis seed
+ARTHEXIS_DATA_DIR="$ARTHEXIS_HOME/var"
+mkdir -p "$ARTHEXIS_DATA_DIR"
+ARTHEXIS_DATA_DIR="$ARTHEXIS_DATA_DIR" "$GWAY" arthexis migrate --no-interactive
+ARTHEXIS_DATA_DIR="$ARTHEXIS_DATA_DIR" "$GWAY" arthexis seed
 
 if test "${ARTHEXIS_BOOTSTRAP_VERIFY_ONLY:-0}" = "1"; then
     printf '%s\n' "Arthexis bootstrap verification complete."
