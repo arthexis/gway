@@ -1,3 +1,4 @@
+expose normalize site key [site]
 expose validate site [site]
 # Prepare plain HTTP remote routing and ACME webroot.
 ingest [nginx_executable|nginx] --kind proc --sudo
