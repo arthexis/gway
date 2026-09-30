@@ -36,7 +36,7 @@ if test "${#ARTHEXIS_SHA}" -ne 40; then
     exit 1
 fi
 case "$ARTHEXIS_SHA" in
-    *[!0-9a-f]*)
+    *[[!0-9a-f]]*)
         echo "Arthexis bootstrap: accepted Watchtower manifest has an invalid arthexis_sha" >&2
         exit 1
         ;;
