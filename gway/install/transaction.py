@@ -338,11 +338,15 @@ def install_materialized(
                     f"different project {destination_name!r}: {destination}"
                 )
 
+        runtime_ready = (
+            request.kind != "product" or _product_python(destination).is_file()
+        )
         same = (
             not kind_changed
             and not drifted
             and not desired_changed
             and destination.is_dir()
+            and runtime_ready
         )
         if same:
             if request.kind == "extension":
@@ -355,6 +359,7 @@ def install_materialized(
             and not drifted
             and destination.is_dir()
             and existing.fingerprint == desired_fingerprint
+            and runtime_ready
         ):
             if not request.upgrade:
                 return existing
@@ -390,7 +395,7 @@ def install_materialized(
                     f"Managed project {name!r} is missing and desired state changed; "
                     "repair would require an upgrade"
                 )
-            if destination.is_dir() and not drifted:
+            if destination.is_dir() and not drifted and runtime_ready:
                 return existing
 
     stage = _stage_project(
