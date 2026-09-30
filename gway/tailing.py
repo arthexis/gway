@@ -63,13 +63,19 @@ def _event(sequence, kind, operation, value, *, terminal=False):
     }
 
 
+def _github_operation_words(operation):
+    """Normalize accepted GitHub operation spellings for terminal detection."""
+    words = str(operation).replace(".", " ").replace("_", " ").split()
+    return tuple(word.casefold() for word in words)
+
+
 def _github_terminal(operation, value):
     """Return whether a GitHub status operation reached its natural terminal state."""
-    words = operation.split()
+    words = _github_operation_words(operation)
     if len(words) < 2 or words[0] != "github":
         return False
-    subject = words[1].replace("_", "-")
-    if subject not in {"check", "checks", "job", "jobs", "run"}:
+    subject = words[1]
+    if subject not in {"check", "checks", "job", "jobs", "run", "runs"}:
         return False
 
     records = value if isinstance(value, list) else [value]
@@ -197,7 +203,23 @@ class Controller:
         operation = " ".join(map(str, command))
 
         def observe():
-            return self.gateway.execute(target, mutate=False)
+            value = self.gateway.execute(target, mutate=False)
+            if not isinstance(value, Iterator):
+                return value
+
+            iterator = value
+
+            def readonly_iterator():
+                while True:
+                    with self.gateway.mutation_scope(mutate=False):
+                        with self.gateway.observational_state_scope():
+                            try:
+                                item = next(iterator)
+                            except StopIteration:
+                                return
+                    yield item
+
+            return readonly_iterator()
 
         return iter_events(
             observe,
