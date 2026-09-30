@@ -130,7 +130,7 @@ multiplexing belong to the reverse-proxy layer.
 ## Product and extension capabilities
 
 Installed Gway products and extensions may publish remote authorization scopes and
-read-only Watch contributors declaratively from their own `pyproject.toml`.
+read-only Survey contributors declaratively from their own `pyproject.toml`.
 Gway discovers this metadata from managed installation records without importing
 product code.
 
@@ -146,24 +146,24 @@ The scope name becomes available to ordinary bearer-token and OAuth authorizatio
 Published scopes cannot replace Gway-owned core scopes, and conflicting definitions
 from multiple installed projects are rejected rather than merged implicitly.
 
-A product may also contribute a bounded section to the generic `watch` snapshot:
+A product may also contribute a bounded section to the generic `survey` snapshot:
 
 ```toml
-[[tool.gway.watch]]
+[[tool.gway.survey]]
 section = "example"
 command = ["example", "status"]
 ```
 
-Watch commands are token arrays rather than shell strings. Gway executes each
+Survey commands are token arrays rather than shell strings. Gway executes each
 contributor through the normal read-only observation boundary under the caller's
 effective authority. A contributor whose operation is not authorized is omitted;
 an unavailable contributor degrades independently in the same way as built-in
-Watch sections. Section-name collisions are rejected.
+Survey sections. Section-name collisions are rejected. During the migration, legacy `[[tool.gway.watch]]` declarations remain accepted when `[[tool.gway.survey]]` is absent; projects must not declare both forms.
 
 The built-in read scopes deliberately compose. Their union covers the complete
-built-in Watch report: `logs-read` supplies recent errors, `source-read` supplies
+built-in Survey report: `logs-read` supplies recent errors, `source-read` supplies
 deployment/release/queue observations, and `operator-read` supplies
-node/services/Wire observations. Product-owned Watch sections require the
+node/services/Wire observations. Product-owned Survey sections require the
 corresponding product-published operation grants.
 
 
