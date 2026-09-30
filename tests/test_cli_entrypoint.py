@@ -3,6 +3,8 @@ import os
 import subprocess
 import sys
 
+import pytest
+
 import gway
 from gway import Gateway
 
