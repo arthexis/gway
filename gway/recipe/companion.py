@@ -1,12 +1,13 @@
 """Out-of-process recipe companion execution using a managed Python environment."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, fields, is_dataclass
 import inspect
 import pickle
 from pathlib import Path
 import struct
 import subprocess
 import threading
+from types import SimpleNamespace
 
 from ..dispatch import resolve_operation
 from ..environment import process_environment
@@ -18,6 +19,103 @@ from ..tokens import tokenize
 
 
 _HEADER = struct.Struct("!Q")
+_WIRE_TAG = "__gway_wire__"
+
+
+def _wire_encode(value):
+    """Reduce a protocol value to dependency-neutral built-in wire types."""
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        return bool(value)
+    if isinstance(value, int):
+        return int(value)
+    if isinstance(value, float):
+        return float(value)
+    if isinstance(value, str):
+        return str(value)
+    if isinstance(value, bytes):
+        return {_WIRE_TAG: "bytes", "hex": bytes(value).hex()}
+    if isinstance(value, list):
+        return [_wire_encode(item) for item in value]
+    if isinstance(value, tuple):
+        return {_WIRE_TAG: "tuple", "items": [_wire_encode(item) for item in value]}
+    if isinstance(value, set):
+        return {_WIRE_TAG: "set", "items": [_wire_encode(item) for item in value]}
+    if isinstance(value, frozenset):
+        return {_WIRE_TAG: "frozenset", "items": [_wire_encode(item) for item in value]}
+    if isinstance(value, dict):
+        return {
+            _WIRE_TAG: "dict",
+            "items": [
+                [_wire_encode(key), _wire_encode(item)]
+                for key, item in value.items()
+            ],
+        }
+    if isinstance(value, Path):
+        return {_WIRE_TAG: "path", "value": str(value)}
+    if isinstance(value, SimpleNamespace):
+        items = vars(value).items()
+    elif is_dataclass(value) and not isinstance(value, type):
+        items = ((field.name, getattr(value, field.name)) for field in fields(value))
+    else:
+        model_fields = getattr(type(value), "model_fields", None)
+        if isinstance(model_fields, dict):
+            items = ((name, getattr(value, name)) for name in model_fields)
+        else:
+            model_dump = getattr(value, "model_dump", None)
+            if not callable(model_dump):
+                raise TypeError(
+                    "companion protocol value is not transportable: "
+                    f"{type(value).__module__}.{type(value).__qualname__}"
+                )
+            try:
+                dumped = model_dump(mode="python")
+            except TypeError:
+                dumped = model_dump()
+            if not isinstance(dumped, dict):
+                raise TypeError(
+                    "companion protocol record did not produce a mapping: "
+                    f"{type(value).__module__}.{type(value).__qualname__}"
+                )
+            items = dumped.items()
+    return {
+        _WIRE_TAG: "record",
+        "type": f"{type(value).__module__}.{type(value).__qualname__}",
+        "attrs": [[str(key), _wire_encode(item)] for key, item in items],
+    }
+
+
+def _wire_decode(value):
+    """Restore one dependency-neutral wire tree into host-safe values."""
+    if isinstance(value, list):
+        return [_wire_decode(item) for item in value]
+    if not isinstance(value, dict) or _WIRE_TAG not in value:
+        return value
+    kind = value[_WIRE_TAG]
+    if kind == "bytes":
+        return bytes.fromhex(value["hex"])
+    if kind == "tuple":
+        return tuple(_wire_decode(item) for item in value["items"])
+    if kind == "set":
+        return set(_wire_decode(item) for item in value["items"])
+    if kind == "frozenset":
+        return frozenset(_wire_decode(item) for item in value["items"])
+    if kind == "dict":
+        return {
+            _wire_decode(key): _wire_decode(item)
+            for key, item in value["items"]
+        }
+    if kind == "path":
+        return Path(value["value"])
+    if kind == "record":
+        return SimpleNamespace(
+            **{
+                key: _wire_decode(item)
+                for key, item in value["attrs"]
+            }
+        )
+    raise ValueError(f"Unknown companion wire type: {kind!r}")
 
 
 def _read_message(stream):
@@ -30,11 +128,11 @@ def _read_message(stream):
     payload = stream.read(size)
     if len(payload) != size:
         raise EOFError("truncated companion worker message")
-    return pickle.loads(payload)
+    return _wire_decode(pickle.loads(payload))
 
 
 def _write_message(stream, value):
-    payload = pickle.dumps(value, protocol=pickle.HIGHEST_PROTOCOL)
+    payload = pickle.dumps(_wire_encode(value), protocol=pickle.HIGHEST_PROTOCOL)
     stream.write(_HEADER.pack(len(payload)))
     stream.write(payload)
     stream.flush()
@@ -44,12 +142,113 @@ _WORKER = r"""
 import importlib.util
 import inspect
 import pickle
+from dataclasses import fields, is_dataclass
 from pathlib import Path
+from types import SimpleNamespace
 import struct
 import sys
 import traceback
 
 HEADER = struct.Struct("!Q")
+WIRE_TAG = "__gway_wire__"
+
+
+def wire_encode(value):
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        return bool(value)
+    if isinstance(value, int):
+        return int(value)
+    if isinstance(value, float):
+        return float(value)
+    if isinstance(value, str):
+        return str(value)
+    if isinstance(value, bytes):
+        return {WIRE_TAG: "bytes", "hex": bytes(value).hex()}
+    if isinstance(value, list):
+        return [wire_encode(item) for item in value]
+    if isinstance(value, tuple):
+        return {WIRE_TAG: "tuple", "items": [wire_encode(item) for item in value]}
+    if isinstance(value, set):
+        return {WIRE_TAG: "set", "items": [wire_encode(item) for item in value]}
+    if isinstance(value, frozenset):
+        return {
+            WIRE_TAG: "frozenset",
+            "items": [wire_encode(item) for item in value],
+        }
+    if isinstance(value, dict):
+        return {
+            WIRE_TAG: "dict",
+            "items": [
+                [wire_encode(key), wire_encode(item)]
+                for key, item in value.items()
+            ],
+        }
+    if isinstance(value, Path):
+        return {WIRE_TAG: "path", "value": str(value)}
+    if isinstance(value, SimpleNamespace):
+        items = vars(value).items()
+    elif is_dataclass(value) and not isinstance(value, type):
+        items = ((field.name, getattr(value, field.name)) for field in fields(value))
+    else:
+        model_fields = getattr(type(value), "model_fields", None)
+        if isinstance(model_fields, dict):
+            items = ((name, getattr(value, name)) for name in model_fields)
+        else:
+            model_dump = getattr(value, "model_dump", None)
+            if not callable(model_dump):
+                raise TypeError(
+                    "companion protocol value is not transportable: "
+                    f"{type(value).__module__}.{type(value).__qualname__}"
+                )
+            try:
+                dumped = model_dump(mode="python")
+            except TypeError:
+                dumped = model_dump()
+            if not isinstance(dumped, dict):
+                raise TypeError(
+                    "companion protocol record did not produce a mapping: "
+                    f"{type(value).__module__}.{type(value).__qualname__}"
+                )
+            items = dumped.items()
+    return {
+        WIRE_TAG: "record",
+        "type": f"{type(value).__module__}.{type(value).__qualname__}",
+        "attrs": [[str(key), wire_encode(item)] for key, item in items],
+    }
+
+
+def wire_decode(value):
+    if isinstance(value, list):
+        return [wire_decode(item) for item in value]
+    if not isinstance(value, dict) or WIRE_TAG not in value:
+        return value
+    kind = value[WIRE_TAG]
+    if kind == "bytes":
+        return bytes.fromhex(value["hex"])
+    if kind == "tuple":
+        return tuple(wire_decode(item) for item in value["items"])
+    if kind == "set":
+        return set(wire_decode(item) for item in value["items"])
+    if kind == "frozenset":
+        return frozenset(wire_decode(item) for item in value["items"])
+    if kind == "dict":
+        return {
+            wire_decode(key): wire_decode(item)
+            for key, item in value["items"]
+        }
+    if kind == "path":
+        return Path(value["value"])
+    if kind == "record":
+        return SimpleNamespace(
+            **{
+                key: wire_decode(item)
+                for key, item in value["attrs"]
+            }
+        )
+    raise ValueError(f"Unknown companion wire type: {kind!r}")
+
 
 environment_path = Path(sys.argv[2]).expanduser().resolve()
 environment_spec = importlib.util.spec_from_file_location(
@@ -73,11 +272,11 @@ def read_message():
     payload = sys.stdin.buffer.read(size)
     if len(payload) != size:
         raise EOFError
-    return pickle.loads(payload)
+    return wire_decode(pickle.loads(payload))
 
 
 def write_message(value):
-    payload = pickle.dumps(value, protocol=pickle.HIGHEST_PROTOCOL)
+    payload = pickle.dumps(wire_encode(value), protocol=pickle.HIGHEST_PROTOCOL)
     sys.__stdout__.buffer.write(HEADER.pack(len(payload)))
     sys.__stdout__.buffer.write(payload)
     sys.__stdout__.buffer.flush()
@@ -158,8 +357,8 @@ def safe_default(value):
     if value is inspect.Parameter.empty:
         return ("empty", None)
     try:
-        pickle.dumps(value, protocol=pickle.HIGHEST_PROTOCOL)
-    except Exception:
+        wire_encode(value)
+    except TypeError:
         return ("repr", repr(value))
     return ("value", value)
 
@@ -472,8 +671,8 @@ def _describe_parent_operation(runtime, name):
             default = None
         else:
             try:
-                pickle.dumps(parameter.default, protocol=pickle.HIGHEST_PROTOCOL)
-            except Exception:
+                _wire_encode(parameter.default)
+            except TypeError:
                 default_kind = "repr"
                 default = repr(parameter.default)
             else:
@@ -601,7 +800,19 @@ def _service_parent_request(runtime, stream, request):
             "error": f"{type(exception).__name__}: {exception}",
             "traceback": traceback.format_exc(),
         }
-    _write_message(stream, response)
+    try:
+        _write_message(stream, response)
+    except TypeError as exception:
+        _write_message(
+            stream,
+            {
+                "type": "response",
+                "id": request_id,
+                "ok": False,
+                "error": f"{type(exception).__name__}: {exception}",
+                "traceback": None,
+            },
+        )
 
 
 def _active_worker(runtime, recipe):

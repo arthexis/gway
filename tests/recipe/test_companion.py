@@ -278,3 +278,96 @@ def test_managed_companion_observes_scoped_clear_env(
 
     assert gateway(recipe) is None
     assert os.environ["GWAY_COMPANION_ENV_TEST"] == "parent"
+
+
+
+def test_managed_companion_opaque_default_does_not_escape_worker(
+    gateway, recipe_factory, required_runtime
+):
+    recipe = recipe_factory(
+        body="require placeholder\ndemo ping\n",
+        companion=(
+            "class DependencyOnlyDefault:\n"
+            "    pass\n"
+            "def ping(value=DependencyOnlyDefault()):\n"
+            "    return 'ok'\n"
+        ),
+    )
+
+    assert gateway(recipe) == "ok"
+
+
+def test_managed_companion_rejects_dependency_specific_result_cleanly(
+    gateway, recipe_factory, required_runtime
+):
+    recipe = recipe_factory(
+        body="require placeholder\ndemo opaque\n",
+        companion=(
+            "class DependencyOnlyValue:\n"
+            "    pass\n"
+            "def opaque():\n"
+            "    return DependencyOnlyValue()\n"
+        ),
+    )
+
+    with pytest.raises(RuntimeError, match="not transportable"):
+        gateway(recipe)
+
+
+def test_managed_companion_dependency_specific_exception_is_text_only(
+    gateway, recipe_factory, required_runtime
+):
+    recipe = recipe_factory(
+        body="require placeholder\ndemo explode\n",
+        companion=(
+            "class DependencyOnlyError(Exception):\n"
+            "    pass\n"
+            "def explode():\n"
+            "    raise DependencyOnlyError('boom')\n"
+        ),
+    )
+
+    with pytest.raises(RuntimeError, match="DependencyOnlyError: boom"):
+        gateway(recipe)
+
+
+def test_parent_rpc_opaque_result_becomes_structured_companion_error(
+    gateway, recipe_factory, required_runtime
+):
+    class HostOnlyValue:
+        pass
+
+    gateway.wrap("host opaque", lambda: HostOnlyValue())
+    recipe = recipe_factory(
+        body="require placeholder\ndemo probe\n",
+        companion=(
+            "def probe():\n"
+            "    try:\n"
+            "        _gway_parent.call_operation('host opaque')\n"
+            "    except RuntimeError as exception:\n"
+            "        return 'not transportable' in str(exception)\n"
+            "    return False\n"
+        ),
+    )
+
+    assert gateway(recipe) is True
+
+def test_managed_companion_normalizes_scalar_subclasses(
+    gateway, recipe_factory, required_runtime
+):
+    recipe = recipe_factory(
+        body="require placeholder\ndemo scalar\n",
+        companion=(
+            "from enum import IntEnum\n"
+            "class DependencyOnlyInt(IntEnum):\n"
+            "    VALUE = 7\n"
+            "def scalar(value=DependencyOnlyInt.VALUE):\n"
+            "    return value\n"
+        ),
+    )
+
+    result = gateway(recipe)
+
+    assert result == 7
+    assert type(result) is int
+
