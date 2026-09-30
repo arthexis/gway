@@ -61,28 +61,24 @@ class SecurityState:
                 name TEXT NOT NULL UNIQUE,
                 owner TEXT
             );
-
             CREATE TABLE IF NOT EXISTS scope_operations (
                 scope_id INTEGER NOT NULL,
                 operation TEXT NOT NULL,
                 UNIQUE(scope_id, operation),
                 FOREIGN KEY(scope_id) REFERENCES scopes(id) ON DELETE CASCADE
             );
-
             CREATE TABLE IF NOT EXISTS scope_environment (
                 scope_id INTEGER NOT NULL,
                 variable_name TEXT NOT NULL,
                 UNIQUE(scope_id, variable_name),
                 FOREIGN KEY(scope_id) REFERENCES scopes(id) ON DELETE CASCADE
             );
-
             CREATE TABLE IF NOT EXISTS scope_semantic_terms (
                 scope_id INTEGER NOT NULL,
                 term TEXT NOT NULL,
                 UNIQUE(scope_id, term),
                 FOREIGN KEY(scope_id) REFERENCES scopes(id) ON DELETE CASCADE
             );
-
             CREATE INDEX IF NOT EXISTS idx_scope_semantic_terms_term
             ON scope_semantic_terms(term);
 
@@ -95,7 +91,6 @@ class SecurityState:
                 expires_at TEXT,
                 disabled INTEGER NOT NULL DEFAULT 0
             );
-
             CREATE TABLE IF NOT EXISTS token_scopes (
                 token_id INTEGER NOT NULL,
                 scope_id INTEGER NOT NULL,
@@ -103,7 +98,6 @@ class SecurityState:
                 FOREIGN KEY(token_id) REFERENCES tokens(id) ON DELETE CASCADE,
                 FOREIGN KEY(scope_id) REFERENCES scopes(id) ON DELETE CASCADE
             );
-
             CREATE TABLE IF NOT EXISTS token_union_scopes (
                 token_id INTEGER NOT NULL,
                 terms TEXT NOT NULL,
@@ -114,14 +108,13 @@ class SecurityState:
             CREATE TABLE IF NOT EXISTS oauth_clients (
                 id INTEGER PRIMARY KEY,
                 client_id TEXT NOT NULL UNIQUE,
-                metadata_url TEXT NOT NULL DEFAULT '[]',
+                metadata_url TEXT,
                 redirect_uris TEXT NOT NULL DEFAULT '[]',
                 client_secret_hash TEXT,
                 token_endpoint_auth_method TEXT NOT NULL DEFAULT 'none',
                 created_at TEXT NOT NULL,
                 disabled INTEGER NOT NULL DEFAULT 0
             );
-
             CREATE TABLE IF NOT EXISTS oauth_links (
                 id INTEGER PRIMARY KEY,
                 name TEXT NOT NULL UNIQUE,
@@ -130,7 +123,6 @@ class SecurityState:
                 revoked_at TEXT,
                 FOREIGN KEY(token_id) REFERENCES tokens(id) ON DELETE CASCADE
             );
-
             CREATE TABLE IF NOT EXISTS oauth_grants (
                 id INTEGER PRIMARY KEY,
                 link_id INTEGER NOT NULL,
@@ -140,7 +132,6 @@ class SecurityState:
                 revoked_at TEXT,
                 FOREIGN KEY(link_id) REFERENCES oauth_links(id) ON DELETE CASCADE
             );
-
             CREATE TABLE IF NOT EXISTS oauth_grant_scopes (
                 grant_id INTEGER NOT NULL,
                 scope_id INTEGER NOT NULL,
@@ -148,14 +139,12 @@ class SecurityState:
                 FOREIGN KEY(grant_id) REFERENCES oauth_grants(id) ON DELETE CASCADE,
                 FOREIGN KEY(scope_id) REFERENCES scopes(id) ON DELETE CASCADE
             );
-
             CREATE TABLE IF NOT EXISTS oauth_grant_union_scopes (
                 grant_id INTEGER NOT NULL,
                 terms TEXT NOT NULL,
                 UNIQUE(grant_id, terms),
                 FOREIGN KEY(grant_id) REFERENCES oauth_grants(id) ON DELETE CASCADE
             );
-
             CREATE TABLE IF NOT EXISTS oauth_authorization_codes (
                 id INTEGER PRIMARY KEY,
                 grant_id INTEGER NOT NULL,
@@ -168,7 +157,6 @@ class SecurityState:
                 consumed_at TEXT,
                 FOREIGN KEY(grant_id) REFERENCES oauth_grants(id) ON DELETE CASCADE
             );
-
             CREATE TABLE IF NOT EXISTS oauth_access_tokens (
                 id INTEGER PRIMARY KEY,
                 grant_id INTEGER NOT NULL,
@@ -179,7 +167,6 @@ class SecurityState:
                 revoked_at TEXT,
                 FOREIGN KEY(grant_id) REFERENCES oauth_grants(id) ON DELETE CASCADE
             );
-
             CREATE TABLE IF NOT EXISTS oauth_refresh_tokens (
                 id INTEGER PRIMARY KEY,
                 grant_id INTEGER NOT NULL,
