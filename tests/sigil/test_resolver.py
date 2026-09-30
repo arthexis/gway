@@ -290,3 +290,25 @@ def test_dispatched_operation_keyerror_is_not_replaced_by_fallback(gateway):
 
     with pytest.raises(KeyError, match="domain failure"):
         gateway.resolve("[boom|fallback]")
+
+
+def test_embedded_sigil_simplifies_single_item_mapping(gateway):
+    gateway.results.insert("site_key", {"site_key": "register_arthexis_com"})
+
+    assert (
+        gateway.resolve("zone=gway_expose_auth_[site_key]:10m")
+        == "zone=gway_expose_auth_register_arthexis_com:10m"
+    )
+
+
+def test_embedded_sigil_preserves_multi_item_mapping_as_json(gateway):
+    gateway.results.insert("metadata", {"site": "demo", "port": 443})
+
+    assert gateway.resolve("value=[metadata]") == 'value={"site": "demo", "port": 443}'
+
+
+def test_single_sigil_preserves_mapping_value(gateway):
+    value = {"site_key": "register_arthexis_com"}
+    gateway.results.insert("site_key", value)
+
+    assert gateway.resolve("[site_key]") is value
