@@ -124,7 +124,7 @@ def _product_dependencies(project):
     data = load_metadata(Path(project) / "pyproject.toml")
     project_data = data.get("project") if isinstance(data, dict) else None
     dependencies = (
-        project_data.get("dependencies", ())
+        project_data.get("dependencies", [])
         if isinstance(project_data, dict)
         else ()
     )
