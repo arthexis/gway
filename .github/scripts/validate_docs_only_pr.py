@@ -14,7 +14,7 @@ DOC_ASSET_EXTENSIONS = {".gif", ".jpeg", ".jpg", ".pdf", ".png", ".svg", ".webp"
 
 def changed_files(base_sha: str, head_sha: str) -> list[str]:
     result = subprocess.run(
-        ["git", "diff", "--name-only", f"{base_sha}..{head_sha}"],
+        ["git", "diff", "--no-renames", "--name-only", f"{base_sha}...{head_sha}"],
         check=True,
         capture_output=True,
         text=True,
