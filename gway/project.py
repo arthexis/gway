@@ -165,7 +165,6 @@ def _settings_from_manage_py(project):
 
 
 _PROJECT_DJANGO_DISCOVERY = r"""
-import inspect
 import os
 import pickle
 import sys
@@ -179,25 +178,43 @@ django.setup()
 
 from django.core import management
 
-result = {}
-for name, app_name in management.get_commands().items():
-    supports_no_mutate = False
-    try:
-        command = management.load_command_class(app_name, name)
-        handle = getattr(command, "handle", None)
-        if callable(handle):
-            parameter = inspect.signature(handle).parameters.get("mutate")
-            supports_no_mutate = (
-                parameter is not None and parameter.default is False
-            )
-    except Exception:
-        supports_no_mutate = False
-    result[str(name)] = {
-        "supports_no_mutate": supports_no_mutate,
-    }
+result = tuple(sorted(str(name) for name in management.get_commands()))
 
 with open(response_path, "wb") as stream:
     pickle.dump(result, stream, protocol=pickle.HIGHEST_PROTOCOL)
+"""
+
+
+_PROJECT_DJANGO_CONTRACT = r"""
+import inspect
+import os
+import pickle
+import sys
+
+project, settings, command_name, response_path = sys.argv[1:5]
+os.chdir(project)
+os.environ.setdefault("DJANGO_SETTINGS_MODULE", settings)
+
+import django
+django.setup()
+
+from django.core import management
+
+app_name = management.get_commands()[command_name]
+command = management.load_command_class(app_name, command_name)
+handle = getattr(command, "handle", None)
+mutate_default = None
+if callable(handle):
+    parameter = inspect.signature(handle).parameters.get("mutate")
+    if parameter is not None and isinstance(parameter.default, bool):
+        mutate_default = parameter.default
+
+with open(response_path, "wb") as stream:
+    pickle.dump(
+        {"mutate_default": mutate_default},
+        stream,
+        protocol=pickle.HIGHEST_PROTOCOL,
+    )
 """
 
 
@@ -250,8 +267,44 @@ def project_management_commands(project):
         with response.open("rb") as stream:
             result = pickle.load(stream)
 
-    if not isinstance(result, dict):
-        raise TypeError("Django management discovery returned invalid metadata")
+    if not isinstance(result, tuple) or any(
+        not isinstance(name, str) for name in result
+    ):
+        raise TypeError("Django management discovery returned invalid command names")
+    return result
+
+
+def project_management_command_contract(project, command):
+    """Inspect one Django management command inside the project runtime."""
+    project = Path(project).expanduser().resolve()
+    settings = _settings_from_manage_py(project)
+    if settings is None:
+        raise ValueError(f"Not a conventional Django project: {project}")
+
+    python = project_python(project)
+    with tempfile.TemporaryDirectory(prefix="gway-django-contract-") as directory:
+        response = Path(directory) / "response.pkl"
+        subprocess.run(
+            [
+                str(python),
+                "-c",
+                _PROJECT_DJANGO_CONTRACT,
+                str(project),
+                settings,
+                str(command),
+                str(response),
+            ],
+            cwd=project,
+            check=True,
+        )
+        with response.open("rb") as stream:
+            result = pickle.load(stream)
+
+    if not isinstance(result, dict) or set(result) != {"mutate_default"}:
+        raise TypeError("Django management command contract is invalid")
+    mutate_default = result["mutate_default"]
+    if mutate_default is not None and not isinstance(mutate_default, bool):
+        raise TypeError("Django management mutate default must be boolean")
     return result
 
 
