@@ -389,3 +389,16 @@ def test_legacy_consent_page_keeps_decision_controls(tmp_path):
     assert f'value="{session.csrf}"' in page
     assert 'name="decision" value="approve"' in page
     assert 'name="decision" value="deny"' in page
+
+
+def test_stale_chatgpt_scope_request_is_not_silently_translated(tmp_path):
+    scopes, tokens, oauth, account = _account(tmp_path)
+    scopes.create("logs-read")
+    issued = tokens.create("operator", scopes={"logs-read"})
+    session = account.new_session()
+    account.connect(session, csrf=session.csrf, bearer=issued.bearer)
+
+    account.stage_consent(session, "client", {"chatgpt-logs"})
+
+    with pytest.raises(PermissionError, match="not available"):
+        account.consent_details(session)
