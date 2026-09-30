@@ -10,6 +10,10 @@ from .sigil import Sigil, Spool
 _MISSING = object()
 
 
+class MissingArgumentError(TypeError):
+    """Required semantic input was not supplied for an operation invocation."""
+
+
 def complete_arguments(
     runtime,
     subject,
@@ -68,7 +72,7 @@ def complete_arguments(
             value = value.resolve(runtime)
 
         if value is inspect.Parameter.empty:
-            raise TypeError(f"missing required argument: {name}")
+            raise MissingArgumentError(f"missing required argument: {name}")
 
         if isinstance(value, Literal):
             value = str(value)
