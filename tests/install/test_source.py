@@ -80,6 +80,32 @@ def test_fingerprint_ignores_git_and_tool_cache_state(tmp_path):
     assert fingerprint(root) == first
 
 
+def test_fingerprint_ignores_top_level_runtime_var_state(tmp_path):
+    root = _project(tmp_path)
+    (root / "module.py").write_text("VALUE = 1\n", encoding="utf-8")
+    first = fingerprint(root)
+
+    runtime = root / "var"
+    runtime.mkdir()
+    (runtime / "db.sqlite3").write_bytes(b"mutable database")
+    (runtime / "runtime.log").write_text("started\n", encoding="utf-8")
+
+    assert fingerprint(root) == first
+
+
+def test_fingerprint_still_tracks_nested_var_source_content(tmp_path):
+    root = _project(tmp_path)
+    nested = root / "package" / "var"
+    nested.mkdir(parents=True)
+    source = nested / "schema.py"
+    source.write_text("VALUE = 1\n", encoding="utf-8")
+    first = fingerprint(root)
+
+    source.write_text("VALUE = 2\n", encoding="utf-8")
+
+    assert fingerprint(root) != first
+
+
 def test_fingerprint_tracks_symlink_target_without_following_it(tmp_path):
     root = _project(tmp_path)
     first = root / "one.txt"
