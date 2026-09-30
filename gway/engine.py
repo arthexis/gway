@@ -52,7 +52,15 @@ def _nginx(content, *, executable=None, identity=None):
             )
     if completed.returncode:
         detail = completed.stderr.strip() or completed.stdout.strip()
-        raise EngineValidationError(f"nginx rejected rendered configuration: {detail}")
+        excerpt_lines = str(content).splitlines()[:8]
+        excerpt = "\n".join(
+            f"{index:>3}: {line}"
+            for index, line in enumerate(excerpt_lines, start=1)
+        )
+        raise EngineValidationError(
+            "nginx rejected rendered configuration: "
+            f"{detail}\nrendered candidate excerpt:\n{excerpt}"
+        )
 
 
 _VALIDATORS = {
