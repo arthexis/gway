@@ -16,5 +16,5 @@ def test_service_install_systemd_can_remain_disabled(
 
     assert (units / "gway-simulator.service").is_file()
     assert records[0].service == "simulator"
-    assert (("disable", "gway-simulator.service"), False, False) in calls
+    assert (("disable", "gway-simulator.service"), False, True) in calls
     assert (("enable", "gway-simulator.service"), False, True) not in calls
