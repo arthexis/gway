@@ -67,6 +67,11 @@ jobs:
         with:
           python-version: '3.10'
           cache: pip
+      - name: Install Nginx template validation runtime
+        if: env.VERSION_PR != 'true'
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes nginx openssl
       - name: Install project and test tools
         if: env.VERSION_PR != 'true'
         run: |
