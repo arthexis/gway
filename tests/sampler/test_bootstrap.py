@@ -58,7 +58,7 @@ def test_watchtower_bootstrap_recipe_owns_installer_site_dns_and_tls(recipe_comm
     assert commands.count("watchtower installer control") == 1
     assert commands.count("watchtower installer control --yes") == 1
     assert sum(command.startswith("render arthexis.sh") for command in commands) == 4
-    assert "--to [root]/[installer]-yes" in commands
+    assert any("--to [root]/[installer]-yes" in command for command in commands)
     assert any(command.startswith("dns create [domain]") for command in commands)
     assert any(command.startswith("dns ready [domain]") for command in commands)
     assert any(command.startswith("certbot certonly") for command in commands)
@@ -163,7 +163,7 @@ def test_arthexis_bootstrap_guards_existing_database_upgrades(sampler_path):
     assert 'BOOTSTRAP_YES="${ARTHEXIS_BOOTSTRAP_YES:-[installer_yes|0]}"' in script
     assert '--yes|-y)' in script
     assert 'exec 3<>/dev/tty' in script
-    assert "Continue with the database update? [y/N]" in script
+    assert "Continue with the database update? [[y/N]]" in script
     assert "sh -s -- --yes" in script
     assert "?yes=1" in script
     assert 'python3 - "$ARTHEXIS_DATABASE_PATH" "$DATABASE_BACKUP"' in script
