@@ -5,6 +5,8 @@ import operator
 
 import pytest
 
+from gway.dispatch import resolve_operation
+
 
 @pytest.mark.parametrize(
     ("module", "operation"),
@@ -40,7 +42,7 @@ def test_json_class_members_remain_lazy(gateway):
     assert gateway.ops.resolve("json.json.decoder") is None
     assert gateway.ops.resolve("json.json.decoder.decode") is None
 
-    gateway("json JSONDecoder decode", "{}")
+    resolve_operation(gateway, ["json", "JSONDecoder", "decode"])
 
     assert gateway.ops.resolve("json.json.decoder.decode") is not None
 
