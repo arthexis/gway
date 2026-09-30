@@ -746,3 +746,12 @@ def test_timing_does_not_change_survey_structured_result(tmp_path, monkeypatch):
         assert result["node"]["status"] == "ok"
         assert result["wire"]["status"] == "ok"
         assert result["health"]["status"] == "ok"
+
+
+def test_survey_owns_snapshot_name_without_legacy_watch():
+    from gway.sampler import recipes
+
+    maintained = set(recipes())
+
+    assert "survey" in maintained
+    assert "watch" not in maintained
