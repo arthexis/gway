@@ -20,9 +20,11 @@ class Controller:
 
     @property
     def registry(self):
+        """Return the token registry bound to the active Gateway security path."""
         return self._registry()
 
     def scopes(self, *, mutate=True):
+        """Return named security scopes available for token binding."""
         return self._registry(converge=mutate).scopes.all(readonly=not mutate)
 
     @staticmethod
@@ -46,21 +48,27 @@ class Controller:
         ).bearer
 
     def show(self, name, *, mutate=True):
+        """Return safe metadata for one named token."""
         return self.registry.require(name, readonly=not mutate)
 
     def list(self, *, mutate=True):
+        """Return safe metadata for all named tokens."""
         return self.registry.all(readonly=not mutate)
 
     def delete(self, name):
+        """Permanently revoke and remove one named token."""
         return self.registry.remove(name)
 
     def clear(self):
+        """Permanently revoke and remove every named token."""
         return self.registry.clear()
 
     def disable(self, name):
+        """Disable one token without removing its scope bindings."""
         return self.registry.disable(name)
 
     def enable(self, name):
+        """Re-enable one disabled token."""
         return self.registry.enable(name)
 
     def set(self, name, *scopes, union=None):
