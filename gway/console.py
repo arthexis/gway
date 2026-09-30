@@ -9,6 +9,7 @@ import sys
 from .gateway import Gateway
 from .mutation import MUTATE_UNSET
 from .normalization import MissingArgumentError
+from .output import OutputWriteError, write_json_atomic
 from .recipe import execute_recipe, parse_recipe_context
 from .dispatch import dispatch_program
 from .tokens import statements
@@ -154,8 +155,8 @@ def _extract_mutation_policy(argv):
 
 
 _COMMAND_HELP_VALUE_OPTIONS = {
-    "-L", "--log-level", "--logfile", "-r", "--recipe", "-R", "--root",
-    "--resume",
+    "-L", "--log-level", "--logfile", "-o", "--output", "-r", "--recipe",
+    "-R", "--root", "--resume",
 }
 _COMMAND_HELP_MODE_OPTIONS = {"-r", "--recipe", "--resume"}
 
@@ -191,7 +192,7 @@ def _extract_command_help(argv):
             continue
         matched_short = next(
             (
-                option for option in {"-L", "-r"}
+                option for option in {"-L", "-o", "-r"}
                 if token.startswith(option) and token != option
             ),
             None,
@@ -219,6 +220,11 @@ def cli_main():
     parser.add_argument("-j", "--json", action="store_true")
     parser.add_argument("-L", "--log-level")
     parser.add_argument("--logfile")
+    parser.add_argument(
+        "-o",
+        "--output",
+        help="write the canonical final result to a JSON sidecar without changing stdout",
+    )
     parser.add_argument("-r", "--recipe")
     parser.add_argument(
         "-R",
@@ -276,7 +282,7 @@ def cli_main():
     with gway_log.output_scope(**log_kwargs):
         try:
             return _run_cli(parser, args, unknown, runtime=runtime)
-        except (LookupError, MissingArgumentError) as exception:
+        except (LookupError, MissingArgumentError, OutputWriteError) as exception:
             if args.debug:
                 raise
             print(f"gway: {exception}", file=sys.stderr)
@@ -354,17 +360,26 @@ def _run_cli(parser, args, unknown, *, runtime=None):
             return exception.returncode if exception.returncode > 0 else 1
 
     if isinstance(output, Iterator):
+        sidecar_items = [] if args.output else None
         try:
             for item in output:
+                structured = _structured_value(item)
+                if sidecar_items is not None:
+                    sidecar_items.append(structured)
                 if args.silent:
                     continue
                 if args.json:
-                    print(json.dumps(_structured_value(item), default=str), flush=True)
+                    print(json.dumps(structured, default=str), flush=True)
                 else:
                     print(_human_output(item), flush=True)
         except KeyboardInterrupt:
             return 130
+        if args.output:
+            write_json_atomic(args.output, sidecar_items)
         return 0
+
+    if args.output:
+        write_json_atomic(args.output, _structured_value(output))
 
     if output is not None and not args.silent:
         if args.json:
