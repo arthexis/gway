@@ -31,7 +31,7 @@ jobs:
 
           label="$(printf '%s' "$CHANGED_LABEL" | tr '[:upper:]' '[:lower:]')"
           case "$label" in
-            workflow|integration|version-only|on-hold|"on hold")
+            workflow|integration|version-only|docs-only|on-hold|"on hold")
               ;;
             *)
               echo "Label '$CHANGED_LABEL' does not affect CI; no required checks will be created."
@@ -55,6 +55,7 @@ jobs:
           version_pr="$(jq -r '[.labels[].name | ascii_downcase] | any(. == "version-only")' <<< "$pr_json")"
           workflow_pr="$(jq -r '[.labels[].name | ascii_downcase] | any(. == "workflow")' <<< "$pr_json")"
           integration_pr="$(jq -r '[.labels[].name | ascii_downcase] | any(. == "integration")' <<< "$pr_json")"
+          docs_pr="$(jq -r '[.labels[].name | ascii_downcase] | any(. == "docs-only")' <<< "$pr_json")"
 
           dispatch() {
             local workflow="$1"
@@ -67,6 +68,7 @@ jobs:
               -f head_sha="$head_sha" \
               -f head_repo="$head_repo" \
               -f version_pr="$version_pr" \
+              -f docs_pr="$docs_pr" \
               -f workflow_pr="$workflow_pr" \
               -f integration_pr="$integration_pr"
           }
@@ -75,7 +77,7 @@ jobs:
             workflow|integration)
               dispatch python-compatibility.yml
               ;;
-            version-only|on-hold|"on hold")
+            version-only|docs-only|on-hold|"on hold")
               dispatch package.yml
               dispatch quality.yml
               dispatch python-compatibility.yml

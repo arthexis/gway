@@ -26,7 +26,7 @@ def test_ci_label_dispatch_handles_hold_transitions_without_creating_hold_checks
     text = Path(".github/workflows/ci-label-dispatch.yml").read_text(encoding="utf-8")
 
     assert "types: [labeled, unlabeled]" in text
-    assert 'workflow|integration|version-only|on-hold|"on hold"' in text
+    assert 'workflow|integration|version-only|docs-only|on-hold|"on hold"' in text
     assert (
         'if [[ "$ACTION" == "labeled" && '
         '( "$label" == "on-hold" || "$label" == "on hold" ) ]]'
