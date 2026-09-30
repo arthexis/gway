@@ -82,15 +82,24 @@ class Controller:
                 or "watchtower" in str(run.get("path", "")).casefold()
             ]
             run = relevant[0] if relevant else None
+            conclusion = None if run is None else run.get("conclusion")
+            problem = conclusion in {
+                "failure",
+                "timed_out",
+                "action_required",
+                "startup_failure",
+                "stale",
+            }
             results.append(
                 {
                     "repository": name,
                     "available": run is not None,
+                    "problem": problem,
                     "run_id": None if run is None else run.get("id"),
                     "name": None if run is None else run.get("name"),
                     "event": None if run is None else run.get("event"),
                     "status": None if run is None else run.get("status"),
-                    "conclusion": None if run is None else run.get("conclusion"),
+                    "conclusion": conclusion,
                     "head_sha": None if run is None else run.get("head_sha"),
                     "head_branch": None if run is None else run.get("head_branch"),
                     "created_at": None if run is None else run.get("created_at"),
