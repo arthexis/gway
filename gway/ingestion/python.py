@@ -16,9 +16,76 @@ from .base import (
 )
 
 
+def _class_subject_words(source):
+    """Return lowercase semantic subject words for one class name.
+
+    Every uppercase character starts a new word. This is intentionally stricter
+    than acronym-aware CamelCase splitting so class spelling maps mechanically
+    onto GWAY subject words.
+    """
+    name = getattr(source, "__name__", "")
+    words = []
+    current = ""
+    for character in str(name):
+        if character.isupper() and current:
+            words.append(current.lower())
+            current = character
+        else:
+            current += character
+    if current:
+        words.append(current.lower())
+    return tuple(word for word in words if word)
+
+
+def _class_subject(source):
+    """Return the semantic subject identity for one class."""
+    return "_".join(_class_subject_words(source))
+
+
+def _symbol_words(name):
+    """Return command words for collision checks across Python symbol spellings."""
+    words = []
+    current = ""
+    for character in str(name):
+        if character in "._- ":
+            if current:
+                words.append(current.lower())
+                current = ""
+            continue
+        if character.isupper() and current:
+            words.append(current.lower())
+            current = character
+        else:
+            current += character
+    if current:
+        words.append(current.lower())
+    return tuple(word for word in words if word)
+
+
+def _class_is_shadowed(source, name, child):
+    """Return whether a concrete sibling symbol shadows this class spelling."""
+    if not isinstance(source, ModuleType) or not inspect.isclass(child):
+        return False
+
+    class_words = _class_subject_words(child)
+    if not class_words:
+        return False
+
+    for sibling_name, sibling in _public_members(source):
+        if sibling_name == name or inspect.isclass(sibling):
+            continue
+        if _symbol_words(sibling_name) == class_words:
+            return True
+    return False
+
+
 def _default_path(source):
     name = getattr(source, "__name__", None)
     if isinstance(name, str) and name:
+        if inspect.isclass(source):
+            words = _class_subject_words(source)
+            if words:
+                return words
         return tuple(part for part in name.split(".") if part)
 
     cls = type(source)
@@ -149,13 +216,23 @@ def _receiver_subject(source, root, name, child):
         inspect.Parameter.POSITIONAL_OR_KEYWORD,
     ):
         return None
-    return root[-1]
+    return _class_subject(source)
 
 
 def _child_operation(source, root, name, child):
     """Describe one callable child and any semantic instance receiver."""
     metadata = {"object": child, "owner": source, "attribute": name}
     receiver = _receiver_subject(source, root, name, child)
+    aliases = ()
+    op = None
+    sub = None
+    if inspect.isclass(source):
+        subject = _class_subject(source)
+        if subject:
+            op = name
+            sub = subject
+            aliases = (f"{name}.{subject}",)
+            metadata["subject"] = subject
     if receiver is not None:
         metadata["receiver"] = receiver
 
@@ -164,6 +241,9 @@ def _child_operation(source, root, name, child):
         child,
         source=source,
         kind="python",
+        aliases=aliases,
+        op=op,
+        sub=sub,
         metadata=metadata,
     )
 
@@ -184,9 +264,9 @@ def _operation(source, root, name, child):
             op = root[-1]
             sub = name
     elif inspect.isclass(child):
-        path = (*root, name)
-        op = name
-        sub = name
+        path = (*root, *_class_subject_words(child))
+        op = None
+        sub = None
     else:
         path = (*root, name)
         op = None
@@ -212,7 +292,9 @@ def discover_module(source, *, path=None, transparent=False):
     discovered = [
         _operation(source, root, name, child)
         for name, child in _public_members(source)
-        if callable(child) and not (transparent and name == "__main__")
+        if callable(child)
+        and not inspect.isclass(child)
+        and not (transparent and name == "__main__")
     ]
     if not transparent:
         entry = _module_entry_operation(source, root)
@@ -231,15 +313,13 @@ def discover_python(source, *, path=None):
     root = normalize_path(path) if path is not None else _default_path(source)
     discovered = []
 
-    if callable(source):
+    if callable(source) and not inspect.isclass(source):
         discovered.append(
             IngestedOperation(
                 root,
                 source,
                 source=source,
                 kind="python",
-                op=root[-1] if inspect.isclass(source) else None,
-                sub=root[-1] if inspect.isclass(source) else None,
                 metadata={"object": source},
             )
         )
@@ -312,6 +392,13 @@ def ingest_module(gateway, source, *, path=None, transparent=False, **kwargs):
     for name, child in _public_members(source):
         if name == "__main__" and (transparent or entry_registered):
             continue
+        if inspect.isclass(child):
+            if _class_is_shadowed(source, name, child):
+                continue
+            child_path = (*root, *_class_subject_words(child))
+            _remember_child(gateway, child, child_path)
+            continue
+
         child_path = (*root, name)
         child_record = _remember_child(gateway, child, child_path)
         if callable(child):
@@ -346,14 +433,12 @@ def ingest_python(gateway, source, *, path=None, **kwargs):
         and callable(getattr(source, _ENTRY_SPECIAL_METHOD, None))
     )
 
-    if callable(source) and not has_class_main:
+    if callable(source) and not inspect.isclass(source) and not has_class_main:
         operation = IngestedOperation(
             root,
             source,
             source=source,
             kind="python",
-            op=root[-1] if inspect.isclass(source) else None,
-            sub=root[-1] if inspect.isclass(source) else None,
             metadata={"object": source},
         )
         registered = _register_callable(gateway, source_record, operation)
