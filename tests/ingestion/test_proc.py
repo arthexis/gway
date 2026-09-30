@@ -186,3 +186,53 @@ def test_process_logs_redact_sensitive_arguments(caplog, tmp_path):
     assert "user:pass" not in combined
     assert "?token=x" not in combined
     assert "<redacted>" in combined
+
+
+def test_process_logs_redact_authorization_header_arguments(caplog, tmp_path):
+    tool = tmp_path / "header-safe"
+    tool.write_text("#!/bin/sh\necho ok\n", encoding="utf-8")
+    tool.chmod(0o755)
+    runtime = Gateway()
+    runtime.ingest(str(tool), kind="proc")
+
+    with caplog.at_level(logging.INFO, logger="gway"):
+        runtime("header-safe --header 'Authorization: Bearer abc123'")
+
+    combined = "\n".join(record.getMessage() for record in caplog.records)
+    assert "abc123" not in combined
+    assert "Bearer" not in combined
+    assert "Authorization: <redacted>" in combined
+
+
+def test_process_logs_redact_complete_authorization_output(caplog, tmp_path):
+    tool = tmp_path / "output-safe"
+    tool.write_text(
+        "#!/bin/sh\necho 'Authorization: Bearer abc123' >&2\nexit 2\n",
+        encoding="utf-8",
+    )
+    tool.chmod(0o755)
+    runtime = Gateway()
+    runtime.ingest(str(tool), kind="proc")
+
+    with caplog.at_level(logging.ERROR, logger="gway"):
+        with pytest.raises(subprocess.CalledProcessError):
+            runtime("output-safe")
+
+    combined = "\n".join(record.getMessage() for record in caplog.records)
+    assert "abc123" not in combined
+    assert "Bearer" not in combined
+    assert "Authorization: <redacted>" in combined
+
+
+def test_process_logging_never_rejects_malformed_url_argument(caplog, tmp_path):
+    tool = tmp_path / "url-safe"
+    tool.write_text("#!/bin/sh\nprintf '%s\\n' \"$1\"\n", encoding="utf-8")
+    tool.chmod(0o755)
+    runtime = Gateway()
+    runtime.ingest(str(tool), kind="proc")
+
+    malformed = "https://example.com:abc/path"
+    with caplog.at_level(logging.INFO, logger="gway"):
+        result = runtime(f"url-safe {malformed}")
+
+    assert result.stdout.strip() == malformed
