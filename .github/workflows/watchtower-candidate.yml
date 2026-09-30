@@ -9,6 +9,14 @@ on:
         description: "Exact merged Gway SHA to classify and certify"
         required: false
         type: string
+      timing:
+        description: "Deployment timing"
+        required: true
+        default: queued
+        type: choice
+        options:
+          - queued
+          - immediate
 
 permissions:
   contents: read
@@ -20,7 +28,7 @@ jobs:
     outputs:
       deploy: ${{ steps.change.outputs.deploy }}
       stage: ${{ steps.change.outputs.stage }}
-      force_deploy: ${{ steps.change.outputs.force_deploy }}
+      timing: ${{ steps.change.outputs.timing }}
       run_name: ${{ steps.change.outputs.run_name }}
     steps:
       - uses: actions/checkout@v7
@@ -41,10 +49,12 @@ jobs:
           set -Eeuo pipefail
           deploy=true
           stage="arthexis"
-          force_deploy=false
-          if [[ "$EVENT_NAME" == "workflow_dispatch" ]] &&
-             [[ "$AFTER_SHA" =~ ^[0-9a-f]{40}$ ]]; then
-            BEFORE_SHA="$(git rev-parse "$AFTER_SHA^1")"
+          timing="queued"
+          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+            timing="${{ inputs.timing }}"
+            if [[ "$AFTER_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+              BEFORE_SHA="$(git rev-parse "$AFTER_SHA^1")"
+            fi
           fi
           if [[ "$BEFORE_SHA" =~ ^[0-9a-f]{40}$ ]] &&
              [[ "$BEFORE_SHA" != "0000000000000000000000000000000000000000" ]]; then
@@ -87,15 +97,13 @@ jobs:
           if grep -Fxq remote-only <<<"$labels"; then
             stage="remote-only"
           fi
-          if grep -Fxq deploy <<<"$labels"; then
-            force_deploy=true
-          fi
+          # The deploy label marks deployment intent only. Timing is explicit.
           run_name="$(git show -s --format=%s "$AFTER_SHA")"
           echo "deploy=$deploy" >> "$GITHUB_OUTPUT"
           echo "stage=$stage" >> "$GITHUB_OUTPUT"
-          echo "force_deploy=$force_deploy" >> "$GITHUB_OUTPUT"
+          echo "timing=$timing" >> "$GITHUB_OUTPUT"
           echo "run_name=$run_name" >> "$GITHUB_OUTPUT"
-          echo "deploy=$deploy stage=$stage force_deploy=$force_deploy run_name=$run_name"
+          echo "deploy=$deploy stage=$stage timing=$timing run_name=$run_name"
 
   notify:
     name: Request Watchtower certification
@@ -109,7 +117,7 @@ jobs:
           GH_TOKEN: ${{ secrets.RELEASE_AUTOMATION_TOKEN }}
           GWAY_SHA: ${{ inputs.candidate_sha || github.sha }}
           WATCHTOWER_STAGE: ${{ needs.classify.outputs.stage }}
-          FORCE_DEPLOY: ${{ needs.classify.outputs.force_deploy }}
+          TIMING: ${{ needs.classify.outputs.timing }}
           GWAY_RUN_NAME: ${{ needs.classify.outputs.run_name }}
         run: |
           set -Eeuo pipefail
@@ -125,5 +133,5 @@ jobs:
             -f event_type='gway-candidate' \
             -F client_payload[gway_sha]="$GWAY_SHA" \
             -F client_payload[stage]="$WATCHTOWER_STAGE" \
-            -F client_payload[force_deploy]="$FORCE_DEPLOY" \
+            -F client_payload[timing]="$TIMING" \
             -f client_payload[run_name]="$GWAY_RUN_NAME"
