@@ -40,7 +40,7 @@ case "$ARTHEXIS_SHA" in
 esac
 
 "$GWAY" install arthexis/arthexis --ref "$ARTHEXIS_SHA"
-"$GWAY" arthexis migrate --no-input
+"$GWAY" arthexis migrate --no-interactive
 "$GWAY" arthexis seed
 
 "$GWAY" service install -- arthexis web
