@@ -204,7 +204,7 @@ def test_repeated_query_does_not_accumulate_gateway_bookkeeping(gateway):
     assert gateway.results.history == initial_history
 
 
-def _watch_gateway(gateway, tmp_path, monkeypatch, *, role="control"):
+def _survey_gateway(gateway, tmp_path, monkeypatch, *, role="control"):
     (tmp_path / "pyproject.toml").write_text(
         f"""
 [project]
@@ -237,7 +237,7 @@ def test_remote_query_executes_first_class_survey_under_no_mutate(
     tmp_path,
     monkeypatch,
 ):
-    _watch_gateway(gateway, tmp_path, monkeypatch)
+    _survey_gateway(gateway, tmp_path, monkeypatch)
     application, bearer = _remote(
         gateway,
         operations={
@@ -267,7 +267,7 @@ def test_remote_survey_reduces_output_to_component_scope(
     tmp_path,
     monkeypatch,
 ):
-    _watch_gateway(gateway, tmp_path, monkeypatch)
+    _survey_gateway(gateway, tmp_path, monkeypatch)
     application, bearer = _remote(
         gateway,
         operations={"survey", "node"},
@@ -287,7 +287,7 @@ def test_remote_survey_blocks_mutating_component_without_side_effect(
     tmp_path,
     monkeypatch,
 ):
-    _watch_gateway(gateway, tmp_path, monkeypatch)
+    _survey_gateway(gateway, tmp_path, monkeypatch)
     calls = []
 
     def mutate_wire():
@@ -315,13 +315,13 @@ def test_remote_survey_aggregates_authorized_published_contributor(
     tmp_path,
     monkeypatch,
 ):
-    _watch_gateway(gateway, tmp_path, monkeypatch)
+    _survey_gateway(gateway, tmp_path, monkeypatch)
 
     def product_status(*, mutate=False):
         return {"ready": True}
 
     gateway.wrap("demo.status", product_status, op="status", sub="demo")
-    gateway._watch_contributors = (
+    gateway._survey_contributors = (
         {
             "section": "demo",
             "command": ("demo", "status"),
@@ -347,14 +347,14 @@ def test_remote_survey_omits_unauthorized_published_contributor(
     tmp_path,
     monkeypatch,
 ):
-    _watch_gateway(gateway, tmp_path, monkeypatch)
+    _survey_gateway(gateway, tmp_path, monkeypatch)
     gateway.wrap(
         "demo.status",
         lambda *, mutate=False: {"ready": True},
         op="status",
         sub="demo",
     )
-    gateway._watch_contributors = (
+    gateway._survey_contributors = (
         {
             "section": "demo",
             "command": ("demo", "status"),
@@ -374,7 +374,7 @@ def test_remote_survey_missing_component_scope_is_not_transport_error(
     tmp_path,
     monkeypatch,
 ):
-    _watch_gateway(gateway, tmp_path, monkeypatch)
+    _survey_gateway(gateway, tmp_path, monkeypatch)
     application, bearer = _remote(
         gateway,
         operations={"survey"},
