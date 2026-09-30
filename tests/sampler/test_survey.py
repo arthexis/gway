@@ -374,7 +374,7 @@ def test_survey_scope_help_explains_narrowing_only(tmp_path, monkeypatch):
 
     output = gateway("help survey --scope")
 
-    assert "Narrow watch authority" in output
+    assert "Narrow survey authority" in output
     assert "never add operation or environment grants" in output
 
 
@@ -451,9 +451,9 @@ def test_survey_filter_help_documents_section_reduction(tmp_path, monkeypatch):
     only = gateway("help survey --only")
     except_ = gateway("help survey --except")
 
-    assert "Include selected watch sections" in only
+    assert "Include selected survey sections" in only
     assert "comma-separated section list" in only
-    assert "Exclude selected watch sections" in except_
+    assert "Exclude selected survey sections" in except_
     assert "cannot be used together" in except_
 
 
@@ -483,7 +483,7 @@ def test_survey_since_is_forwarded_to_bounded_error_search(tmp_path, monkeypatch
 
     gateway.wrap("log.search", search, op="search", sub="log")
 
-    gateway('watch --since "10 minutes ago"')
+    gateway('survey --since "10 minutes ago"')
 
     assert calls == [
         {
@@ -591,7 +591,7 @@ def test_survey_time_error_change_help(tmp_path, monkeypatch):
     assert "Show only changed observations" in changed
     assert "prior opaque cursor" in changed
     cursor = gateway("help survey --cursor")
-    assert "Opaque versioned watch cursor" in cursor
+    assert "Opaque versioned survey cursor" in cursor
 
 
 def test_survey_cursor_is_stateless_and_unchanged_snapshot_returns_no_sections(
@@ -705,7 +705,7 @@ def test_survey_changed_composes_with_only_filter(tmp_path, monkeypatch):
     }
 
 
-def test_timed_watch_reports_recipe_lifecycle_and_nested_operations(
+def test_timed_survey_reports_recipe_lifecycle_and_nested_operations(
     tmp_path,
     monkeypatch,
     caplog,
@@ -725,15 +725,15 @@ def test_timed_watch_reports_recipe_lifecycle_and_nested_operations(
     ]
 
     assert any("route sampler discovery" in message for message in messages)
-    assert any("recipe watch load" in message for message in messages)
-    assert any("recipe watch parse" in message for message in messages)
-    assert any("recipe watch execute" in message for message in messages)
+    assert any("recipe survey load" in message for message in messages)
+    assert any("recipe survey parse" in message for message in messages)
+    assert any("recipe survey execute" in message for message in messages)
     assert any("operation node " in message for message in messages)
     assert any("operation wire.check " in message for message in messages)
-    assert any("operation watch " in message for message in messages)
+    assert any("operation survey " in message for message in messages)
 
 
-def test_timing_does_not_change_watch_structured_result(tmp_path, monkeypatch):
+def test_timing_does_not_change_survey_structured_result(tmp_path, monkeypatch):
     plain = _role_gateway(tmp_path, monkeypatch, "control")
     plain_result = plain("survey --only node,wire")
 
