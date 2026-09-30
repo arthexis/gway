@@ -192,6 +192,40 @@ def _first_class_recipe_entries(root_path):
     return tuple(entries)
 
 
+def _register_matching_first_class_recipe(runtime, tokens, root_path, *, route_name):
+    """Register the first-class recipe directly named by unresolved tokens."""
+    values = _semantic_values(tokens)
+    if not values:
+        return False
+
+    candidates = {
+        name.replace(".", "_"): (name, recipe)
+        for name, recipe in _first_class_recipe_entries(root_path)
+    }
+    for size in range(len(values), 0, -1):
+        key = "_".join(values[:size])
+        match = candidates.get(key)
+        if match is None:
+            continue
+        name, recipe = match
+        from .recipe.operation import register_recipe_operation
+
+        existing = runtime.ops.resolve(name)
+        if existing is not None:
+            return True
+        return (
+            register_recipe_operation(
+                runtime,
+                name,
+                recipe,
+                route_name=route_name,
+                root=root_path,
+            )
+            is not None
+        )
+    return False
+
+
 def _register_first_class_recipes(runtime, root_path, *, route_name):
     """Register eligible recipe entry points once for one operation route."""
     base = Path(root_path).expanduser().resolve()
@@ -268,6 +302,14 @@ def expand_root(runtime, tokens, root_path, *, route_name="root"):
         return False
 
     base = Path(root_path).expanduser().resolve()
+    if _register_matching_first_class_recipe(
+        runtime,
+        tokens,
+        base,
+        route_name=route_name,
+    ):
+        return True
+
     recipes_registered = _register_first_class_recipes(
         runtime,
         base,
