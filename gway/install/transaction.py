@@ -3,6 +3,7 @@
 import os
 from pathlib import Path
 import shutil
+import subprocess
 import tempfile
 import uuid
 
@@ -107,6 +108,40 @@ def _handle_drift(
         existing.name,
     )
     return None
+
+
+def _product_python(project):
+    """Return the interpreter path inside a product-owned virtual environment."""
+    project = Path(project)
+    return project / ".venv" / (
+        "Scripts/python.exe" if os.name == "nt" else "bin/python"
+    )
+
+
+def _provision_product_runtime(project, selected):
+    """Create an isolated runtime and install one product with its dependencies."""
+    from ..recipe.uv import ensure_uv
+
+    uv = ensure_uv(
+        system=selected.scope == "system",
+        root=selected.root,
+    )
+    project = Path(project)
+    subprocess.run(
+        [str(uv), "venv", ".venv"],
+        cwd=project,
+        check=True,
+    )
+    python = _product_python(project)
+    if not python.is_file():
+        raise RuntimeError(
+            f"uv completed without creating product interpreter: {python}"
+        )
+    subprocess.run(
+        [str(uv), "pip", "install", "--python", str(python), "."],
+        cwd=project,
+        check=True,
+    )
 
 
 def _stage_project(source, name, desired_fingerprint, projects):
@@ -367,6 +402,9 @@ def install_materialized(
     backup = None
     activated = False
     try:
+        if request.kind == "product":
+            _provision_product_runtime(stage, selected)
+
         if destination.exists() or destination.is_symlink():
             backup = destination_root / (f".{name}.replace-{uuid.uuid4().hex}")
             os.replace(destination, backup)
