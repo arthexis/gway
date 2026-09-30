@@ -548,3 +548,90 @@ def test_no_upgrade_still_repairs_missing_product_runtime(
 
     assert _product_python(repaired.install_path).is_file()
     assert fingerprint(repaired.install_path) == repaired.fingerprint
+
+
+def test_product_runtime_is_provisioned_at_final_destination(
+    make_project,
+    managed_paths,
+    monkeypatch,
+):
+    from gway.install.ops import install
+
+    observed = []
+
+    def provision(project, selected):
+        observed.append(Path(project))
+        _fake_product_runtime(project, selected)
+
+    monkeypatch.setattr(transaction, "_provision_product_runtime", provision)
+
+    source = make_project("arthexis", launcher=True)
+    installed = install(source, paths=managed_paths)
+
+    assert observed == [installed.install_path]
+    assert ".stage-" not in str(observed[0])
+
+
+def test_product_runtime_health_checks_installed_packages(
+    make_project,
+    managed_paths,
+    monkeypatch,
+    tmp_path,
+):
+    project = make_project("arthexis", launcher=True)
+    _fake_product_runtime(project, managed_paths)
+    uv = tmp_path / "uv"
+    uv.write_text("", encoding="utf-8")
+    observed = []
+
+    monkeypatch.setattr("gway.recipe.uv.ensure_uv", lambda **kwargs: uv)
+
+    def run(command, **kwargs):
+        observed.append((tuple(command), kwargs))
+        return subprocess.CompletedProcess(command, 1)
+
+    monkeypatch.setattr(transaction.subprocess, "run", run)
+
+    assert transaction._product_runtime_ready(project, managed_paths) is False
+    assert observed[0][0] == (
+        str(uv),
+        "pip",
+        "check",
+        "--python",
+        str(_product_python(project)),
+    )
+
+
+def test_failed_product_provisioning_restores_previous_install(
+    make_project,
+    managed_paths,
+    monkeypatch,
+):
+    from gway.install.ops import install
+
+    monkeypatch.setattr(transaction, "_provision_product_runtime", _fake_product_runtime)
+    monkeypatch.setattr(transaction, "_product_runtime_ready", lambda *args: True)
+
+    source = make_project("arthexis", launcher=True)
+    first = install(source, paths=managed_paths)
+    original = (first.install_path / "arthexis" / "__init__.py").read_text(
+        encoding="utf-8"
+    )
+
+    (source / "arthexis" / "__init__.py").write_text(
+        "def main():\n    return 99\n",
+        encoding="utf-8",
+    )
+
+    def fail(project, selected):
+        raise RuntimeError("dependency install failed")
+
+    monkeypatch.setattr(transaction, "_provision_product_runtime", fail)
+
+    with pytest.raises(RuntimeError, match="dependency install failed"):
+        install(source, paths=managed_paths)
+
+    assert (first.install_path / "arthexis" / "__init__.py").read_text(
+        encoding="utf-8"
+    ) == original
+    assert InstallState(managed_paths.state).get("arthexis") == first
