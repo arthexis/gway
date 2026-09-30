@@ -160,7 +160,7 @@ maintained recipe resolver where appropriate.
 `survey` is the reference first-class sampler operation.
 
 ```console
-gway watch
+gway survey
 gway survey --scope operations-basic
 gway survey --only node,services
 gway survey --except errors,wire
