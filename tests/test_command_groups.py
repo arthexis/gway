@@ -110,10 +110,11 @@ def test_ingested_class_main_preserves_receiver_metadata(gateway):
 
     ingest_python(gateway, Demo, path=("demo", "group"))
 
-    default = gateway.ops.resolve("demo.group")
-    assert default.__gway_receiver__ == "group"
-    gateway.context["group"] = Demo()
-    assert default() == "main"
+    assert gateway.ops.resolve("demo.group") is None
+    entry = gateway.ops.resolve("demo.group.__main__")
+    assert entry.__gway_receiver__ == "demo"
+    gateway.context["demo"] = Demo()
+    assert entry() == "main"
 
 
 @pytest.mark.parametrize(
