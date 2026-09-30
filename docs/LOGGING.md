@@ -41,19 +41,18 @@ is an aggregate over its installed service sources. A concrete service identity
 such as `arthexis/web` resolves through persisted service-install state.
 Direct recipe execution uses `recipe/<stem>`.
 
-With no source argument, `read`, `tail`, and `search` return the available
-GWAY-managed source catalog instead of reading logs. Use `--all` to explicitly
-query every readable managed source. Explicit sources and `--all` cannot be
-combined.
-
-This keeps broad queries intentional and prevents an omitted source from
-accidentally expanding into an expensive all-service journal scan.
+With no source argument, `read` queries every readable managed source while
+remaining bounded by its default 100-record limit. `tail` and `search` keep
+the conservative source-catalog behavior when their source is omitted. Use
+`log sources` to list the catalog explicitly, or `--all` when an explicit
+broad selection is useful. Explicit sources and `--all` cannot be combined.
 
 ## Reading logs
 
 Read a bounded historical range:
 
 ```text
+gway log read
 gway log read arthexis --since "10 minutes ago"
 gway log read arthexis/web --limit 200
 gway log read gway arthexis/worker --since 2026-09-22T12:00:00+00:00
