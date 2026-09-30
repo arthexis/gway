@@ -59,22 +59,26 @@ def _wire_encode(value):
     elif is_dataclass(value) and not isinstance(value, type):
         items = ((field.name, getattr(value, field.name)) for field in fields(value))
     else:
-        model_dump = getattr(value, "model_dump", None)
-        if not callable(model_dump):
-            raise TypeError(
-                "companion protocol value is not transportable: "
-                f"{type(value).__module__}.{type(value).__qualname__}"
-            )
-        try:
-            dumped = model_dump(mode="python")
-        except TypeError:
-            dumped = model_dump()
-        if not isinstance(dumped, dict):
-            raise TypeError(
-                "companion protocol record did not produce a mapping: "
-                f"{type(value).__module__}.{type(value).__qualname__}"
-            )
-        items = dumped.items()
+        model_fields = getattr(type(value), "model_fields", None)
+        if isinstance(model_fields, dict):
+            items = ((name, getattr(value, name)) for name in model_fields)
+        else:
+            model_dump = getattr(value, "model_dump", None)
+            if not callable(model_dump):
+                raise TypeError(
+                    "companion protocol value is not transportable: "
+                    f"{type(value).__module__}.{type(value).__qualname__}"
+                )
+            try:
+                dumped = model_dump(mode="python")
+            except TypeError:
+                dumped = model_dump()
+            if not isinstance(dumped, dict):
+                raise TypeError(
+                    "companion protocol record did not produce a mapping: "
+                    f"{type(value).__module__}.{type(value).__qualname__}"
+                )
+            items = dumped.items()
     return {
         _WIRE_TAG: "record",
         "type": f"{type(value).__module__}.{type(value).__qualname__}",
@@ -188,22 +192,26 @@ def wire_encode(value):
     elif is_dataclass(value) and not isinstance(value, type):
         items = ((field.name, getattr(value, field.name)) for field in fields(value))
     else:
-        model_dump = getattr(value, "model_dump", None)
-        if not callable(model_dump):
-            raise TypeError(
-                "companion protocol value is not transportable: "
-                f"{type(value).__module__}.{type(value).__qualname__}"
-            )
-        try:
-            dumped = model_dump(mode="python")
-        except TypeError:
-            dumped = model_dump()
-        if not isinstance(dumped, dict):
-            raise TypeError(
-                "companion protocol record did not produce a mapping: "
-                f"{type(value).__module__}.{type(value).__qualname__}"
-            )
-        items = dumped.items()
+        model_fields = getattr(type(value), "model_fields", None)
+        if isinstance(model_fields, dict):
+            items = ((name, getattr(value, name)) for name in model_fields)
+        else:
+            model_dump = getattr(value, "model_dump", None)
+            if not callable(model_dump):
+                raise TypeError(
+                    "companion protocol value is not transportable: "
+                    f"{type(value).__module__}.{type(value).__qualname__}"
+                )
+            try:
+                dumped = model_dump(mode="python")
+            except TypeError:
+                dumped = model_dump()
+            if not isinstance(dumped, dict):
+                raise TypeError(
+                    "companion protocol record did not produce a mapping: "
+                    f"{type(value).__module__}.{type(value).__qualname__}"
+                )
+            items = dumped.items()
     return {
         WIRE_TAG: "record",
         "type": f"{type(value).__module__}.{type(value).__qualname__}",
