@@ -97,6 +97,14 @@ def test_arthexis_roles_share_one_installer_template(sampler_path):
     assert '"$GWAY" install arthexis/arthexis' in script
     assert '"$GWAY" arthexis migrate --noinput' in script
     assert '"$GWAY" arthexis seed' in script
+    assert '"$GWAY" service install -- arthexis web' in script
+    assert '"$GWAY" service install -- arthexis worker' in script
+    assert '"$GWAY" service install -- arthexis beat' in script
+    assert '"$GWAY" service start -- arthexis web' in script
+    assert '"$GWAY" service start -- arthexis worker' in script
+    assert '"$GWAY" service start -- arthexis beat' in script
+    assert script.index('"$GWAY" arthexis seed') < script.index('"$GWAY" service install -- arthexis web')
+    assert script.index('"$GWAY" service install -- arthexis beat') < script.index('"$GWAY" service start -- arthexis web')
     assert "[installer_title]" in script
     assert "[installer_description]" in script
     assert "satellite" not in script.lower()
