@@ -84,3 +84,32 @@ def test_tail_root_operator_accepts_explicit_command_separator():
     assert events[0]["kind"] == "update"
     assert events[-1]["kind"] == "timeout"
     assert calls == [False]
+
+
+def test_github_terminal_normalizes_supported_operation_spellings():
+    completed = {"status": "completed", "conclusion": "success"}
+
+    assert terminal("github.run arthexis/gway 42", completed)
+    assert terminal("github_run arthexis/gway 42", completed)
+    assert terminal("github runs arthexis/gway", [completed])
+
+
+def test_native_iterator_advances_under_read_only_policy():
+    gateway = Gateway()
+    seen = []
+
+    def stream(*, mutate=False):
+        def generate():
+            seen.append(gateway.mutation_policy)
+            yield "one"
+            seen.append(gateway.mutation_policy)
+            yield "two"
+
+        return generate()
+
+    gateway.wrap("demo.stream", stream, op="stream", sub="demo")
+
+    events = list(gateway("tail -- demo stream"))
+
+    assert [event["value"] for event in events] == ["one", "two", None]
+    assert seen == [False, False]
