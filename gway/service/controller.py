@@ -346,6 +346,7 @@ class Controller:
         restart_sec: float = None,
         environment=None,
         timeout: float = None,
+        enable: bool = True,
     ):
         """Install supervision for any resolvable Gway operation or recipe.
 
@@ -359,6 +360,7 @@ class Controller:
             restart_sec: Delay between restart attempts in seconds.
             environment: Optional NAME=value environment assignment(s).
             timeout: Maximum seconds for each systemd operation; defaults to 40.
+            enable: Enable a systemd unit for automatic boot activation.
         """
         definition = self._definition(
             target,
@@ -375,8 +377,10 @@ class Controller:
         paths = self.gateway.install_paths(system=system)
         timeout = self._timeout(timeout)
         install_kwargs = {}
-        if backend == "systemd" and timeout is not None:
-            install_kwargs["timeout"] = timeout
+        if backend == "systemd":
+            install_kwargs["enable"] = enable
+            if timeout is not None:
+                install_kwargs["timeout"] = timeout
         return selected.install_units(
             definition.project,
             (definition,),
