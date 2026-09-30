@@ -97,7 +97,6 @@ jobs:
           if grep -Fxq remote-only <<<"$labels"; then
             stage="remote-only"
           fi
-          # The deploy label marks deployment intent only. Timing is explicit.
           run_name="$(git show -s --format=%s "$AFTER_SHA")"
           echo "deploy=$deploy" >> "$GITHUB_OUTPUT"
           echo "stage=$stage" >> "$GITHUB_OUTPUT"
