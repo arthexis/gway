@@ -1,6 +1,7 @@
 """Standard Python project metadata discovery."""
 
 from importlib import import_module
+import ast
 from pathlib import Path
 import os
 import pickle
@@ -138,6 +139,151 @@ def project_python(project):
         "Scripts/python.exe" if os.name == "nt" else "bin/python"
     )
     return candidate if candidate.is_file() else Path(sys.executable)
+
+
+def _settings_from_manage_py(project):
+    """Return DJANGO_SETTINGS_MODULE declared by a conventional manage.py."""
+    manage = Path(project).expanduser().resolve() / "manage.py"
+    if not manage.is_file():
+        return None
+    tree = ast.parse(manage.read_text(encoding="utf-8"), filename=str(manage))
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call) or len(node.args) < 2:
+            continue
+        func = node.func
+        if not isinstance(func, ast.Attribute) or func.attr != "setdefault":
+            continue
+        key, value = node.args[:2]
+        if (
+            isinstance(key, ast.Constant)
+            and key.value == "DJANGO_SETTINGS_MODULE"
+            and isinstance(value, ast.Constant)
+            and isinstance(value.value, str)
+        ):
+            return value.value
+    return None
+
+
+_PROJECT_DJANGO_DISCOVERY = r"""
+import inspect
+import os
+import pickle
+import sys
+
+project, settings, response_path = sys.argv[1:4]
+os.chdir(project)
+os.environ.setdefault("DJANGO_SETTINGS_MODULE", settings)
+
+import django
+django.setup()
+
+from django.core import management
+
+result = {}
+for name, app_name in management.get_commands().items():
+    supports_no_mutate = False
+    try:
+        command = management.load_command_class(app_name, name)
+        handle = getattr(command, "handle", None)
+        if callable(handle):
+            parameter = inspect.signature(handle).parameters.get("mutate")
+            supports_no_mutate = (
+                parameter is not None and parameter.default is False
+            )
+    except Exception:
+        supports_no_mutate = False
+    result[str(name)] = {
+        "supports_no_mutate": supports_no_mutate,
+    }
+
+with open(response_path, "wb") as stream:
+    pickle.dump(result, stream, protocol=pickle.HIGHEST_PROTOCOL)
+"""
+
+
+_PROJECT_DJANGO_CALL = r"""
+import os
+import pickle
+import sys
+
+project, settings, command, request_path, response_path = sys.argv[1:6]
+os.chdir(project)
+os.environ.setdefault("DJANGO_SETTINGS_MODULE", settings)
+
+import django
+django.setup()
+
+from django.core.management import call_command
+
+with open(request_path, "rb") as stream:
+    args, kwargs = pickle.load(stream)
+
+result = call_command(command, *args, **kwargs)
+
+with open(response_path, "wb") as stream:
+    pickle.dump(result, stream, protocol=pickle.HIGHEST_PROTOCOL)
+"""
+
+
+def project_management_commands(project):
+    """Discover Django management commands inside a project's own runtime."""
+    project = Path(project).expanduser().resolve()
+    settings = _settings_from_manage_py(project)
+    if settings is None:
+        return {}
+
+    python = project_python(project)
+    with tempfile.TemporaryDirectory(prefix="gway-django-discovery-") as directory:
+        response = Path(directory) / "response.pkl"
+        subprocess.run(
+            [
+                str(python),
+                "-c",
+                _PROJECT_DJANGO_DISCOVERY,
+                str(project),
+                settings,
+                str(response),
+            ],
+            cwd=project,
+            check=True,
+        )
+        with response.open("rb") as stream:
+            result = pickle.load(stream)
+
+    if not isinstance(result, dict):
+        raise TypeError("Django management discovery returned invalid metadata")
+    return result
+
+
+def invoke_management_command(project, command, *args, **kwargs):
+    """Run one Django management command inside the project's own runtime."""
+    project = Path(project).expanduser().resolve()
+    settings = _settings_from_manage_py(project)
+    if settings is None:
+        raise ValueError(f"Not a conventional Django project: {project}")
+
+    python = project_python(project)
+    with tempfile.TemporaryDirectory(prefix="gway-django-command-") as directory:
+        request = Path(directory) / "request.pkl"
+        response = Path(directory) / "response.pkl"
+        with request.open("wb") as stream:
+            pickle.dump((args, kwargs), stream, protocol=pickle.HIGHEST_PROTOCOL)
+        subprocess.run(
+            [
+                str(python),
+                "-c",
+                _PROJECT_DJANGO_CALL,
+                str(project),
+                settings,
+                str(command),
+                str(request),
+                str(response),
+            ],
+            cwd=project,
+            check=True,
+        )
+        with response.open("rb") as stream:
+            return pickle.load(stream)
 
 
 _PROJECT_CALL = r"""
