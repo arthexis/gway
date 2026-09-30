@@ -147,3 +147,26 @@ def test_first_class_survey_resolves_after_other_sampler_discovery():
 
     assert "Survey the current node." in rendered
     assert runtime.ops.resolve("survey") is not None
+
+
+def test_first_class_fast_path_does_not_capture_directory_child_recipe(tmp_path, monkeypatch):
+    from gway.recipe.operation import execute_recipe as real_execute_recipe
+
+    root = tmp_path / "ops"
+    root.mkdir()
+    (root / "watch").mkdir()
+    (root / "watch" / "__main__.rx").write_text("version\n", encoding="utf-8")
+    (root / "watch" / "service.rx").write_text("version\n", encoding="utf-8")
+
+    runtime = Gateway()
+    runtime.add_operation_root(root)
+
+    calls = []
+
+    def fake_execute(runtime_, path, *, context=None, **kwargs):
+        calls.append(path.name)
+        return [], path.name
+
+    monkeypatch.setattr("gway.recipe.operation.execute_recipe", fake_execute)
+    assert runtime("watch service") == "service.rx"
+    assert calls == ["service.rx"]
