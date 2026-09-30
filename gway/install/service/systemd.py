@@ -250,6 +250,18 @@ def _add_exception_note(exc, note):
     exc.__notes__ = notes
 
 
+def _restore_enablement(record, *, timeout):
+    """Restore one persisted unit's boot enablement policy."""
+    action = "enable" if record.enabled else "disable"
+    _systemctl(
+        action,
+        record.backend_id,
+        system=record.system,
+        check=False,
+        timeout=timeout,
+    )
+
+
 def _rollback_install_units(
     project,
     *,
@@ -317,15 +329,10 @@ def _rollback_install_units(
     )
 
     for record in previous.values():
+        action = "enable" if record.enabled else "disable"
         attempt(
-            f"re-enable {record.backend_id}",
-            lambda record=record: _systemctl(
-                "enable",
-                record.backend_id,
-                system=record.system,
-                check=False,
-                timeout=timeout,
-            ),
+            f"restore {action} state for {record.backend_id}",
+            lambda record=record: _restore_enablement(record, timeout=timeout),
         )
 
     return failures
@@ -388,22 +395,14 @@ def install_units(
                     restart_sec=service.restart_sec,
                     command=tuple(service.launchable.command),
                     environment=tuple(service.environment),
+                    enabled=bool(enable),
                 )
             )
 
         _systemctl("daemon-reload", system=system, timeout=timeout)
-        if enable:
-            for record in records:
-                _systemctl("enable", record.backend_id, system=system, timeout=timeout)
-        else:
-            for record in records:
-                _systemctl(
-                    "disable",
-                    record.backend_id,
-                    system=system,
-                    check=False,
-                    timeout=timeout,
-                )
+        action = "enable" if enable else "disable"
+        for record in records:
+            _systemctl(action, record.backend_id, system=system, timeout=timeout)
         retained = [record for record in previous_all if record.service not in selected]
         state.put(project, [*retained, *records])
         return records
