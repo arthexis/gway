@@ -21,6 +21,7 @@ jobs:
       deploy: ${{ steps.change.outputs.deploy }}
       stage: ${{ steps.change.outputs.stage }}
       force_deploy: ${{ steps.change.outputs.force_deploy }}
+      run_name: ${{ steps.change.outputs.run_name }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -89,10 +90,12 @@ jobs:
           if grep -Fxq deploy <<<"$labels"; then
             force_deploy=true
           fi
+          run_name="$(git show -s --format=%s "$AFTER_SHA")"
           echo "deploy=$deploy" >> "$GITHUB_OUTPUT"
           echo "stage=$stage" >> "$GITHUB_OUTPUT"
           echo "force_deploy=$force_deploy" >> "$GITHUB_OUTPUT"
-          echo "deploy=$deploy stage=$stage force_deploy=$force_deploy"
+          echo "run_name=$run_name" >> "$GITHUB_OUTPUT"
+          echo "deploy=$deploy stage=$stage force_deploy=$force_deploy run_name=$run_name"
 
   notify:
     name: Request Watchtower certification
@@ -107,6 +110,7 @@ jobs:
           GWAY_SHA: ${{ inputs.candidate_sha || github.sha }}
           WATCHTOWER_STAGE: ${{ needs.classify.outputs.stage }}
           FORCE_DEPLOY: ${{ needs.classify.outputs.force_deploy }}
+          GWAY_RUN_NAME: ${{ needs.classify.outputs.run_name }}
         run: |
           set -Eeuo pipefail
           if [[ -z "$GH_TOKEN" ]]; then
@@ -121,4 +125,5 @@ jobs:
             -f event_type='gway-candidate' \
             -F client_payload[gway_sha]="$GWAY_SHA" \
             -F client_payload[stage]="$WATCHTOWER_STAGE" \
-            -F client_payload[force_deploy]="$FORCE_DEPLOY"
+            -F client_payload[force_deploy]="$FORCE_DEPLOY" \
+            -f client_payload[run_name]="$GWAY_RUN_NAME"
