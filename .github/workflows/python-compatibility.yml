@@ -68,7 +68,13 @@ jobs:
         run: python3 .github/scripts/validate_version_only_pr.py "$BASE_SHA" "$HEAD_SHA"
       - name: Validate docs-only PR
         if: env.DOCS_PR == 'true'
-        run: python3 .github/scripts/validate_docs_only_pr.py "$BASE_SHA" "$HEAD_SHA"
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git fetch --no-tags "https://github.com/$GITHUB_REPOSITORY.git" "$BASE_SHA"
+          validator="$RUNNER_TEMP/validate_docs_only_pr.py"
+          git show "$BASE_SHA:.github/scripts/validate_docs_only_pr.py" > "$validator"
+          python3 "$validator" "$BASE_SHA" "$HEAD_SHA"
 
       - uses: actions/setup-python@v7
         if: env.VERSION_PR != 'true' && env.DOCS_PR != 'true'
@@ -120,7 +126,13 @@ jobs:
         run: python3 .github/scripts/validate_version_only_pr.py "$BASE_SHA" "$HEAD_SHA"
       - name: Validate docs-only PR
         if: env.DOCS_PR == 'true'
-        run: python3 .github/scripts/validate_docs_only_pr.py "$BASE_SHA" "$HEAD_SHA"
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git fetch --no-tags "https://github.com/$GITHUB_REPOSITORY.git" "$BASE_SHA"
+          validator="$RUNNER_TEMP/validate_docs_only_pr.py"
+          git show "$BASE_SHA:.github/scripts/validate_docs_only_pr.py" > "$validator"
+          python3 "$validator" "$BASE_SHA" "$HEAD_SHA"
 
       - uses: actions/setup-python@v7
         if: env.VERSION_PR != 'true' && env.DOCS_PR != 'true'
