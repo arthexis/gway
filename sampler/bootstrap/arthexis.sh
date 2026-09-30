@@ -28,9 +28,9 @@ fi
 "$GWAY" service install -- arthexis worker
 "$GWAY" service install -- arthexis beat
 
-"$GWAY" service start -- arthexis web
-"$GWAY" service start -- arthexis worker
-"$GWAY" service start -- arthexis beat
+"$GWAY" service restart -- arthexis web
+"$GWAY" service restart -- arthexis worker
+"$GWAY" service restart -- arthexis beat
 
 printf '%s\n' "[installer_title] installation complete."
 printf '%s\n' "[installer_description]"
