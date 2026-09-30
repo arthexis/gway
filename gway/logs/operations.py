@@ -3,6 +3,7 @@
 from ..install.paths import install_paths
 from ..install.service import ServiceInstallState
 from .catalog import resolve_sources, source_catalog
+from .registry import recipe_sources
 from .file import read_file_logs
 from .journal import read_journal
 from .source import LogSource
@@ -50,7 +51,14 @@ def _install_state():
 
 
 def _catalog():
-    return source_catalog(_install_state())
+    catalog = source_catalog(_install_state())
+    roots = [install_paths(system=system).root for system in (False, True)]
+    known = {source.identity for source in catalog}
+    catalog.extend(
+        source for source in recipe_sources(*roots)
+        if source.identity not in known
+    )
+    return catalog
 
 
 def _source_dict(source):
