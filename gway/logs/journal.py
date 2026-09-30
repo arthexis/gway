@@ -2,6 +2,7 @@
 
 from datetime import datetime, timezone
 import json
+import re
 import subprocess
 
 from .model import LogRecord
@@ -80,6 +81,30 @@ def _concrete_sources(sources):
     return selected
 
 
+_RELATIVE_TIME_RE = re.compile(r"^(?P<value>\\d+)\\s*(?P<unit>s|m|min|h|d|w)$", re.I)
+
+_RELATIVE_TIME_UNITS = {
+    "s": "seconds",
+    "m": "minutes",
+    "min": "minutes",
+    "h": "hours",
+    "d": "days",
+    "w": "weeks",
+}
+
+
+def _normalize_time_expression(value):
+    """Accept compact relative journal windows such as 24h or 30m."""
+    if value is None:
+        return None
+    text = str(value).strip()
+    match = _RELATIVE_TIME_RE.fullmatch(text)
+    if not match:
+        return text
+    unit = _RELATIVE_TIME_UNITS[match.group("unit").lower()]
+    return f'{match.group("value")} {unit} ago'
+
+
 def _build_command(
     sources,
     *,
@@ -108,9 +133,9 @@ def _build_command(
         raise ValueError(f"Unsupported journal backend: {backend}")
 
     if since is not None:
-        command.extend(("--since", str(since)))
+        command.extend(("--since", _normalize_time_expression(since)))
     if until is not None:
-        command.extend(("--until", str(until)))
+        command.extend(("--until", _normalize_time_expression(until)))
     if limit is not None:
         limit = int(limit)
         if limit <= 0:
@@ -234,6 +259,16 @@ def _parse_output(output, sources):
         try:
             records.append(_parse_entry(entry, sources))
         except ValueError as exc:
+            unit = (
+                entry.get("_SYSTEMD_UNIT")
+                or entry.get("_SYSTEMD_USER_UNIT")
+                or entry.get("UNIT")
+            )
+            identifier = entry.get("SYSLOG_IDENTIFIER")
+            # Multi-unit queries may include systemd manager lifecycle records
+            # for matched units. init.scope cannot be attributed to one service.
+            if unit == "init.scope" and identifier == "systemd":
+                continue
             raise JournalError(
                 f"invalid journal entry on output line {number}: {exc}"
             ) from exc
