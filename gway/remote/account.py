@@ -22,18 +22,6 @@ def _page(title, body):
 
 OPERATION_PREVIEW_LIMIT = 6
 
-LEGACY_REMOTE_SCOPE_ALIASES = {
-    "chatgpt-logs": "logs-read",
-    "chatgpt-actions": "logs-read",
-}
-
-
-def _canonical_remote_scopes(value):
-    return frozenset(
-        LEGACY_REMOTE_SCOPE_ALIASES.get(name, name)
-        for name in _scopes(value)
-    )
-
 
 def _scopes(value):
     if value is None:
@@ -68,7 +56,7 @@ class RemoteAccountApplication:
         client_id = str(client_id or "").strip()
         if not client_id:
             raise ValueError("OAuth client id is required")
-        scopes = _canonical_remote_scopes(scopes)
+        scopes = _scopes(scopes)
         if not scopes:
             raise ValueError("At least one named G-Way scope is required")
         session.pending_client_id = client_id
