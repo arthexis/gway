@@ -461,6 +461,9 @@ def _command_callable(command_name):
     """Create a lightweight GWAY operation backed by Django call_command()."""
 
     def invoke(*args, **options):
+        options = dict(options)
+        if options.pop("no_interactive", False):
+            options["interactive"] = False
         _, call_command = _management_api()
         return call_command(command_name, *args, **options)
 
