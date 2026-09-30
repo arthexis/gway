@@ -4,7 +4,7 @@ from pathlib import Path
 import sqlite3
 
 
-_SCHEMA_VERSION = 7
+_SCHEMA_VERSION = 8
 
 
 class SecurityState:
@@ -75,6 +75,16 @@ class SecurityState:
                 UNIQUE(scope_id, variable_name),
                 FOREIGN KEY(scope_id) REFERENCES scopes(id) ON DELETE CASCADE
             );
+
+            CREATE TABLE IF NOT EXISTS scope_semantic_terms (
+                scope_id INTEGER NOT NULL,
+                term TEXT NOT NULL,
+                UNIQUE(scope_id, term),
+                FOREIGN KEY(scope_id) REFERENCES scopes(id) ON DELETE CASCADE
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_scope_semantic_terms_term
+            ON scope_semantic_terms(term);
 
             CREATE TABLE IF NOT EXISTS tokens (
                 id INTEGER PRIMARY KEY,
