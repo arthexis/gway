@@ -95,7 +95,10 @@ def test_oauth_grant_inspection_marks_union_that_parent_token_no_longer_allows(
     ]
     assert active["effective_operations"] == ["odoo.cards.detail"]
 
-    tokens.replace_union_scopes("operator", {("cards", "read")})
+    # Narrow the parent token onto a different product-specific card authority.
+    # A parent `cards read` grant would still contain the child `odoo cards read`
+    # union, so it must remain effective; `arthexis cards read` does not.
+    tokens.replace_union_scopes("operator", {("arthexis", "cards", "read")})
     reduced = gateway(f"security oauth grant inspect {grant.id}")
 
     assert reduced["union_scopes"] == [
