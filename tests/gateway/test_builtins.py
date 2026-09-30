@@ -110,7 +110,7 @@ def test_builtin_path_can_feed_pipeline_as_plain_value(gateway, tmp_path):
     gateway.wrap("stringify", stringify)
 
     assert gateway("path", str(tmp_path)) == Path(tmp_path)
-    assert gateway("path", str(tmp_path), "-", "stringify") == str(tmp_path)
+    assert gateway(f"path {tmp_path} - stringify") == str(tmp_path)
 
 
 def test_clear_builtin_clears_all_accumulated_context(gateway):
