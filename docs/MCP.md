@@ -80,7 +80,7 @@ Scopes are stored in the versioned SQLite security registry. For example:
 
 ```text
 gway security scope create logs-read
-gway security scope set logs-read help guide version log.sources log.read log.tail log.search security.whoami security.scope.current
+gway security scope set logs-read survey help guide version log.sources log.read log.tail log.search security.whoami security.scope.current
 gway security scope show logs-read
 gway security scope list
 gway security scope rename logs-read logs
@@ -90,7 +90,7 @@ The canonical read-only logging scope is:
 
 ```toml
 [scopes.logs-read]
-operations = ["help", "guide", "version", "log.sources", "log.read", "log.tail", "log.search", "security.whoami", "security.scope.current"]
+operations = ["survey", "help", "guide", "version", "log.sources", "log.read", "log.tail", "log.search", "security.whoami", "security.scope.current"]
 environment = []
 ```
 
@@ -98,7 +98,7 @@ A broader observational operator scope is also maintained:
 
 ```toml
 [scopes.operator-read]
-operations = ["products", "extensions", "service.list", "service.status", "sous.chef.list", "sous.chef.inspect"]
+operations = ["survey", "products", "extensions", "builtins", "filter", "service.list", "service.status", "service.statuses", "wire.check", "sous.chef.list", "sous.chef.inspect"]
 environment = []
 ```
 
