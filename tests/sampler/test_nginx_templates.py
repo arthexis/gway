@@ -11,6 +11,8 @@ NGINX_TEMPLATES = (
     "bootstrap/nginx-https-[site].conf",
     "web/expose/nginx-http-[site].conf",
     "web/expose/nginx-https-[site].conf",
+    "web/remote/nginx-http-[site].conf",
+    "web/remote/nginx-https-[site].conf",
 )
 
 _SIGIL = re.compile(r"\[([A-Za-z_][A-Za-z0-9_]*)(?:\|([^\]]*))?\]")
