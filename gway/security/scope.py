@@ -7,6 +7,7 @@ try:
 except ModuleNotFoundError:
     import tomli as _toml
 
+from . import semantics as scope_semantics
 from .scopes import ScopeRegistry
 
 
@@ -118,9 +119,38 @@ class Controller:
             remove_environment=self._environment_values(environment),
         )
 
-    def resolve(self, *names, mutate=True):
-        """Return the union of named security scopes."""
-        return self._registry(converge=mutate).resolve(names, readonly=not mutate)
+    def contains(self, name, *terms, mutate=True):
+        """Return whether a semantic scope contains all requested terms."""
+        registry = self._registry(converge=mutate)
+        scope = registry.require(name, readonly=not mutate)
+        return scope_semantics.contains(scope, terms)
+
+    def match(self, *terms, mutate=True):
+        """Return semantic leaf scopes matching all requested terms."""
+        registry = self._registry(converge=mutate)
+        return scope_semantics.match(
+            registry.all(readonly=not mutate),
+            terms,
+        )
+
+    def union(self, *names, mutate=True):
+        """Return the least broad semantic authority containing named scopes."""
+        registry = self._registry(converge=mutate)
+        scopes = tuple(
+            registry.require(name, readonly=not mutate)
+            for name in names
+        )
+        return scope_semantics.union(scopes)
+
+    def resolve(self, *values, semantic=False, mutate=True):
+        """Resolve exact named scopes, or semantic terms when explicitly requested."""
+        registry = self._registry(converge=mutate)
+        if semantic:
+            return scope_semantics.resolve(
+                registry.all(readonly=not mutate),
+                values,
+            )
+        return registry.resolve(values, readonly=not mutate)
 
     @staticmethod
     def _definitions(path):
