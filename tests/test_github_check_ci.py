@@ -1,0 +1,91 @@
+import io
+import json
+from types import SimpleNamespace
+import zipfile
+
+from gway.githubcheck import Controller
+
+
+class FakeClient:
+    def __init__(self, responses, artifact=None):
+        self.responses = list(responses)
+        self.artifact = artifact
+        self.calls = []
+
+    def request(self, method, path, *, params=None, json=None, headers=None):
+        self.calls.append((method, path, params))
+        data = self.responses.pop(0)
+        return SimpleNamespace(data=data, status=200, headers={}, next_url=None)
+
+    def download_redirect(self, path):
+        self.calls.append(("DOWNLOAD", path, None))
+        return SimpleNamespace(data=self.artifact, status=200, headers={}, next_url=None)
+
+
+def _artifact(value):
+    stream = io.BytesIO()
+    with zipfile.ZipFile(stream, "w") as archive:
+        archive.writestr("ci-result.json", json.dumps(value))
+    return stream.getvalue()
+
+
+def test_check_ci_enriches_current_head_failure_from_canonical_artifact():
+    client = FakeClient(
+        [
+            {"head": {"sha": "abc", "ref": "feature"}},
+            {"workflow_runs": [{"id": 7, "name": "python", "head_sha": "abc", "status": "completed", "conclusion": "failure"}]},
+            {"workflow_runs": []},
+            {"jobs": [{"id": 11, "name": "Tests", "status": "completed", "conclusion": "failure"}]},
+            {"artifacts": [{"id": 22, "name": "gway-ci-result"}]},
+        ],
+        artifact=_artifact({"state": "failed", "phase": "tests", "tests": {"failed": 1}}),
+    )
+    result = Controller(None, client=client).check_ci("arthexis/gway", 1348)
+
+    assert result["head_sha"] == "abc"
+    assert result["state"] == "failed"
+    assert result["current"] is True
+    assert result["failure_kind"] == "ci"
+    assert result["result"]["phase"] == "tests"
+    assert result["diagnostic_target"] == {"kind": "github-ci", "run_id": 7, "job_id": 11}
+
+
+def test_check_ci_never_promotes_stale_green_run_to_current_success():
+    client = FakeClient(
+        [
+            {"head": {"sha": "new", "ref": "feature"}},
+            {"workflow_runs": []},
+            {"workflow_runs": [{"id": 6, "head_sha": "old", "head_branch": "feature", "status": "completed", "conclusion": "success"}]},
+        ]
+    )
+    result = Controller(None, client=client).check_ci("arthexis/gway", 1348)
+
+    assert result["state"] == "pending"
+    assert result["current"] is False
+    assert result["stale_runs"] == 1
+    assert result["workflows"] == []
+
+
+def test_check_ci_falls_back_to_provider_state_without_artifact():
+    client = FakeClient(
+        [
+            {"head": {"sha": "abc", "ref": "feature"}},
+            {"workflow_runs": [{"id": 7, "name": "python", "head_sha": "abc", "status": "completed", "conclusion": "failure"}]},
+            {"workflow_runs": []},
+            {"jobs": [{"id": 11, "name": "Tests", "status": "completed", "conclusion": "failure"}]},
+            {"artifacts": []},
+        ]
+    )
+    result = Controller(None, client=client).check_ci("arthexis/gway", 1348)
+
+    assert result["state"] == "failed"
+    assert result["failure_kind"] == "infrastructure"
+    assert result["result"] is None
+    assert result["workflows"][0]["artifact"]["available"] is False
+
+
+def test_github_check_ci_is_registered_as_read_only_semantic_operation(gateway):
+    operation = gateway.ops.resolve("github.check_ci")
+    assert operation is not None
+    assert operation.mutates is False
+    assert {"github", "source", "read"} <= set(operation.__gway_metadata__["topics"])
