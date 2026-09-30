@@ -229,3 +229,47 @@ def test_concrete_module_symbol_shadows_equivalent_class_subject(gateway):
 
     assert gateway("demo sales order") == "specific"
     assert gateway.ops.resolve("demo.sales.order.status") is None
+
+
+def test_explicit_class_path_preserves_receiver_subject(gateway):
+    class Renamed:
+        def show(self):
+            return "shown"
+
+    ingest_python(gateway, Renamed, path=("api", "tools"))
+
+    operation = gateway.ops.resolve("api.tools.show")
+    assert operation.__gway_subject__ == "tools"
+    assert operation.__gway_receiver__ == "tools"
+    gateway.context["tools"] = Renamed()
+    assert gateway("api tools show") == "shown"
+
+
+def test_operation_first_multiword_subject_is_ambiguous_across_namespaces(gateway):
+    from types import ModuleType
+
+    first = ModuleType("first")
+    second = ModuleType("second")
+
+    class PaymentGateway:
+        @staticmethod
+        def ping():
+            return "first"
+
+    class OtherPaymentGateway:
+        pass
+
+    OtherPaymentGateway.__name__ = "PaymentGateway"
+    OtherPaymentGateway.ping = staticmethod(lambda: "second")
+
+    first.PaymentGateway = PaymentGateway
+    second.PaymentGateway = OtherPaymentGateway
+
+    ingest_python(gateway, first, path=("first",))
+    ingest_python(gateway, second, path=("second",))
+
+    from gway.dispatch import OperationLookupError
+    import pytest
+
+    with pytest.raises(OperationLookupError):
+        gateway("ping payment gateway")
