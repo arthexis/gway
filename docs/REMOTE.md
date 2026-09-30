@@ -158,7 +158,7 @@ Survey commands are token arrays rather than shell strings. Gway executes each
 contributor through the normal read-only observation boundary under the caller's
 effective authority. A contributor whose operation is not authorized is omitted;
 an unavailable contributor degrades independently in the same way as built-in
-Survey sections. Section-name collisions are rejected. During the migration, legacy `[[tool.gway.watch]]` declarations remain accepted when `[[tool.gway.survey]]` is absent; projects must not declare both forms.
+Survey sections. Section-name collisions are rejected.
 
 The built-in read scopes deliberately compose. Their union covers the complete
 built-in Survey report: `logs-read` supplies recent errors, `source-read` supplies

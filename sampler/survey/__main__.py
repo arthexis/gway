@@ -24,7 +24,7 @@ def __help__(topic=None):
             "--scope can only reduce the caller's existing authority.",
             "--only and --except reduce the visible section set after authorization.",
             "--since currently constrains time-aware observations such as recent errors.",
-            "--problems keeps only problematic observations and non-empty recent-error logs.",
+            "--problems keeps failed deployment transitions, problematic observations, and non-empty recent-error logs.",
             "Every survey response includes an opaque cursor for later comparison.",
             "--changed requires --cursor and returns only currently visible changed sections.",
         ],
@@ -64,8 +64,9 @@ def __help__(topic=None):
         "--problems": {
             "summary": "Show only problematic observations",
             "description": (
-                "Keep sections whose observation status is error or blocked, plus the "
-                "recent errors section when it contains records. Optional unavailable "
+                "Keep sections whose observation status is error or blocked, successful "
+                "observations that report domain problems such as failed deployments, "
+                "plus the recent errors section when it contains records. Optional unavailable "
                 "capabilities are not treated as errors."
             ),
             "examples": ["gway survey --problems"],
@@ -102,7 +103,11 @@ def __help__(topic=None):
             "description": "Aggregate runtime state for installed managed services."
         },
         "deploy": {
-            "description": "Watchtower-owned deployment observation when available."
+            "description": (
+                "Latest Watchtower deployment transition per coordinated repository. "
+                "Failed runs are marked as problems and include bounded failed-job, "
+                "failed-step, and error-focused log detail."
+            )
         },
         "release": {
             "description": "Watchtower-owned release reconciliation observation."
