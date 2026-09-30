@@ -9,6 +9,7 @@ from pathlib import PurePosixPath
 
 
 DOC_EXTENSIONS = {".md", ".rst", ".txt"}
+DOC_ASSET_EXTENSIONS = {".gif", ".jpeg", ".jpg", ".pdf", ".png", ".svg", ".webp"}
 
 
 def changed_files(base_sha: str, head_sha: str) -> list[str]:
@@ -23,9 +24,10 @@ def changed_files(base_sha: str, head_sha: str) -> list[str]:
 
 def is_documentation(path: str) -> bool:
     candidate = PurePosixPath(path)
+    suffix = candidate.suffix.lower()
     if candidate.parts and candidate.parts[0] == "docs":
-        return True
-    return len(candidate.parts) == 1 and candidate.suffix.lower() in DOC_EXTENSIONS
+        return suffix in DOC_EXTENSIONS | DOC_ASSET_EXTENSIONS
+    return len(candidate.parts) == 1 and suffix in DOC_EXTENSIONS
 
 
 def main() -> int:
