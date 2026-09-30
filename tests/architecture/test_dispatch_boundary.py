@@ -7,8 +7,15 @@ def test_dispatch_module_owns_operation_resolution():
     assert callable(dispatch.resolve_operation)
 
 
-def test_gateway_call_delegates_to_dispatch_module():
+def test_gateway_call_delegates_to_execute():
     names = set(Gateway.__call__.__code__.co_names)
+    assert "execute" in names
+    assert "dispatch" not in names
+    assert "process" not in names
+
+
+def test_gateway_execute_owns_dispatch_boundary():
+    names = set(Gateway.execute.__code__.co_names)
     assert "dispatch" in names
     assert "process" not in names
 
