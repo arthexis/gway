@@ -104,6 +104,7 @@ jobs:
     name: Compatibility (Python 3.13)
     env:
       VERSION_PR: ${{ inputs.version_pr || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'version-only')) }}
+      DOCS_PR: ${{ inputs.docs_pr || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'docs-only')) }}
       BASE_SHA: ${{ inputs.base_sha || github.event.pull_request.base.sha || '' }}
       HEAD_SHA: ${{ inputs.head_sha || github.event.pull_request.head.sha || github.sha }}
     runs-on: ubuntu-latest
@@ -117,6 +118,9 @@ jobs:
       - name: Validate version-only PR
         if: env.VERSION_PR == 'true'
         run: python3 .github/scripts/validate_version_only_pr.py "$BASE_SHA" "$HEAD_SHA"
+      - name: Validate docs-only PR
+        if: env.DOCS_PR == 'true'
+        run: python3 .github/scripts/validate_docs_only_pr.py "$BASE_SHA" "$HEAD_SHA"
 
       - uses: actions/setup-python@v7
         if: env.VERSION_PR != 'true' && env.DOCS_PR != 'true'
