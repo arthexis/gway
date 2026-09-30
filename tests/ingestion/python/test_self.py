@@ -16,11 +16,25 @@ def test_gway_can_ingest_itself_without_recursive_expansion(gateway):
 def test_gway_self_ingestion_expands_requested_branches_with_jiti(gateway):
     gateway.ingest(gway)
 
-    resolve_operation(gateway, ["gway", "Gateway", "wrap"])
+    resolve_operation(gateway, ["gway", "Installation", "with_installed_at"])
     resolve_operation(gateway, ["gway", "gw", "chain"])
 
-    assert gateway.ops.resolve("gway.gateway.wrap") is not None
+    assert gateway.ops.resolve("gway.installation.with_installed_at") is not None
     assert gateway.ops.resolve("gway.gw.chain") is not None
+
+
+def test_gway_self_ingestion_concrete_module_shadows_equivalent_class(gateway):
+    gateway.ingest(gway)
+
+    assert gateway.ops.resolve("gway.gateway.wrap") is None
+
+    from gway.dispatch import OperationLookupError
+    import pytest
+
+    with pytest.raises(OperationLookupError):
+        resolve_operation(gateway, ["gway", "Gateway", "wrap"])
+
+    assert gateway.ops.resolve("gway.gateway.wrap") is None
 
 
 def test_gway_self_ingestion_reuses_known_object_identity(gateway):
