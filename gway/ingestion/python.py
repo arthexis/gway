@@ -428,12 +428,7 @@ def ingest_python(gateway, source, *, path=None, **kwargs):
 
     wrapped = []
 
-    has_class_main = (
-        inspect.isclass(source)
-        and callable(getattr(source, _ENTRY_SPECIAL_METHOD, None))
-    )
-
-    if callable(source) and not inspect.isclass(source) and not has_class_main:
+    if callable(source) and not inspect.isclass(source):
         operation = IngestedOperation(
             root,
             source,
@@ -446,7 +441,7 @@ def ingest_python(gateway, source, *, path=None, **kwargs):
             wrapped.append(registered)
 
     for name, child in _public_members(source):
-        if name == "__main__" and callable(child):
+        if name == "__main__" and callable(child) and not inspect.isclass(source):
             child_path = root
             child_record = _remember_child(gateway, child, child_path)
             metadata = {"object": child, "entrypoint": "callable", "owner": source, "attribute": "__main__"}
