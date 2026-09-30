@@ -391,19 +391,14 @@ def test_legacy_consent_page_keeps_decision_controls(tmp_path):
     assert 'name="decision" value="deny"' in page
 
 
-def test_stage_consent_normalizes_legacy_chatgpt_scope_names(tmp_path):
+def test_stale_chatgpt_scope_request_is_not_silently_translated(tmp_path):
     scopes, tokens, oauth, account = _account(tmp_path)
     scopes.create("logs-read")
     issued = tokens.create("operator", scopes={"logs-read"})
     session = account.new_session()
     account.connect(session, csrf=session.csrf, bearer=issued.bearer)
 
-    account.stage_consent(
-        session,
-        "client",
-        {"chatgpt-logs", "chatgpt-actions"},
-    )
+    account.stage_consent(session, "client", {"chatgpt-logs"})
 
-    assert session.pending_scopes == frozenset({"logs-read"})
-    details = account.consent_details(session)
-    assert details["scopes"] == frozenset({"logs-read"})
+    with pytest.raises(PermissionError, match="not available"):
+        account.consent_details(session)
