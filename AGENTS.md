@@ -31,6 +31,27 @@ runtime value with the same parameter name.
 Keep Python responsible for Python control flow and domain logic. Recipes are
 for declaring and composing operations.
 
+## Pull request lifecycle
+
+Use GitHub-native pull request state as the primary workflow signal.
+
+- **Draft** means the change is still being developed, exploratory, or not yet strongly requested. Draft PRs do not need auto-merge enabled by default.
+- **Ready for review** means the implementation is complete enough to merge once repository requirements are satisfied.
+- When marking a PR Ready for review, prefer enabling **native GitHub auto-merge** unless there is a concrete reason to require another manual decision first.
+- Good reasons to leave auto-merge disabled include intentionally provisional work, changes whose final inclusion has not been clearly requested, or a known dependency that needs explicit human confirmation.
+- The **`approved`** label may be used as an informational, human-visible mirror that native auto-merge is enabled. It is not the authorization mechanism and workflows must not depend on the label to trigger or revoke merging.
+- **`on-hold`** is the explicit pause state. A held PR should not remain authorized for native auto-merge.
+- Do not infer merge authorization from historical label conventions. Check the PR's actual native auto-merge state.
+
+The usual completed-work flow is therefore:
+
+```text
+draft/work in progress
+  -> Ready for review
+  -> enable native auto-merge when no strong reason prevents it
+  -> repository protections and CI decide when the merge can occur
+```
+
 ## Running GWAY
 
 Install the package in editable mode:
