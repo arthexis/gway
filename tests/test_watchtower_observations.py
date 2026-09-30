@@ -7,6 +7,16 @@ from gway.watchtower import Controller, DEFAULT_REPOSITORIES
 class FakeGitHub:
     def __init__(self):
         self.calls = []
+        self.job_records = []
+        self.job_log_content = ""
+
+    def jobs(self, repository, run):
+        self.calls.append(("jobs", repository, run))
+        return list(self.job_records)
+
+    def job_logs(self, repository, job):
+        self.calls.append(("job_logs", repository, job))
+        return {"content": self.job_log_content}
 
     def pulls(self, repository, state="open"):
         self.calls.append(("pulls", repository, state))
@@ -144,6 +154,7 @@ def test_watchtower_deploy_status_selects_latest_relevant_run():
             "repository": "arthexis/gway",
             "available": True,
             "problem": False,
+            "failure": None,
             "run_id": 21,
             "name": "Watchtower candidate",
             "event": "push",
@@ -166,6 +177,7 @@ def test_watchtower_deploy_status_handles_no_relevant_run():
 
     assert result[0]["available"] is False
     assert result[0]["problem"] is False
+    assert result[0]["failure"] is None
     assert result[0]["run_id"] is None
 
 
@@ -238,11 +250,40 @@ def test_watchtower_deploy_status_marks_failed_latest_run_as_problem():
         }
     ]
 
+    github.job_records = [
+        {
+            "id": 9001,
+            "name": "Watchtower Deploy",
+            "conclusion": "failure",
+            "steps": [
+                {"name": "Converge public Gway bootstrap", "conclusion": "failure"},
+                {"name": "Restore previous Gway runtime", "conclusion": "success"},
+            ],
+        }
+    ]
+    github.job_log_content = """
+Traceback (most recent call last):
+subprocess.CalledProcessError: Command ('sudo', '/usr/sbin/nginx', '-t') returned non-zero exit status 1.
+##[error]Process completed with exit code 1.
+gway_runtime_rollback=restored
+"""
+
     result = controller.deploy_status("arthexis/arthexis")
 
     assert result[0]["run_id"] == 620
     assert result[0]["conclusion"] == "failure"
     assert result[0]["problem"] is True
+    assert result[0]["failure"]["jobs"] == [
+        {
+            "job_id": 9001,
+            "name": "Watchtower Deploy",
+            "failed_steps": ["Converge public Gway bootstrap"],
+        }
+    ]
+    excerpt = "\n".join(result[0]["failure"]["excerpt"])
+    assert "nginx" in excerpt
+    assert "CalledProcessError" in excerpt
+    assert "exit code 1" in excerpt
 
 
 def test_watchtower_deploy_status_does_not_treat_cancelled_latest_run_as_failure():
@@ -261,3 +302,5 @@ def test_watchtower_deploy_status_does_not_treat_cancelled_latest_run_as_failure
 
     assert result[0]["conclusion"] == "cancelled"
     assert result[0]["problem"] is False
+    assert result[0]["failure"] is None
+    assert not any(call[0] == "jobs" for call in github.calls)
