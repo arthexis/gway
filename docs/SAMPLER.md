@@ -112,7 +112,8 @@ The maintained sampler currently contains these public families.
 | `network/capture` | maintained recipe | bounded network capture composition |
 | `odoo` | capability package | lazy Odoo operation ingestion |
 | `remote/browser` | maintained recipe | remote browser route topology |
-| `watch` | first-class recipe | bounded read-only node snapshot |
+| `survey` | first-class recipe | bounded read-only node snapshot |
+| `watch` | first-class recipe | legacy snapshot compatibility during survey migration |
 | `web/app` | first-class recipe + capability package | generic maintained web application |
 | `web/expose` | maintained recipe | generic web exposure entry point |
 | `web/expose/*` | maintained recipes | HTTP/HTTPS exposure and cleanup |
@@ -137,6 +138,7 @@ maintained recipe resolver where appropriate.
 - `mcp/server`
 - `network/capture`
 - `remote/browser`
+- `survey`
 - `watch`
 - `web/app`
 - `web/expose`
