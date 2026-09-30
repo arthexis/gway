@@ -39,7 +39,7 @@ recipe/deploy
 `gway` identifies GWAY diagnostics. A project identity such as `arthexis`
 is an aggregate over its installed service sources. A concrete service identity
 such as `arthexis/web` resolves through persisted service-install state.
-Direct recipe execution uses `recipe/<stem>`.
+Direct recipe execution uses `recipe/<stem>`. Executed recipe identities are persisted in GWAY's local log-source registry so later `log sources`, implicit broad reads, and `--all` queries can rediscover their durable records across processes. Explicit `recipe/<stem>` lookup remains available lazily for older records created before registration.
 
 With no source argument, `read` queries every readable managed source while
 remaining bounded by its default 100-record limit. `tail` and `search` keep
@@ -212,7 +212,7 @@ The current foundation intentionally does not add:
 - arbitrary structured journal-field queries
 - `log around` or `log stats`
 - offset/page-based log slicing
-- arbitrary subprocess stdout/stderr capture
+- arbitrary subprocess stdout/stderr capture outside GWAY-ingested process operations
 - remote log forwarding
 
 Those can be added independently when a concrete use case requires them.
