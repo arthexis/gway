@@ -715,7 +715,19 @@ def _service_parent_request(runtime, stream, request):
             "error": f"{type(exception).__name__}: {exception}",
             "traceback": traceback.format_exc(),
         }
-    _write_message(stream, response)
+    try:
+        _write_message(stream, response)
+    except TypeError as exception:
+        _write_message(
+            stream,
+            {
+                "type": "response",
+                "id": request_id,
+                "ok": False,
+                "error": f"{type(exception).__name__}: {exception}",
+                "traceback": None,
+            },
+        )
 
 
 def _active_worker(runtime, recipe):
