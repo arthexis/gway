@@ -220,19 +220,35 @@ def _register_matching_first_class_recipe(runtime, tokens, root_path, *, route_n
         name, recipe = match
         from .recipe.operation import register_recipe_operation
 
-        existing = runtime.ops.resolve(name)
-        if existing is not None:
-            return True
-        return (
-            register_recipe_operation(
+        family = (
+            name.split(".", 1)[0]
+            if Path(recipe).name == "__main__.rx"
+            else None
+        )
+        entries = _first_class_recipe_entries(root_path)
+        selected = (
+            [
+                (entry_name, entry_recipe)
+                for entry_name, entry_recipe in entries
+                if entry_name == family or entry_name.startswith(f"{family}.")
+            ]
+            if family is not None
+            else [(name, recipe)]
+        )
+
+        registered = False
+        for entry_name, entry_recipe in selected:
+            if runtime.ops.resolve(entry_name) is not None:
+                continue
+            wrapped = register_recipe_operation(
                 runtime,
-                name,
-                recipe,
+                entry_name,
+                entry_recipe,
                 route_name=route_name,
                 root=root_path,
             )
-            is not None
-        )
+            registered = registered or wrapped is not None
+        return registered or runtime.ops.resolve(name) is not None
     return False
 
 
