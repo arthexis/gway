@@ -112,7 +112,7 @@ if test "$DATABASE_EXISTS" = 1 && test "${ARTHEXIS_BOOTSTRAP_VERIFY_ONLY:-0}" !=
         printf '\nExisting Arthexis database: %s\n' "$ARTHEXIS_DATABASE_PATH" >&3
         printf '%s\n' "The certified source update may require database migrations." >&3
         printf '%s\n' "A SQLite-consistent backup will be created before the update." >&3
-        printf '%s' "Continue with the database update? [y/N] " >&3
+        printf '%s' "Continue with the database update? [[y/N]] " >&3
         answer=""
         IFS= read -r answer <&3 || true
         exec 3>&-
