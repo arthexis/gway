@@ -755,3 +755,66 @@ def test_survey_owns_snapshot_name_without_legacy_watch():
 
     assert "survey" in maintained
     assert "watch" not in maintained
+
+
+def test_survey_problems_surfaces_failed_deployment_transition(tmp_path, monkeypatch):
+    gateway = _role_gateway(tmp_path, monkeypatch, "watchtower")
+
+    class FailedDeployGitHub(FakeGitHub):
+        def runs(self, repository):
+            return [
+                {
+                    "id": 620,
+                    "name": "Watchtower Deploy",
+                    "path": ".github/workflows/watchtower-deploy.yml",
+                    "event": "repository_dispatch",
+                    "status": "completed",
+                    "conclusion": "failure",
+                    "head_sha": "deadbeef",
+                    "head_branch": "main",
+                    "created_at": "2026-09-30T04:31:30Z",
+                    "updated_at": "2026-09-30T04:32:26Z",
+                    "html_url": "https://example.invalid/run/620",
+                }
+            ]
+
+    gateway._github_controller = FailedDeployGitHub()
+
+    result = gateway("survey --only deploy --problems")
+
+    assert set(result) == {"deploy", "health", "changed_at", "cursor"}
+    assert result["deploy"]["status"] == "ok"
+    assert result["deploy"]["result"][0]["run_id"] == 620
+    assert result["deploy"]["result"][0]["problem"] is True
+    assert result["health"]["status"] == "degraded"
+    assert result["health"]["sections"] == {"deploy": "problem"}
+    assert result["health"]["degraded"] == ["deploy"]
+
+
+def test_survey_keeps_failed_deploy_problem_separate_from_current_service_health(
+    tmp_path,
+    monkeypatch,
+):
+    gateway = _role_gateway(tmp_path, monkeypatch, "watchtower")
+
+    class FailedDeployGitHub(FakeGitHub):
+        def runs(self, repository):
+            return [
+                {
+                    "id": 620,
+                    "name": "Watchtower Deploy",
+                    "path": ".github/workflows/watchtower-deploy.yml",
+                    "status": "completed",
+                    "conclusion": "failure",
+                }
+            ]
+
+    gateway._github_controller = FailedDeployGitHub()
+
+    result = gateway("survey --only services,deploy")
+
+    assert result["services"]["status"] == "ok"
+    assert result["deploy"]["status"] == "ok"
+    assert result["health"]["sections"]["services"] == "ok"
+    assert result["health"]["sections"]["deploy"] == "problem"
+    assert result["health"]["status"] == "degraded"
