@@ -25,6 +25,10 @@ on:
         description: Whether version-only is active
         required: false
         type: boolean
+      docs_pr:
+        description: Whether docs-only is active
+        required: false
+        type: boolean
       workflow_pr:
         description: Whether workflow scope is active
         required: false
@@ -47,6 +51,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       VERSION_PR: ${{ inputs.version_pr || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'version-only')) }}
+      DOCS_PR: ${{ inputs.docs_pr || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'docs-only')) }}
       BASE_SHA: ${{ inputs.base_sha || github.event.pull_request.base.sha || '' }}
       HEAD_SHA: ${{ inputs.head_sha || github.event.pull_request.head.sha || github.sha }}
     steps:
@@ -59,17 +64,26 @@ jobs:
       - name: Validate version-only PR
         if: env.VERSION_PR == 'true'
         run: python3 .github/scripts/validate_version_only_pr.py "$BASE_SHA" "$HEAD_SHA"
+      - name: Validate docs-only PR
+        if: env.DOCS_PR == 'true'
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git fetch --no-tags "https://github.com/$GITHUB_REPOSITORY.git" "$BASE_SHA"
+          validator="$RUNNER_TEMP/validate_docs_only_pr.py"
+          git show "$BASE_SHA:.github/scripts/validate_docs_only_pr.py" > "$validator"
+          python3 "$validator" "$BASE_SHA" "$HEAD_SHA"
 
       - uses: actions/setup-python@v7
-        if: env.VERSION_PR != 'true'
+        if: env.VERSION_PR != 'true' && env.DOCS_PR != 'true'
         with:
           python-version: '3.13'
           cache: pip
       - name: Install CI tools
-        if: env.VERSION_PR != 'true'
+        if: env.VERSION_PR != 'true' && env.DOCS_PR != 'true'
         run: python -m pip install --upgrade pip ruff
       - name: Install actionlint
-        if: env.VERSION_PR != 'true'
+        if: env.VERSION_PR != 'true' && env.DOCS_PR != 'true'
         shell: bash
         run: |
           set -Eeuo pipefail
@@ -80,9 +94,9 @@ jobs:
           echo "8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8  ${archive}" | sha256sum --check -
           tar -xzf "${archive}" -C "${RUNNER_TEMP}" actionlint
       - name: Ruff lint
-        if: env.VERSION_PR != 'true'
+        if: env.VERSION_PR != 'true' && env.DOCS_PR != 'true'
         run: python -m ruff check gway tests
       - name: GitHub Actions workflow lint
-        if: env.VERSION_PR != 'true'
+        if: env.VERSION_PR != 'true' && env.DOCS_PR != 'true'
         run: |
           "${RUNNER_TEMP}/actionlint" -shellcheck=
