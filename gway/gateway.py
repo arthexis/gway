@@ -1645,14 +1645,7 @@ class Gateway(Resolver):
 
     def __call__(self, command, *args, **kwargs):
         """Execute a GWAY command while preserving inherited mutation policy."""
-        from .dispatch import dispatch
-
-        outermost = self.execution_depth == 0
-        with self.mutation_scope():
-            result = dispatch(self, command, *args, **kwargs)
-        if outermost and self.execution is not None:
-            return self.execution.present(result)
-        return result
+        return self.execute(command, *args, **kwargs)
 
     def chain(self, command, *args, **kwargs):
         """Create a scoped manual pipeline rooted in an initial command."""

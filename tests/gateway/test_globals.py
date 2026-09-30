@@ -36,3 +36,25 @@ def test_no_mutate_can_only_tighten(gateway):
     with pytest.raises(ValueError):
         gateway.execute('--mutate write', mutate=False)
     assert calls == []
+
+
+@pytest.mark.parametrize('surface', ['execute', '__call__'])
+def test_call_surfaces_share_globals_and_inherited_policy(gateway, surface):
+    call = getattr(gateway, surface)
+    gateway.wrap('probe', lambda: gateway.call_timed)
+    assert call('-j --timed probe') is True
+    assert call('probe') is False
+    gateway.wrap('write', lambda: True)
+    with pytest.raises(MutationError):
+        call('-M write')
+    with gateway.mutation_scope(mutate=False):
+        with pytest.raises(MutationError):
+            call('write')
+    assert gateway.call_timed is False
+
+
+def test_manual_chain_head_accepts_globals(gateway):
+    gateway.wrap('records', lambda: [{'name': 'one'}, {'name': 'two'}])
+    with gateway.chain('-j --timed records') as chain:
+        assert chain('filter --name one') == [{'name': 'one'}]
+    assert gateway.call_timed is False
