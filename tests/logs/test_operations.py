@@ -37,6 +37,7 @@ def catalog_state(tmp_path, monkeypatch):
         ],
     )
     monkeypatch.setattr(operations, "_install_state", lambda: state)
+    monkeypatch.setattr(operations, "recipe_sources", lambda *roots: [])
     monkeypatch.setattr(operations, "_journal_available", lambda: True)
     return state
 
@@ -306,3 +307,43 @@ def test_reader_results_are_globally_sorted_and_limited(
     result = operations.tail("gway", "arthexis/portable", limit=1)
 
     assert [item["message"] for item in result] == ["newer"]
+
+
+def test_persisted_recipe_sources_are_included_in_all_queries(
+    catalog_state,
+    monkeypatch,
+):
+    from gway.logs import LogSource
+
+    monkeypatch.setattr(
+        operations,
+        "recipe_sources",
+        lambda *roots: [
+            LogSource(
+                identity="recipe/watchtower",
+                kind="recipe",
+                backend="journal",
+                backend_id="recipe/watchtower",
+            )
+        ],
+    )
+    captured = {}
+
+    def fake_read(sources, **kwargs):
+        captured["sources"] = list(sources)
+        return []
+
+    monkeypatch.setattr(operations, "read_journal", fake_read)
+
+    operations.search("nginx", all=True)
+
+    assert [source.identity for source in captured["sources"]] == [
+        "arthexis/portable",
+        "arthexis/web",
+        "arthexis/worker",
+        "gway",
+        "recipe/watchtower",
+    ]
+    assert "recipe/watchtower" in [
+        item["identity"] for item in operations.sources()
+    ]
