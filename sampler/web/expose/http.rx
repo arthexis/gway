@@ -1,5 +1,5 @@
 # Prepare plain HTTP reverse proxy and ACME webroot.
-expose normalize site [site]
+expose normalize site key [site]
 ingest [nginx_executable|nginx] --kind proc --sudo
 ingest [mkdir_executable|mkdir] --kind proc --sudo
 
