@@ -79,7 +79,7 @@ def test_oauth_plural_commands_expose_safe_inspection(gateway, tmp_path):
 def test_oauth_grant_bind_updates_live_access_authority(gateway, tmp_path):
     path, tokens, oauth, grant, issued = _oauth_state(gateway, tmp_path)
     scopes = ScopeRegistry(path)
-    scopes.replace("operator-read", operations={"watch", "wire.check"})
+    scopes.replace("operator-read", operations={"survey", "wire.check"})
     tokens.bind("operator", "operator-read")
 
     updated = gateway(
@@ -88,7 +88,7 @@ def test_oauth_grant_bind_updates_live_access_authority(gateway, tmp_path):
 
     assert updated.scopes == frozenset({"logs", "operator-read"})
     assert oauth.authenticate_access(issued.access_token).authority.operations == frozenset(
-        {"watch", "wire.check"}
+        {"survey", "wire.check"}
     )
 
 
