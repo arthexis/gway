@@ -28,13 +28,12 @@ def test_gway_self_ingestion_concrete_module_shadows_equivalent_class(gateway):
 
     assert gateway.ops.resolve("gway.gateway.wrap") is None
 
-    from gway.dispatch import OperationLookupError
-    import pytest
+    resolved, remaining, _ = resolve_operation(gateway, ["gway", "Gateway", "wrap"])
 
-    with pytest.raises(OperationLookupError):
-        resolve_operation(gateway, ["gway", "Gateway", "wrap"])
-
-    assert gateway.ops.resolve("gway.gateway.wrap") is None
+    assert remaining == []
+    assert resolved is gateway.ops.resolve("gway.gateway.wrap")
+    assert resolved is not None
+    assert resolved.__gway_source__ is gway.gateway
 
 
 def test_gway_self_ingestion_reuses_known_object_identity(gateway):
