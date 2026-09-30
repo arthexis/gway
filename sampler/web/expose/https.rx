@@ -17,6 +17,8 @@ render nginx-https-[site].conf
 --to [nginx_available|/etc/nginx/sites-available]/[site]
 --as root
 --rollback web-expose-https
+--validate nginx
+--validator-executable [nginx_executable|nginx]
 
 nginx -t
 nginx -s reload
