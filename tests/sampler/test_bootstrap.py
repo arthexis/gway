@@ -126,16 +126,21 @@ def test_arthexis_roles_share_one_installer_template(sampler_path):
     assert 'ARTHEXIS_DATA_DIR="$ARTHEXIS_DATA_DIR" "$GWAY" arthexis seed' in script
     assert 'ARTHEXIS_BOOTSTRAP_VERIFY_ONLY' in script
     assert 'Arthexis bootstrap verification complete.' in script
-    assert '"$GWAY" service install --environment "ARTHEXIS_DATA_DIR=$ARTHEXIS_DATA_DIR" -- arthexis web' in script
-    assert '"$GWAY" service install --environment "ARTHEXIS_DATA_DIR=$ARTHEXIS_DATA_DIR" -- arthexis worker' in script
-    assert '"$GWAY" service install --environment "ARTHEXIS_DATA_DIR=$ARTHEXIS_DATA_DIR" -- arthexis beat' in script
-    assert '"$GWAY" service restart -- arthexis web' in script
-    assert '"$GWAY" service restart -- arthexis worker' in script
-    assert '"$GWAY" service restart -- arthexis beat' in script
-    assert script.index('ARTHEXIS_DATA_DIR="$ARTHEXIS_DATA_DIR" "$GWAY" arthexis seed') < script.index('"$GWAY" service install --environment "ARTHEXIS_DATA_DIR=$ARTHEXIS_DATA_DIR" -- arthexis web')
-    assert script.index('"$GWAY" service install --environment "ARTHEXIS_DATA_DIR=$ARTHEXIS_DATA_DIR" -- arthexis beat') < script.index('"$GWAY" service restart -- arthexis web')
+    assert '"$GWAY" service install --name web --environment "ARTHEXIS_DATA_DIR=$ARTHEXIS_DATA_DIR" -- arthexis web' in script
+    assert '"$GWAY" service install --name worker --environment "ARTHEXIS_DATA_DIR=$ARTHEXIS_DATA_DIR" -- arthexis worker' in script
+    assert '"$GWAY" service install --name beat --environment "ARTHEXIS_DATA_DIR=$ARTHEXIS_DATA_DIR" -- arthexis beat' in script
+    assert '"$GWAY" service restart --name web -- arthexis web' in script
+    assert '"$GWAY" service restart --name worker -- arthexis worker' in script
+    assert '"$GWAY" service restart --name beat -- arthexis beat' in script
+    assert script.index('ARTHEXIS_DATA_DIR="$ARTHEXIS_DATA_DIR" "$GWAY" arthexis seed') < script.index('"$GWAY" service install --name web --environment "ARTHEXIS_DATA_DIR=$ARTHEXIS_DATA_DIR" -- arthexis web')
+    assert script.index('"$GWAY" service install --name beat --environment "ARTHEXIS_DATA_DIR=$ARTHEXIS_DATA_DIR" -- arthexis beat') < script.index('"$GWAY" service restart --name web -- arthexis web')
     assert "[installer_title]" in script
-    assert "[installer_description]" in script
+    assert "[installer_description]" not in script
+    assert 'Arthexis project: %s' in script
+    assert 'Data directory:   %s' in script
+    assert 'Revision:         %s' in script
+    assert 'Services:         web, worker, beat' in script
+    assert 'gway service statuses --project arthexis' in script
     assert "satellite" not in script.lower()
     assert "control" not in script.lower()
 
@@ -183,8 +188,24 @@ def test_arthexis_bootstrap_persists_data_dir_in_installed_services(sampler_path
 
     for service in ("web", "worker", "beat"):
         command = (
-            '"$GWAY" service install --environment '
-            '"ARTHEXIS_DATA_DIR=$ARTHEXIS_DATA_DIR" -- arthexis '
+            '"$GWAY" service install --name '
+            + service
+            + ' --environment "ARTHEXIS_DATA_DIR=$ARTHEXIS_DATA_DIR" -- arthexis '
             + service
         )
         assert command in script
+
+
+def test_arthexis_bootstrap_uses_distinct_service_identities(sampler_path):
+    script = sampler_path("bootstrap/arthexis.sh").read_text(encoding="utf-8")
+
+    for service in ("web", "worker", "beat"):
+        assert (
+            f'"$GWAY" service install --name {service} '
+            f'--environment "ARTHEXIS_DATA_DIR=$ARTHEXIS_DATA_DIR" -- arthexis {service}'
+            in script
+        )
+        assert (
+            f'"$GWAY" service restart --name {service} -- arthexis {service}'
+            in script
+        )

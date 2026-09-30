@@ -69,13 +69,18 @@ if test "${ARTHEXIS_BOOTSTRAP_VERIFY_ONLY:-0}" = "1"; then
     exit 0
 fi
 
-"$GWAY" service install --environment "ARTHEXIS_DATA_DIR=$ARTHEXIS_DATA_DIR" -- arthexis web
-"$GWAY" service install --environment "ARTHEXIS_DATA_DIR=$ARTHEXIS_DATA_DIR" -- arthexis worker
-"$GWAY" service install --environment "ARTHEXIS_DATA_DIR=$ARTHEXIS_DATA_DIR" -- arthexis beat
+"$GWAY" service install --name web --environment "ARTHEXIS_DATA_DIR=$ARTHEXIS_DATA_DIR" -- arthexis web
+"$GWAY" service install --name worker --environment "ARTHEXIS_DATA_DIR=$ARTHEXIS_DATA_DIR" -- arthexis worker
+"$GWAY" service install --name beat --environment "ARTHEXIS_DATA_DIR=$ARTHEXIS_DATA_DIR" -- arthexis beat
 
-"$GWAY" service restart -- arthexis web
-"$GWAY" service restart -- arthexis worker
-"$GWAY" service restart -- arthexis beat
+"$GWAY" service restart --name web -- arthexis web
+"$GWAY" service restart --name worker -- arthexis worker
+"$GWAY" service restart --name beat -- arthexis beat
 
-printf '%s\n' "[installer_title] installation complete."
-printf '%s\n' "[installer_description]"
+printf '\n%s\n' "[installer_title] installation complete."
+printf '  Arthexis project: %s\n' "$ARTHEXIS_HOME"
+printf '  Data directory:   %s\n' "$ARTHEXIS_DATA_DIR"
+printf '  Revision:         %s\n' "$ARTHEXIS_SHA"
+printf '  Services:         web, worker, beat\n'
+printf '\nUseful command:\n'
+printf '  %s\n' "gway service statuses --project arthexis"

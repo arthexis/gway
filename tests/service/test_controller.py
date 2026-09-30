@@ -13,6 +13,7 @@ from fastmcp import Client
 from fastmcp.client.auth import BearerAuth
 
 from gway import Gateway
+from gway.launchable import Launchable
 from gway.install.service import ServiceInstallRecord, ServiceInstallState
 from gway.sampler import root as sampler_root
 from gway.security.scopes import ScopeRegistry
@@ -103,6 +104,30 @@ def test_service_list_can_filter_presets_by_project():
             "target": "demo.worker",
         }
     ]
+
+
+
+def test_default_service_name_is_relative_to_project_identity(tmp_path):
+    gateway = Gateway()
+    launchable = Launchable.operation(
+        "arthexis.arthexis.web",
+        root=tmp_path,
+        metadata={"project": "arthexis"},
+    )
+
+    assert launchable.name == "arthexis.arthexis.web"
+    assert gateway._service_controller._service_name("arthexis", launchable) == "web"
+
+
+def test_service_metadata_role_wins_over_qualified_launchable_name(tmp_path):
+    gateway = Gateway()
+    launchable = Launchable.operation(
+        "arthexis.internal.worker",
+        root=tmp_path,
+        metadata={"project": "arthexis", "service": "worker"},
+    )
+
+    assert gateway._service_controller._service_name("arthexis", launchable) == "worker"
 
 
 def test_service_inspect_materializes_policy_for_any_operation(service_gateway):
