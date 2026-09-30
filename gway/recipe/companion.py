@@ -1,12 +1,13 @@
 """Out-of-process recipe companion execution using a managed Python environment."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, fields, is_dataclass
 import inspect
 import pickle
 from pathlib import Path
 import struct
 import subprocess
 import threading
+from types import SimpleNamespace
 
 from ..dispatch import resolve_operation
 from ..environment import process_environment
@@ -23,10 +24,18 @@ _WIRE_TAG = "__gway_wire__"
 
 def _wire_encode(value):
     """Reduce a protocol value to dependency-neutral built-in wire types."""
-    if value is None or isinstance(value, (bool, int, float, str)):
-        return value
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        return bool(value)
+    if isinstance(value, int):
+        return int(value)
+    if isinstance(value, float):
+        return float(value)
+    if isinstance(value, str):
+        return str(value)
     if isinstance(value, bytes):
-        return {_WIRE_TAG: "bytes", "hex": value.hex()}
+        return {_WIRE_TAG: "bytes", "hex": bytes(value).hex()}
     if isinstance(value, list):
         return [_wire_encode(item) for item in value]
     if isinstance(value, tuple):
@@ -45,10 +54,32 @@ def _wire_encode(value):
         }
     if isinstance(value, Path):
         return {_WIRE_TAG: "path", "value": str(value)}
-    raise TypeError(
-        "companion protocol value is not transportable: "
-        f"{type(value).__module__}.{type(value).__qualname__}"
-    )
+    if isinstance(value, SimpleNamespace):
+        items = vars(value).items()
+    elif is_dataclass(value) and not isinstance(value, type):
+        items = ((field.name, getattr(value, field.name)) for field in fields(value))
+    else:
+        model_dump = getattr(value, "model_dump", None)
+        if not callable(model_dump):
+            raise TypeError(
+                "companion protocol value is not transportable: "
+                f"{type(value).__module__}.{type(value).__qualname__}"
+            )
+        try:
+            dumped = model_dump(mode="python")
+        except TypeError:
+            dumped = model_dump()
+        if not isinstance(dumped, dict):
+            raise TypeError(
+                "companion protocol record did not produce a mapping: "
+                f"{type(value).__module__}.{type(value).__qualname__}"
+            )
+        items = dumped.items()
+    return {
+        _WIRE_TAG: "record",
+        "type": f"{type(value).__module__}.{type(value).__qualname__}",
+        "attrs": [[str(key), _wire_encode(item)] for key, item in items],
+    }
 
 
 def _wire_decode(value):
@@ -73,6 +104,13 @@ def _wire_decode(value):
         }
     if kind == "path":
         return Path(value["value"])
+    if kind == "record":
+        return SimpleNamespace(
+            **{
+                key: _wire_decode(item)
+                for key, item in value["attrs"]
+            }
+        )
     raise ValueError(f"Unknown companion wire type: {kind!r}")
 
 
@@ -100,7 +138,9 @@ _WORKER = r"""
 import importlib.util
 import inspect
 import pickle
+from dataclasses import fields, is_dataclass
 from pathlib import Path
+from types import SimpleNamespace
 import struct
 import sys
 import traceback
@@ -110,10 +150,18 @@ WIRE_TAG = "__gway_wire__"
 
 
 def wire_encode(value):
-    if value is None or isinstance(value, (bool, int, float, str)):
-        return value
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        return bool(value)
+    if isinstance(value, int):
+        return int(value)
+    if isinstance(value, float):
+        return float(value)
+    if isinstance(value, str):
+        return str(value)
     if isinstance(value, bytes):
-        return {WIRE_TAG: "bytes", "hex": value.hex()}
+        return {WIRE_TAG: "bytes", "hex": bytes(value).hex()}
     if isinstance(value, list):
         return [wire_encode(item) for item in value]
     if isinstance(value, tuple):
@@ -135,10 +183,32 @@ def wire_encode(value):
         }
     if isinstance(value, Path):
         return {WIRE_TAG: "path", "value": str(value)}
-    raise TypeError(
-        "companion protocol value is not transportable: "
-        f"{type(value).__module__}.{type(value).__qualname__}"
-    )
+    if isinstance(value, SimpleNamespace):
+        items = vars(value).items()
+    elif is_dataclass(value) and not isinstance(value, type):
+        items = ((field.name, getattr(value, field.name)) for field in fields(value))
+    else:
+        model_dump = getattr(value, "model_dump", None)
+        if not callable(model_dump):
+            raise TypeError(
+                "companion protocol value is not transportable: "
+                f"{type(value).__module__}.{type(value).__qualname__}"
+            )
+        try:
+            dumped = model_dump(mode="python")
+        except TypeError:
+            dumped = model_dump()
+        if not isinstance(dumped, dict):
+            raise TypeError(
+                "companion protocol record did not produce a mapping: "
+                f"{type(value).__module__}.{type(value).__qualname__}"
+            )
+        items = dumped.items()
+    return {
+        WIRE_TAG: "record",
+        "type": f"{type(value).__module__}.{type(value).__qualname__}",
+        "attrs": [[str(key), wire_encode(item)] for key, item in items],
+    }
 
 
 def wire_decode(value):
@@ -162,6 +232,13 @@ def wire_decode(value):
         }
     if kind == "path":
         return Path(value["value"])
+    if kind == "record":
+        return SimpleNamespace(
+            **{
+                key: wire_decode(item)
+                for key, item in value["attrs"]
+            }
+        )
     raise ValueError(f"Unknown companion wire type: {kind!r}")
 
 
