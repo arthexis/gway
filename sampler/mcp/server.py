@@ -3,7 +3,7 @@
 from contextlib import contextmanager
 import base64
 import json
-from pathlib import Path
+from pathlib import Path  # noqa: F401 - exposed to managed companion probes
 import secrets
 import socket
 import struct
@@ -401,7 +401,9 @@ def gway(command: str):
 
     Use this tool when mutation is required. Combine independent commands with
     semicolons; each published statement contributes its final result, including
-    null when an operation explicitly returns None. Use a dash only when the
+    null when an operation explicitly returns None. Leading -j/--json is
+    idempotent; --timed enables parent diagnostics and --no-mutate narrows policy.
+    Other leading globals are rejected. Use a dash only when the
     next stage should consume the previous raw result. Prefer maintained
     project/node recipes over manually reproducing their internals, investigate
     through query first when mutation is unnecessary, and use help <operation>
@@ -435,6 +437,8 @@ def query(command: str):
     observations with semicolons; each published statement contributes its
     final result, including null when an operation explicitly returns None. Use
     a dash only when the next stage should consume the previous raw result.
+    Leading -j/--json is idempotent; --timed enables parent diagnostics and
+    --no-mutate narrows policy. Other leading globals are rejected.
     Use help <operation> for exact syntax and prefer maintained project/node
     recipes over manually reproducing their internals.
     """

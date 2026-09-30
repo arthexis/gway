@@ -88,3 +88,25 @@ def test_authority_mutation_capability_uses_operation_metadata(gateway):
         gateway,
         {"__all__"},
     ) is True
+
+
+def test_parent_bridge_parses_leading_globals(gateway):
+    stream = BytesIO()
+    with gateway.authorized(
+        operations={'builtins', 'filter', 'version'}, environment=set(),
+    ):
+        companion._service_parent_request(
+            gateway, stream,
+            {
+                'type': 'request', 'id': 'globals', 'method': 'gateway.execute',
+                'params': {
+                    'command': '-j --timed builtins - filter --name version',
+                    'mutate': False,
+                },
+            },
+        )
+    stream.seek(0)
+    response = companion._read_message(stream)
+    assert response['ok'] is True
+    assert [record['name'] for record in response['result']] == ['version']
+    assert gateway.call_timed is False
