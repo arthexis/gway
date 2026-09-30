@@ -7,6 +7,7 @@ import tempfile
 import uuid
 
 from .binding import Literal
+from .engine import validate_text
 from .host import run_as_identity
 from .identity import execution_identity
 from .recipe import recipe_base
@@ -145,7 +146,7 @@ class Renderer:
     def __init__(self, runtime):
         self.runtime = runtime
 
-    def render(self, template: Literal, to, sudo=False, rollback=None, mode=None, **options):
+    def render(\n        self,\n        template: Literal,\n        to,\n        sudo=False,\n        rollback=None,\n        mode=None,\n        validate=None,\n        validator_executable=None,\n        **options,\n    ):
         """Render a sigil-aware text template to an atomic destination.
 
         Args:
