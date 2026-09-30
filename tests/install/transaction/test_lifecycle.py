@@ -498,3 +498,54 @@ def test_product_script_runs_with_product_owned_dependency(
     assert invoke_target(installed.install_path, "arthexis:main") == 42
     assert _product_python(installed.install_path).is_file()
     assert fingerprint(installed.install_path) == installed.fingerprint
+
+
+def test_reinstall_repairs_missing_product_runtime(
+    make_project,
+    managed_paths,
+    monkeypatch,
+):
+    from gway.install.ops import install
+
+    calls = []
+
+    def provision(project, selected):
+        calls.append(Path(project))
+        _fake_product_runtime(project, selected)
+
+    monkeypatch.setattr(transaction, "_provision_product_runtime", provision)
+
+    source = make_project("arthexis", launcher=True)
+    first = install(source, paths=managed_paths)
+    runtime = first.install_path / ".venv"
+    assert _product_python(first.install_path).is_file()
+
+    transaction._remove_path(runtime)
+    assert not _product_python(first.install_path).exists()
+
+    second = install(source, paths=managed_paths)
+
+    assert len(calls) == 2
+    assert second.install_path == first.install_path
+    assert _product_python(second.install_path).is_file()
+    assert fingerprint(second.install_path) == second.fingerprint
+    assert InstallState(managed_paths.state).get("arthexis") == second
+
+
+def test_no_upgrade_still_repairs_missing_product_runtime(
+    make_project,
+    managed_paths,
+    monkeypatch,
+):
+    from gway.install.ops import install
+
+    monkeypatch.setattr(transaction, "_provision_product_runtime", _fake_product_runtime)
+
+    source = make_project("arthexis", launcher=True)
+    first = install(source, paths=managed_paths)
+    transaction._remove_path(first.install_path / ".venv")
+
+    repaired = install(source, paths=managed_paths, upgrade=False)
+
+    assert _product_python(repaired.install_path).is_file()
+    assert fingerprint(repaired.install_path) == repaired.fingerprint
