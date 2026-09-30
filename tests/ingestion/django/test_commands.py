@@ -106,7 +106,7 @@ def test_management_command_passes_noinput_option_to_django(
 
     django_ingestor.ingest_project(gateway, root, name="arthexis")
 
-    result = gateway("migrate arthexis --noinput")
+    result = gateway("arthexis migrate --noinput")
 
     assert result == {
         "command": "migrate",
