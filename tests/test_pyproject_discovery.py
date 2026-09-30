@@ -482,7 +482,7 @@ def test_installed_django_project_prefers_longer_management_command(
     assert calls == [
         (root.resolve(), "migrate", (), {"noinput": True}),
     ]
-    assert gateway.resolve_target("demo", "migrate", "--noinput")["target"] == "demo.migrate"
+    assert gateway.resolve_target("demo", "migrate", "--noinput")["target"] == "demo migrate"
 
 
 def test_installed_django_project_keeps_shorter_script_for_real_arguments(
