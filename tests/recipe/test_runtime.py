@@ -51,3 +51,18 @@ def test_recipe_preserves_published_observation_context_between_statements(tmp_p
     assert output["second"]["status"] == "ok"
     assert output["second"]["result"] == "two"
     assert output["health"]["sections"] == {"first": "ok", "second": "ok"}
+
+
+def test_recipe_execution_registers_durable_log_source(tmp_path, monkeypatch):
+    from gway.logs.registry import recipe_sources
+
+    recipe = tmp_path / "watchtower.rx"
+    recipe.write_text("", encoding="utf-8")
+    runtime = Gateway()
+    monkeypatch.setattr(runtime, "data_root", lambda *args, **kwargs: tmp_path / "data")
+
+    execute_recipe(runtime, recipe)
+
+    assert [source.identity for source in recipe_sources(tmp_path / "data")] == [
+        "recipe/watchtower"
+    ]
