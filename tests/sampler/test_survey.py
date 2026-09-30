@@ -25,6 +25,12 @@ class FakeGitHub:
     def pulls(self, repository, state="open"):
         return []
 
+    def jobs(self, repository, run):
+        return []
+
+    def job_logs(self, repository, job):
+        return {"content": ""}
+
     def runs(self, repository):
         return [
             {
