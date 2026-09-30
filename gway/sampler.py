@@ -192,6 +192,66 @@ def _first_class_recipe_entries(root_path):
     return tuple(entries)
 
 
+def _register_matching_first_class_recipe(runtime, tokens, root_path, *, route_name):
+    """Register the first-class recipe directly named by unresolved tokens."""
+    values = _semantic_values(tokens)
+    if not values:
+        return False
+    # Only fast-path a bare operation name. Commands with additional positional
+    # tokens must retain normal longest-prefix registration so child recipes and
+    # recipe arguments are resolved without being captured by the directory main.
+    raw_tokens = [
+        str(getattr(token, "value", token)).strip()
+        for token in tokens
+        if str(getattr(token, "value", token)).strip()
+    ]
+    if len(raw_tokens) != 1:
+        return False
+
+    candidates = {
+        name.replace(".", "_"): (name, recipe)
+        for name, recipe in _first_class_recipe_entries(root_path)
+    }
+    for size in range(len(values), 0, -1):
+        key = "_".join(values[:size])
+        match = candidates.get(key)
+        if match is None:
+            continue
+        name, recipe = match
+        from .recipe.operation import register_recipe_operation
+
+        family = (
+            name.split(".", 1)[0]
+            if Path(recipe).name == "__main__.rx"
+            else None
+        )
+        entries = _first_class_recipe_entries(root_path)
+        selected = (
+            [
+                (entry_name, entry_recipe)
+                for entry_name, entry_recipe in entries
+                if entry_name == family or entry_name.startswith(f"{family}.")
+            ]
+            if family is not None
+            else [(name, recipe)]
+        )
+
+        registered = False
+        for entry_name, entry_recipe in selected:
+            if runtime.ops.resolve(entry_name) is not None:
+                continue
+            wrapped = register_recipe_operation(
+                runtime,
+                entry_name,
+                entry_recipe,
+                route_name=route_name,
+                root=root_path,
+            )
+            registered = registered or wrapped is not None
+        return registered or runtime.ops.resolve(name) is not None
+    return False
+
+
 def _register_first_class_recipes(runtime, root_path, *, route_name):
     """Register eligible recipe entry points once for one operation route."""
     base = Path(root_path).expanduser().resolve()
@@ -268,6 +328,14 @@ def expand_root(runtime, tokens, root_path, *, route_name="root"):
         return False
 
     base = Path(root_path).expanduser().resolve()
+    if _register_matching_first_class_recipe(
+        runtime,
+        tokens,
+        base,
+        route_name=route_name,
+    ):
+        return True
+
     recipes_registered = _register_first_class_recipes(
         runtime,
         base,

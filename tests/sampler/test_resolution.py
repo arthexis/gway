@@ -124,3 +124,72 @@ def test_semantic_pipeline_operation_shadows_project_bare_recipe(tmp_path, monke
         )
         is None
     )
+
+
+def test_help_resolves_first_class_survey_recipe():
+    runtime = Gateway()
+
+    rendered = runtime._help("survey")
+
+    assert "Survey the current node." in rendered
+    assert runtime.ops.resolve("survey") is not None
+
+
+def test_first_class_survey_resolves_after_other_sampler_discovery():
+    runtime = Gateway()
+
+    resolve_recipe_stage(
+        runtime,
+        tokenize("wire watchtower --public-address 192.0.2.10"),
+        pipeline=None,
+    )
+    rendered = runtime._help("survey")
+
+    assert "Survey the current node." in rendered
+    assert runtime.ops.resolve("survey") is not None
+
+
+def test_first_class_fast_path_does_not_capture_directory_child_recipe(tmp_path, monkeypatch):
+    root = tmp_path / "ops"
+    root.mkdir()
+    (root / "watch").mkdir()
+    (root / "watch" / "__main__.rx").write_text("version\n", encoding="utf-8")
+    (root / "watch" / "service.rx").write_text("version\n", encoding="utf-8")
+
+    runtime = Gateway()
+    runtime.add_operation_root(root)
+
+    calls = []
+
+    def fake_execute(runtime_, path, *, context=None, **kwargs):
+        calls.append(path.name)
+        return [], path.name
+
+    monkeypatch.setattr("gway.recipe.operation.execute_recipe", fake_execute)
+    assert runtime("watch service") == "service.rx"
+    assert calls == ["service.rx"]
+
+
+def test_bare_directory_fast_path_registers_immediate_children(tmp_path, monkeypatch):
+    root = tmp_path / "ops"
+    root.mkdir()
+    family = root / "watch"
+    family.mkdir()
+    (family / "__main__.rx").write_text("version\n", encoding="utf-8")
+    (family / "service.rx").write_text("version\n", encoding="utf-8")
+
+    runtime = Gateway()
+    runtime.add_operation_root(root)
+
+    calls = []
+
+    def fake_execute(runtime_, path, *, context=None, **kwargs):
+        calls.append(path.name)
+        return [], path.name
+
+    monkeypatch.setattr("gway.recipe.operation.execute_recipe", fake_execute)
+
+    assert runtime("watch") == "__main__.rx"
+    assert runtime.ops.resolve("watch.service") is not None
+    assert runtime("watch service") == "service.rx"
+    assert calls == ["__main__.rx", "service.rx"]
