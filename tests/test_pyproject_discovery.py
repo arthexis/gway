@@ -472,17 +472,17 @@ def test_installed_django_project_prefers_longer_management_command(
         expander=gway.config.expand_installed_project,
     )
 
-    result = gateway("demo migrate --no-input")
+    result = gateway("demo migrate --no-interactive")
 
     assert result == {
         "command": "migrate",
         "args": (),
-        "options": {"no_input": True},
+        "options": {"interactive": False},
     }
     assert calls == [
-        (root.resolve(), "migrate", (), {"no_input": True}),
+        (root.resolve(), "migrate", (), {"interactive": False}),
     ]
-    assert gateway.resolve_target("demo", "migrate", "--no-input")["target"] == "demo migrate"
+    assert gateway.resolve_target("demo", "migrate", "--no-interactive")["target"] == "demo migrate"
 
 
 def test_installed_django_project_keeps_shorter_script_for_real_arguments(

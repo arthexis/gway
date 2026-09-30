@@ -8,7 +8,7 @@ install arthexis/arthexis
 
 # Expand the installed Django product and prepare its database.
 arthexis migrate
---no-input
+--no-interactive
 
 arthexis seed
 

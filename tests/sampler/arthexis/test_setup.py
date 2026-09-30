@@ -11,10 +11,10 @@ def test_setup_uses_overrideable_ref_default(recipe_values):
 def test_setup_prepares_django_after_install(recipe_values):
     values = recipe_values("setup.rx")
 
-    assert ["arthexis", "migrate", "--no-input"] in values
+    assert ["arthexis", "migrate", "--no-interactive"] in values
     assert ["arthexis", "seed"] in values
     assert values.index(["arthexis", "seed"]) > values.index(
-        ["arthexis", "migrate", "--no-input"]
+        ["arthexis", "migrate", "--no-interactive"]
     )
 
 
