@@ -90,35 +90,40 @@ def project_scopes(data, *, source=None):
     return published
 
 
-def project_watch(data, *, source=None):
-    """Return validated generic Watch contributors published by one project."""
+def project_survey(data, *, source=None):
+    """Return validated generic Survey contributors published by one project."""
     if not isinstance(data, dict):
         return ()
     tool = data.get("tool")
     gway = tool.get("gway") if isinstance(tool, dict) else None
-    entries = gway.get("watch") if isinstance(gway, dict) else None
+    entries = gway.get("survey") if isinstance(gway, dict) else None
+    legacy_entries = gway.get("watch") if isinstance(gway, dict) else None
+    if entries is not None and legacy_entries is not None:
+        raise ValueError("project cannot declare both [[tool.gway.survey]] and legacy [[tool.gway.watch]]")
+    if entries is None:
+        entries = legacy_entries
     if entries is None:
         return ()
     if not isinstance(entries, list):
-        raise ValueError("[[tool.gway.watch]] must be an array of tables")
+        raise ValueError("[[tool.gway.survey]] must be an array of tables")
 
     contributors = []
     for entry in entries:
         if not isinstance(entry, dict):
-            raise ValueError("watch contributor must be a table")
+            raise ValueError("survey contributor must be a table")
         unknown = set(entry) - {"section", "command"}
         if unknown:
             raise ValueError(
-                "Unknown watch contributor fields: " + ", ".join(sorted(unknown))
+                "Unknown survey contributor fields: " + ", ".join(sorted(unknown))
             )
         section = entry.get("section")
         command = entry.get("command")
         if not isinstance(section, str) or not section.strip():
-            raise ValueError("watch contributor requires a non-empty section")
+            raise ValueError("survey contributor requires a non-empty section")
         if not isinstance(command, list) or not command or any(
             not isinstance(value, str) or not value.strip() for value in command
         ):
-            raise ValueError("watch contributor command must be a non-empty string array")
+            raise ValueError("survey contributor command must be a non-empty string array")
         contributors.append(
             {
                 "section": section.strip(),
@@ -570,13 +575,13 @@ def _publish_project_capabilities(runtime, data, *, source):
             raise ValueError(f"Published security scope collision: {name}")
         scopes[name] = definition
 
-    contributors = list(getattr(runtime, "_watch_contributors", ()))
+    contributors = list(getattr(runtime, "_survey_contributors", ()))
     by_section = {item["section"]: item for item in contributors}
-    for contributor in project_watch(data, source=source):
+    for contributor in project_survey(data, source=source):
         existing = by_section.get(contributor["section"])
         if existing is not None and existing["command"] != contributor["command"]:
             raise ValueError(
-                f"Published Watch section collision: {contributor['section']}"
+                f"Published Survey section collision: {contributor['section']}"
             )
         if existing is None:
             contributors.append(contributor)
@@ -592,7 +597,7 @@ def _discover_installed_capabilities(runtime, installations):
     from . import toml
 
     runtime._published_scopes = {}
-    runtime._watch_contributors = ()
+    runtime._survey_contributors = ()
     for installation in installations:
         project_file = installation.install_path / "pyproject.toml"
         if not project_file.is_file():
