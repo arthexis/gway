@@ -105,7 +105,7 @@ The maintained sampler currently contains these public families.
 
 | Family | Kind | Primary use |
 | --- | --- | --- |
-| `arthexis/*` | maintained recipes | Arthexis setup, exposure, cleanup, and interactive operations |
+| `arthexis/*` | maintained recipes | Arthexis setup, exposure, and cleanup operations |
 | `bootstrap/watchtower` | maintained recipe | bootstrap/expose Watchtower infrastructure |
 | `ci` | first-class recipe | repository/project CI entry point |
 | `mcp/*` | recipes + capability package | local/remote MCP serving and acceptance |
@@ -128,7 +128,6 @@ maintained recipe resolver where appropriate.
 - `arthexis/dns-cleanup`
 - `arthexis/dns-expose`
 - `arthexis/expose`
-- `arthexis/interactive`
 - `arthexis/setup`
 - `bootstrap/watchtower`
 - `ci`
@@ -145,7 +144,6 @@ maintained recipe resolver where appropriate.
 - `web/expose/cleanup`
 - `web/expose/dns-http`
 - `web/expose/expose`
-- `web/expose/godaddy-setup`
 - `web/expose/http`
 - `web/expose/https`
 - `web/remote/cleanup-http`
@@ -286,7 +284,6 @@ Maintained web exposure recipes include:
 - `web/expose/cleanup`
 - `web/expose/cleanup-http`
 - `web/expose/dns-http`
-- `web/expose/godaddy-setup`
 
 They compose generic process/render/filesystem/DNS operations to establish and
 remove Nginx/ACME/TLS exposure. Nginx configuration files in the same directory
@@ -329,7 +326,6 @@ The Arthexis sampler family contains maintained deployment compositions:
 - `arthexis/cleanup`
 - `arthexis/dns-expose`
 - `arthexis/dns-cleanup`
-- `arthexis/interactive`
 
 These are product-oriented maintained recipes that compose generic Gway
 operations. Arthexis domain behavior remains in the Arthexis product rather
