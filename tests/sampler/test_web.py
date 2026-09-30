@@ -1,5 +1,6 @@
 from pathlib import Path
 
+from gway.publication import publish
 from gway.recipe import recipe_path
 
 def test_web_expose_sampler_is_not_builtin(gateway):
@@ -28,7 +29,7 @@ def test_web_expose_http_bootstraps_acme_and_nginx(recipe_commands):
     rendered = recipe_commands("web/expose/http.rx")
 
     assert rendered[:3] == [
-        "expose normalize site [site] --as site_key",
+        "expose normalize site [site]",
         "ingest [nginx_executable|nginx] --kind proc --sudo",
         "ingest [mkdir_executable|mkdir] --kind proc --sudo",
     ]
@@ -45,7 +46,7 @@ def test_web_expose_https_uses_certbot_webroot_before_tls_render(recipe_commands
     rendered = recipe_commands("web/expose/https.rx")
 
     assert rendered[:3] == [
-        "expose normalize site [site] --as site_key",
+        "expose normalize site [site]",
         "ingest [nginx_executable|nginx] --kind proc --sudo",
         "ingest [certbot_executable|certbot] --kind proc --sudo",
     ]
@@ -283,10 +284,24 @@ def test_web_expose_normalizes_site_for_nginx_identifiers(sampler_path):
     namespace = runpy.run_path(str(sampler_path("web/expose/expose.py")))
     normalize_site = namespace["normalize_site"]
 
-    assert normalize_site("arthexis.com") == "arthexis_com"
-    assert normalize_site("my-site") == "my_site"
-    assert normalize_site("9site") == "_9site"
-    assert normalize_site("site_name") == "site_name"
+    assert normalize_site("arthexis.com") == {"site_key": "arthexis_com"}
+    assert normalize_site("my-site") == {"site_key": "my_site"}
+    assert normalize_site("9site") == {"site_key": "_9site"}
+    assert normalize_site("site_name") == {"site_key": "site_name"}
+
+
+def test_web_expose_normalize_site_publishes_site_key_to_context(
+    sampler_path, gateway
+):
+    import runpy
+
+    namespace = runpy.run_path(str(sampler_path("web/expose/expose.py")))
+    result = namespace["normalize_site"]("register-arthexis-com")
+
+    publish(gateway, "expose.normalize.site", result)
+
+    assert result == {"site_key": "register_arthexis_com"}
+    assert gateway.context["site_key"] == "register_arthexis_com"
 
 
 def test_web_expose_rate_limit_identifiers_use_normalized_site_key(sampler_path):
