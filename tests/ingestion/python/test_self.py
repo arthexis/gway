@@ -7,9 +7,9 @@ def test_gway_can_ingest_itself_without_recursive_expansion(gateway):
     wrapped = gateway.ingest(gway)
 
     assert wrapped == []
-    assert gateway.ops.resolve("gway.Gateway") is not None
+    assert gateway.ops.resolve("gway.gateway") is None
     assert gateway.ops.resolve("gway.gw") is not None
-    assert gateway.ops.resolve("gway.Gateway.wrap") is None
+    assert gateway.ops.resolve("gway.gateway.wrap") is None
     assert gateway.ops.resolve("gway.gw.chain") is None
 
 
@@ -19,7 +19,7 @@ def test_gway_self_ingestion_expands_requested_branches_with_jiti(gateway):
     resolve_operation(gateway, ["gway", "Gateway", "wrap"])
     resolve_operation(gateway, ["gway", "gw", "chain"])
 
-    assert gateway.ops.resolve("gway.Gateway.wrap") is not None
+    assert gateway.ops.resolve("gway.gateway.wrap") is not None
     assert gateway.ops.resolve("gway.gw.chain") is not None
 
 
