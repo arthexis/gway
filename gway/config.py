@@ -533,6 +533,62 @@ def load_project_main_packages(
 
     return wrapped
 
+def _project_management_callable(root, command, *, supports_no_mutate=False):
+    """Return a project-runtime Django management command callable."""
+    from .project import invoke_management_command
+
+    if supports_no_mutate:
+        def invoke(*args, mutate=False, **options):
+            options = dict(options)
+            options["mutate"] = mutate
+            return invoke_management_command(root, command, *args, **options)
+    else:
+        def invoke(*args, **options):
+            return invoke_management_command(root, command, *args, **options)
+
+    invoke.__name__ = str(command)
+    invoke.__doc__ = (
+        f"Run Django management command {command!r} inside the project runtime."
+    )
+    return invoke
+
+
+def load_project_management_commands(runtime, root, project):
+    """Expose Django management commands discovered in a project-owned runtime."""
+    from .ingestion.base import IngestedOperation, register_operation
+    from .project import project_management_commands
+
+    root = Path(root).expanduser().resolve()
+    discovered = project_management_commands(root)
+    wrapped = []
+    for command, metadata in sorted(discovered.items()):
+        supports_no_mutate = bool(
+            isinstance(metadata, dict)
+            and metadata.get("supports_no_mutate")
+        )
+        callable_ = _project_management_callable(
+            root,
+            command,
+            supports_no_mutate=supports_no_mutate,
+        )
+        operation = IngestedOperation(
+            (project, command),
+            callable_,
+            source=root,
+            kind="django-command",
+            aliases=(f"{command}.{project}",),
+            op=command,
+            sub=project,
+            metadata={
+                "project": project,
+                "root": root,
+                "command": command,
+            },
+        )
+        wrapped.append(register_operation(runtime, operation))
+    return wrapped
+
+
 def expand_installed_project(runtime, installation, *, path=None):
     """Load one installed project's conventional execution surface once."""
     record = remember_object(
@@ -557,6 +613,14 @@ def expand_installed_project(runtime, installation, *, path=None):
             qualified=True,
         )
     )
+    if (Path(installation.install_path) / "manage.py").is_file():
+        loaded.extend(
+            load_project_management_commands(
+                runtime,
+                installation.install_path,
+                installation.name,
+            )
+        )
     record.expanded = True
     return loaded
 
