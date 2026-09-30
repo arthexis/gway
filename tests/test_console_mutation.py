@@ -50,3 +50,21 @@ def test_cli_no_mutate_reaches_compatible_callable(gateway):
 
     assert _run_cli(None, _args(mutation_policy=False), ["inspect"], runtime=gateway) == 0
     assert seen == [False]
+
+
+
+def test_cli_silent_consumes_lazy_stream(gateway):
+    consumed = []
+
+    def stream():
+        def generate():
+            consumed.append("started")
+            yield "one"
+            consumed.append("finished")
+
+        return generate()
+
+    gateway.stream = gateway.wrap("stream", stream)
+
+    assert _run_cli(None, _args(), ["stream"], runtime=gateway) == 0
+    assert consumed == ["started", "finished"]
