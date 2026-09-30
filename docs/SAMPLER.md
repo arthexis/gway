@@ -113,7 +113,6 @@ The maintained sampler currently contains these public families.
 | `odoo` | capability package | lazy Odoo operation ingestion |
 | `remote/browser` | maintained recipe | remote browser route topology |
 | `survey` | first-class recipe | bounded read-only node snapshot |
-| `watch` | first-class recipe | legacy snapshot compatibility during survey migration |
 | `web/app` | first-class recipe + capability package | generic maintained web application |
 | `web/expose` | maintained recipe | generic web exposure entry point |
 | `web/expose/*` | maintained recipes | HTTP/HTTPS exposure and cleanup |
@@ -139,7 +138,6 @@ maintained recipe resolver where appropriate.
 - `network/capture`
 - `remote/browser`
 - `survey`
-- `watch`
 - `web/app`
 - `web/expose`
 - `web/expose/cleanup-http`
@@ -210,7 +208,6 @@ The recipe does not branch on transport.
 nested operation, and the overall first-class operation can be measured without
 changing the survey result.
 
-`watch` remains a temporary compatibility spelling for this snapshot during the migration tracked in #1311. New callers, scopes, documentation, and integrations should use `survey`; the compatibility surface will be removed before `watch` is reused for persistent monitoring.
 
 ### `ci`
 
