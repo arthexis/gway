@@ -1,7 +1,25 @@
+import os
+from pathlib import Path
+import subprocess
+import sys
+import venv
+
 import pytest
 
 from gway.install import InstallRequest, InstallState, UninstallRequest
 import gway.install.transaction as transaction
+from gway.install.source import fingerprint
+from gway.project import invoke_target
+
+
+def _fake_product_runtime(project, selected):
+    project = Path(project)
+    environment = project / ".venv"
+    venv.EnvBuilder(with_pip=False).create(environment)
+
+
+def _product_python(project):
+    return Path(project) / ".venv" / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
 
 
 def test_local_install_stages_copy_and_records_managed_project(
@@ -296,9 +314,11 @@ def test_install_recovery_restores_previous_project_when_launcher_rollback_fails
 def test_public_install_classifies_external_project_as_product(
     make_project,
     managed_paths,
+    monkeypatch,
 ):
     from gway.install.ops import install
 
+    monkeypatch.setattr(transaction, "_provision_product_runtime", _fake_product_runtime)
     source = make_project("arthexis", launcher=True)
     installed = install(source, paths=managed_paths)
 
@@ -321,7 +341,9 @@ def test_gway_project_remains_extension(make_project, managed_paths):
 def test_forced_kind_migration_replaces_matching_existing_product_target(
     make_project,
     managed_paths,
+    monkeypatch,
 ):
+    monkeypatch.setattr(transaction, "_provision_product_runtime", _fake_product_runtime)
     source = make_project("arthexis")
     extension = transaction.install_local(
         InstallRequest(str(source), kind="extension"),
@@ -347,7 +369,9 @@ def test_forced_kind_migration_replaces_matching_existing_product_target(
 def test_kind_migration_rejects_existing_product_target_without_force(
     make_project,
     managed_paths,
+    monkeypatch,
 ):
+    monkeypatch.setattr(transaction, "_provision_product_runtime", _fake_product_runtime)
     source = make_project("arthexis")
     transaction.install_local(
         InstallRequest(str(source), kind="extension"),
@@ -366,7 +390,9 @@ def test_kind_migration_rejects_existing_product_target_without_force(
 def test_forced_kind_migration_rejects_different_project_target(
     make_project,
     managed_paths,
+    monkeypatch,
 ):
+    monkeypatch.setattr(transaction, "_provision_product_runtime", _fake_product_runtime)
     source = make_project("arthexis")
     transaction.install_local(
         InstallRequest(str(source), kind="extension"),
@@ -381,3 +407,94 @@ def test_forced_kind_migration_rejects_different_project_target(
             InstallRequest(str(source), kind="product", force=True),
             paths=managed_paths,
         )
+
+
+def test_product_runtime_uses_uv_to_install_project_dependencies(
+    make_project,
+    managed_paths,
+    monkeypatch,
+    tmp_path,
+):
+    project = make_project("arthexis", launcher=True)
+    uv = tmp_path / "uv"
+    uv.write_text("", encoding="utf-8")
+    calls = []
+
+    monkeypatch.setattr("gway.recipe.uv.ensure_uv", lambda **kwargs: uv)
+
+    def run(command, *, cwd, check):
+        calls.append((tuple(command), Path(cwd), check))
+        if command[1:] == ["venv", ".venv"]:
+            python = _product_python(cwd)
+            python.parent.mkdir(parents=True)
+            python.write_text("", encoding="utf-8")
+        return subprocess.CompletedProcess(command, 0)
+
+    monkeypatch.setattr(transaction.subprocess, "run", run)
+
+    transaction._provision_product_runtime(project, managed_paths)
+
+    python = _product_python(project)
+    assert calls == [
+        ((str(uv), "venv", ".venv"), project, True),
+        (
+            (str(uv), "pip", "install", "--python", str(python), "."),
+            project,
+            True,
+        ),
+    ]
+
+
+def test_product_virtualenv_does_not_count_as_source_drift(make_project):
+    project = make_project("arthexis")
+    before = fingerprint(project)
+
+    generated = project / ".venv" / "lib" / "python" / "site-packages"
+    generated.mkdir(parents=True)
+    (generated / "celery.py").write_text("VALUE = 1\n", encoding="utf-8")
+
+    assert fingerprint(project) == before
+
+
+def test_product_script_runs_with_product_owned_dependency(
+    make_project,
+    managed_paths,
+    monkeypatch,
+):
+    from gway.install.ops import install
+
+    source = make_project("arthexis", launcher=True)
+    package = source / "arthexis" / "__init__.py"
+    package.write_text(
+        "import product_dependency\n"
+        "def main():\n"
+        "    return product_dependency.VALUE\n",
+        encoding="utf-8",
+    )
+
+    def provision(project, selected):
+        _fake_product_runtime(project, selected)
+        python = _product_python(project)
+        probe = subprocess.run(
+            [
+                str(python),
+                "-c",
+                "import site; print(site.getsitepackages()[0])",
+            ],
+            check=True,
+            stdout=subprocess.PIPE,
+            text=True,
+        )
+        site_packages = Path(probe.stdout.strip())
+        (site_packages / "product_dependency.py").write_text(
+            "VALUE = 42\n",
+            encoding="utf-8",
+        )
+
+    monkeypatch.setattr(transaction, "_provision_product_runtime", provision)
+
+    installed = install(source, paths=managed_paths)
+
+    assert invoke_target(installed.install_path, "arthexis:main") == 42
+    assert _product_python(installed.install_path).is_file()
+    assert fingerprint(installed.install_path) == installed.fingerprint
