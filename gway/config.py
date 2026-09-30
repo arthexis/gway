@@ -552,6 +552,9 @@ def _project_management_callable(root, command, *, mutate_default=None):
             return invoke_management_command(root, command, *args, **options)
     else:
         def invoke(*args, **options):
+            options = dict(options)
+            if options.pop("no_interactive", False):
+                options["interactive"] = False
             return invoke_management_command(root, command, *args, **options)
 
     invoke.__name__ = str(command)
