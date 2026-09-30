@@ -19,7 +19,6 @@ _IGNORED_PARTS = frozenset(
         ".ruff_cache",
     }
 )
-_IGNORED_ROOTS = frozenset({"var"})
 
 
 def named_source(value):
@@ -61,7 +60,7 @@ def project_metadata(root):
 
 
 def project_name(root):
-    """Read the required [project].name from standard Python project metadata."""
+    """Read the required [project].name from standard project metadata."""
     metadata = project_metadata(root)
     data = load_metadata(metadata)
     project = data.get("project") if isinstance(data, dict) else None
@@ -76,17 +75,11 @@ def project_name(root):
 
 def _ignored(path, root):
     relative = path.relative_to(root)
-    if relative.parts and relative.parts[0] in _IGNORED_ROOTS:
-        return True
     return any(part in _IGNORED_PARTS for part in relative.parts)
 
 
 def fingerprint(root):
-    """Return a stable source fingerprint for one local project tree.
-
-    Top-level ``var/`` is reserved for mutable runtime state and intentionally
-    excluded from managed-source identity, alongside virtualenvs and tool caches.
-    """
+    """Return a stable content fingerprint for one local project tree."""
     root = local_source(root)
     value = hashlib.sha256()
 
