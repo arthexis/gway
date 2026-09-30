@@ -83,3 +83,8 @@ def validate_definitions(gateway, definitions):
         )
         results.append(require_valid_scope(gateway, scope))
     return tuple(results)
+
+
+def validate_published(gateway):
+    """Validate runtime-published semantic scopes before durable convergence."""
+    return validate_definitions(gateway, getattr(gateway, "_published_scopes", {}))
