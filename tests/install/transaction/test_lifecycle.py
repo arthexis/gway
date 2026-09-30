@@ -683,3 +683,26 @@ def test_product_dependencies_read_pep621_runtime_requirements(make_project):
         "celery==5.5.3",
         "Django==5.2.12",
     )
+
+
+def test_fallback_metadata_reads_product_dependencies(monkeypatch, tmp_path):
+    from gway.install import metadata
+
+    project = tmp_path / "pyproject.toml"
+    project.write_text(
+        "[project]\n"
+        "name = 'demo'\n"
+        "dependencies = ['celery==5.5.3', 'Django==5.2.12']\n",
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(metadata.toml, "load", lambda path: (_ for _ in ()).throw(
+        ModuleNotFoundError("No module named 'tomli'", name="tomli")
+    ))
+
+    data = metadata.load(project)
+
+    assert data["project"]["dependencies"] == [
+        "celery==5.5.3",
+        "Django==5.2.12",
+    ]
