@@ -107,22 +107,26 @@ def test_read_expands_project_to_readable_members(catalog_state, monkeypatch):
     assert "SECRET" not in result[0]
 
 
-def test_zero_source_read_returns_catalog_without_reading(catalog_state, monkeypatch):
-    monkeypatch.setattr(
-        operations,
-        "read_journal",
-        lambda *args, **kwargs: pytest.fail("journal should not be read"),
-    )
+def test_zero_source_read_reads_all_managed_sources(catalog_state, monkeypatch):
+    captured = {}
+
+    def fake_read(sources, **kwargs):
+        captured["sources"] = list(sources)
+        captured["kwargs"] = kwargs
+        return []
+
+    monkeypatch.setattr(operations, "read_journal", fake_read)
 
     result = operations.read()
 
-    assert [item["identity"] for item in result] == [
-        "gway",
-        "arthexis",
+    assert result == []
+    assert [source.identity for source in captured["sources"]] == [
         "arthexis/portable",
         "arthexis/web",
         "arthexis/worker",
+        "gway",
     ]
+    assert captured["kwargs"]["limit"] == 100
 
 
 def test_all_explicitly_selects_all_managed_sources(catalog_state, monkeypatch):
