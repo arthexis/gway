@@ -1,15 +1,15 @@
 import runpy
 
 
-def test_gway_bootstrap_excludes_obsolete_release_during_rollout(sampler_path):
+def test_gway_bootstrap_requires_active_release_line(sampler_path):
     script = sampler_path("bootstrap/gway.sh").read_text(encoding="utf-8")
 
     assert script.startswith("#!/bin/sh\n# GWAY_BOOTSTRAP_V1\n")
     assert "uv/install.sh" in script
-    assert 'tool install --force --upgrade "gway!=1.0.*"' in script
+    assert 'tool install --force --upgrade "gway>=1.1,<2"' in script
+    assert "gway!=1.0.*" not in script
     assert "gway<1" not in script
     assert 'tool install --force --upgrade gway' not in script
-    assert "gway!=1.0.1" not in script
     assert "git+https://github.com/arthexis/gway" not in script
     assert "tool install --upgrade gway" not in script
 
@@ -97,6 +97,14 @@ def test_arthexis_roles_share_one_installer_template(sampler_path):
     assert '"$GWAY" install arthexis/arthexis' in script
     assert '"$GWAY" arthexis migrate --noinput' in script
     assert '"$GWAY" arthexis seed' in script
+    assert '"$GWAY" service install -- arthexis web' in script
+    assert '"$GWAY" service install -- arthexis worker' in script
+    assert '"$GWAY" service install -- arthexis beat' in script
+    assert '"$GWAY" service restart -- arthexis web' in script
+    assert '"$GWAY" service restart -- arthexis worker' in script
+    assert '"$GWAY" service restart -- arthexis beat' in script
+    assert script.index('"$GWAY" arthexis seed') < script.index('"$GWAY" service install -- arthexis web')
+    assert script.index('"$GWAY" service install -- arthexis beat') < script.index('"$GWAY" service restart -- arthexis web')
     assert "[installer_title]" in script
     assert "[installer_description]" in script
     assert "satellite" not in script.lower()
