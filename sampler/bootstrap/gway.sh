@@ -16,9 +16,31 @@ else
     fi
 fi
 
-# Install only from the active Gway lineage. Older package-index releases can
-# otherwise satisfy a loose constraint and silently replace a current install.
-"$UV" tool install --force --upgrade "gway>=1.1,<2"
+# Install the exact Gway revision certified by Watchtower instead of depending
+# on PyPI publication. The accepted manifest pins the Gway/Arthexis pair that
+# was successfully deployed together.
+CERTIFIED_MANIFEST_URL="https://raw.githubusercontent.com/arthexis/arthexis/watchtower-state/.watchtower/accepted.json"
+MANIFEST="$(mktemp)"
+trap 'rm -f "$MANIFEST"' EXIT
+curl -fsSL "$CERTIFIED_MANIFEST_URL" -o "$MANIFEST"
+
+GWAY_SHA="$(
+    sed -n 's/.*"gway_sha"[[:space:]]*:[[:space:]]*"\([0-9a-f]\{40\}\)".*/\1/p' "$MANIFEST" |
+        head -n 1
+)"
+if test "${#GWAY_SHA}" -ne 40; then
+    echo "gway bootstrap: accepted Watchtower manifest has no valid gway_sha" >&2
+    exit 1
+fi
+case "$GWAY_SHA" in
+    *[!0-9a-f]*)
+        echo "gway bootstrap: accepted Watchtower manifest has an invalid gway_sha" >&2
+        exit 1
+        ;;
+esac
+
+GWAY_SOURCE="git+https://github.com/arthexis/gway.git@$GWAY_SHA"
+"$UV" tool install --force --upgrade "$GWAY_SOURCE"
 
 # Persist uv's configured tool executable directory for future shells before
 # exposing it to this child process. A piped shell cannot mutate its parent.
@@ -39,4 +61,4 @@ else
 fi
 
 "$GWAY" --help >/dev/null
-echo "gway bootstrap: installation verified"
+echo "gway bootstrap: installation verified ($GWAY_SHA)"
