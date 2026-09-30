@@ -1,5 +1,6 @@
 """Gateway-bound opaque security token commands."""
 
+from . import semantics as scope_semantics
 from .tokens import TokenRegistry
 
 
@@ -38,6 +39,16 @@ class Controller:
             return (values,)
         return values
 
+    @staticmethod
+    def _resolution_payload(resolution):
+        return {
+            "terms": sorted(resolution.terms),
+            "exact_scopes": list(resolution.exact_scopes),
+            "conjunction": list(resolution.conjunction),
+            "matched_scopes": list(resolution.scopes),
+            "operations": sorted(resolution.operations),
+        }
+
     def create(self, name, *scopes, expires=None, union=None):
         """Issue a token with exact scopes and optional union-scope authority."""
         return self._registry(converge=True).create(
@@ -50,6 +61,40 @@ class Controller:
     def show(self, name, *, mutate=True):
         """Return safe metadata for one named token."""
         return self.registry.require(name, readonly=not mutate)
+
+    def inspect(self, name, *, mutate=True):
+        """Show exact, union, matched, and effective authority for one token."""
+        registry = self._registry(converge=mutate)
+        token = registry.require(name, readonly=not mutate)
+        leaves = registry.scopes.all(readonly=not mutate)
+        exact = registry.scopes.resolve(token.scopes, readonly=not mutate)
+        union_resolutions = tuple(
+            scope_semantics.resolve(leaves, union_terms)
+            for union_terms in sorted(token.union_scopes)
+        )
+        matched = sorted(
+            {
+                scope
+                for resolution in union_resolutions
+                for scope in resolution.scopes
+            }
+        )
+        operations = set(exact.operations)
+        for resolution in union_resolutions:
+            operations.update(resolution.operations)
+        return {
+            "name": token.name,
+            "public_id": token.public_id,
+            "disabled": token.disabled,
+            "exact_scopes": sorted(token.scopes),
+            "union_scopes": [
+                self._resolution_payload(resolution)
+                for resolution in union_resolutions
+            ],
+            "matched_scopes": matched,
+            "effective_operations": sorted(operations),
+            "effective_environment": sorted(exact.environment),
+        }
 
     def list(self, *, mutate=True):
         """Return safe metadata for all named tokens."""
