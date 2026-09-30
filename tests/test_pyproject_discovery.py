@@ -405,3 +405,174 @@ def test_gateway_bootstrap_awaits_async_project_script(tmp_path, monkeypatch):
     runtime = Gateway()
 
     assert runtime("probe value") == "async:value"
+
+
+def test_installed_django_project_prefers_longer_management_command(
+    gateway,
+    tmp_path,
+    monkeypatch,
+):
+    import gway.config
+    import gway.project
+    from gway.ingestion.base import remember_object
+
+    root = tmp_path / "demo"
+    root.mkdir()
+    (root / "pyproject.toml").write_text(
+        '[project]\nname = "demo"\n[project.scripts]\n'
+        'demo = "demo:main"\n',
+        encoding="utf-8",
+    )
+    (root / "demo.py").write_text(
+        "import sys\n"
+        "def main():\n"
+        "    return tuple(sys.argv[1:])\n",
+        encoding="utf-8",
+    )
+    (root / "manage.py").write_text(
+        'import os\n'
+        'os.environ.setdefault("DJANGO_SETTINGS_MODULE", "demo.settings")\n',
+        encoding="utf-8",
+    )
+
+    calls = []
+
+    monkeypatch.setattr(
+        gway.project,
+        "project_management_commands",
+        lambda project: {
+            "migrate": {"supports_no_mutate": False},
+            "status": {"supports_no_mutate": True},
+        },
+    )
+
+    def invoke_management(project, command, *args, **options):
+        calls.append((Path(project), command, args, options))
+        return {
+            "command": command,
+            "args": args,
+            "options": options,
+        }
+
+    monkeypatch.setattr(
+        gway.project,
+        "invoke_management_command",
+        invoke_management,
+    )
+
+    installation = SimpleNamespace(name="demo", install_path=root)
+    gateway._script_owners = {"demo": ("demo",)}
+    remember_object(
+        gateway,
+        installation,
+        ("demo",),
+        expander=gway.config.expand_installed_project,
+    )
+
+    result = gateway("demo migrate --noinput")
+
+    assert result == {
+        "command": "migrate",
+        "args": (),
+        "options": {"noinput": True},
+    }
+    assert calls == [
+        (root.resolve(), "migrate", (), {"noinput": True}),
+    ]
+    assert gateway.resolve_target("demo migrate --noinput")["target"] == "demo.migrate"
+
+
+def test_installed_django_project_keeps_shorter_script_for_real_arguments(
+    gateway,
+    tmp_path,
+    monkeypatch,
+):
+    import gway.config
+    import gway.project
+    from gway.ingestion.base import remember_object
+
+    root = tmp_path / "demo"
+    root.mkdir()
+    (root / "pyproject.toml").write_text(
+        '[project]\nname = "demo"\n[project.scripts]\n'
+        'demo = "demo:main"\n',
+        encoding="utf-8",
+    )
+    (root / "demo.py").write_text(
+        "import sys\n"
+        "def main():\n"
+        "    return tuple(sys.argv[1:])\n",
+        encoding="utf-8",
+    )
+    (root / "manage.py").write_text(
+        'import os\n'
+        'os.environ.setdefault("DJANGO_SETTINGS_MODULE", "demo.settings")\n',
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(
+        gway.project,
+        "project_management_commands",
+        lambda project: {"migrate": {"supports_no_mutate": False}},
+    )
+
+    installation = SimpleNamespace(name="demo", install_path=root)
+    gateway._script_owners = {"demo": ("demo",)}
+    remember_object(
+        gateway,
+        installation,
+        ("demo",),
+        expander=gway.config.expand_installed_project,
+    )
+
+    assert gateway("demo passthrough") == ("passthrough",)
+
+
+def test_installed_django_read_command_preserves_non_mutating_contract(
+    gateway,
+    tmp_path,
+    monkeypatch,
+):
+    import gway.config
+    import gway.project
+    from gway.ingestion.base import remember_object
+
+    root = tmp_path / "demo"
+    root.mkdir()
+    (root / "pyproject.toml").write_text(
+        '[project]\nname = "demo"\n',
+        encoding="utf-8",
+    )
+    (root / "manage.py").write_text(
+        'import os\n'
+        'os.environ.setdefault("DJANGO_SETTINGS_MODULE", "demo.settings")\n',
+        encoding="utf-8",
+    )
+
+    calls = []
+    monkeypatch.setattr(
+        gway.project,
+        "project_management_commands",
+        lambda project: {"status": {"supports_no_mutate": True}},
+    )
+
+    def invoke_management(project, command, *args, **options):
+        calls.append((command, options))
+        return "ok"
+
+    monkeypatch.setattr(
+        gway.project,
+        "invoke_management_command",
+        invoke_management,
+    )
+
+    installation = SimpleNamespace(name="demo", install_path=root)
+    remember_object(
+        gateway,
+        installation,
+        ("demo",),
+        expander=gway.config.expand_installed_project,
+    )
+
+    assert gateway.execute("demo status", mutate=False) == "ok"
+    assert calls == [("status", {"mutate": False})]
