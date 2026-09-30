@@ -10,6 +10,7 @@ def _args(*, mutation_policy=MUTATE_UNSET):
         recipe=None,
         silent=True,
         json=False,
+        output=None,
         mutation_policy=mutation_policy,
     )
 
