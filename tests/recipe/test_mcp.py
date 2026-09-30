@@ -168,7 +168,7 @@ def test_mcp_stdio_transport_lists_tools_and_survives_authorization_error(
     ):
         tools, first, error, second, mutated = gateway("mcpstdio server")
 
-    assert tools == ["gway", "query"]
+    assert tools == ["gway", "query", "tail"]
     assert first == "ok"
     assert "Operation is not authorized: denied" in error
     assert second == "ok"
@@ -550,15 +550,15 @@ def test_mcp_http_token_registry_acceptance_shares_one_server(
     with gateway.authorized(operations={"mcphttp.server"}):
         allowed, denied, concurrent, status, challenge = gateway("mcphttp server")
 
-    assert allowed == (["gway", "query"], "ok", None)
-    assert denied[0] == ["gway", "query"]
+    assert allowed == (["gway", "query", "tail"], "ok", None)
+    assert denied[0] == ["gway", "query", "tail"]
     assert denied[1] is None
     assert "Operation is not authorized: denied" in denied[2]
     assert "Invalid bearer token" not in denied[2]
 
     assert concurrent == [
-        (["gway", "query"], "alpha-ok", None),
-        (["gway", "query"], "beta-ok", None),
+        (["gway", "query", "tail"], "alpha-ok", None),
+        (["gway", "query", "tail"], "beta-ok", None),
     ]
 
     assert status == 401
@@ -770,14 +770,14 @@ def test_mcp_oauth_http_acceptance_shares_one_server(
         reader_result, log_result = gateway("mcpoauth server")
 
     allowed, trusted_only = reader_result
-    assert allowed == (["gway", "query"], "ok", None)
-    assert trusted_only[0] == ["gway", "query"]
+    assert allowed == (["gway", "query", "tail"], "ok", None)
+    assert trusted_only[0] == ["gway", "query", "tail"]
     assert trusted_only[1] is None
     assert "Operation is not authorized: clear" in trusted_only[2]
     assert "401" not in trusted_only[2]
 
     tools, result = log_result
-    assert tools == ["query"]
+    assert tools == ["query", "tail"]
     assert [item["message"] for item in result] == ["timeout waiting for charger"]
     assert "GWAY_SECRET" not in repr(result)
 
