@@ -21,7 +21,7 @@ _SIGIL = re.compile(r"\[([A-Za-z_][A-Za-z0-9_]*)(?:\|([^\]]*))?\]")
 def _render_nginx_template(source: str, tmp_path: Path) -> str:
     values = {
         "domain": "example.test",
-        "site": "example-test",
+        "site": "example_test",
         "site_key": "example_test",
         "acme_webroot": str(tmp_path / "acme"),
         "root": str(tmp_path / "www"),
