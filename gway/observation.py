@@ -243,10 +243,10 @@ class Controller:
 
         published_envelopes = {}
         if _enabled(published):
-            for contributor in getattr(self.gateway, "_watch_contributors", ()):
+            for contributor in getattr(self.gateway, "_survey_contributors", ()):
                 name = str(contributor["section"])
                 if name in names or name in published_envelopes:
-                    raise ValueError(f"Watch section collision: {name}")
+                    raise ValueError(f"Survey section collision: {name}")
                 observed = self.observe(
                     *contributor["command"],
                     section=name,
