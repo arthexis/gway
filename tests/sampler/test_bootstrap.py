@@ -63,6 +63,9 @@ def test_watchtower_bootstrap_recipe_owns_installer_site_dns_and_tls(recipe_comm
         command.startswith("render nginx-https-[site].conf")
         for command in commands
     )
+    assert "--rollback gway-bootstrap" in rendered
+    assert commands.count("nginx -t") == 2
+    assert commands.count("nginx -s reload") == 2
     assert commands[-1] == "commit gway-bootstrap"
 
 

@@ -66,6 +66,9 @@ def execute_recipe(
 
     stack.append(path)
     source_identity = recipe_identity(path.stem)
+    from ..logs.registry import register_recipe_source
+
+    register_recipe_source(source_identity, root=runtime.data_root())
     frames = getattr(runtime, "_recipe_frames", None)
     if frames is None:
         frames = []
