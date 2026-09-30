@@ -1,3 +1,4 @@
+import logging
 import subprocess
 
 import pytest
@@ -129,3 +130,109 @@ def test_explicit_relative_process_path_becomes_stable_absolute_path(
 
     assert result.argv[0] == str(tool)
     assert result.stdout.strip() == str(tool)
+
+
+def test_process_success_logs_bounded_diagnostics(caplog, tmp_path):
+    tool = tmp_path / "ok"
+    tool.write_text("#!/bin/sh\necho hello\necho warning >&2\n", encoding="utf-8")
+    tool.chmod(0o755)
+    runtime = Gateway()
+    runtime.ingest(str(tool), kind="proc")
+
+    with caplog.at_level(logging.INFO, logger="gway"):
+        runtime("ok")
+
+    messages = [record.getMessage() for record in caplog.records]
+    assert any("[proc] event=start tool=ok" in message for message in messages)
+    success = next(message for message in messages if "[proc] event=success tool=ok" in message)
+    assert "returncode=0" in success
+    assert "stdout='hello'" in success
+    assert "stderr='warning'" in success
+
+
+def test_process_failure_logs_stderr_and_preserves_exception(caplog, tmp_path):
+    tool = tmp_path / "bad-log"
+    tool.write_text("#!/bin/sh\necho nginx-detail >&2\nexit 9\n", encoding="utf-8")
+    tool.chmod(0o755)
+    runtime = Gateway()
+    runtime.ingest(str(tool), kind="proc")
+
+    with caplog.at_level(logging.ERROR, logger="gway"):
+        with pytest.raises(subprocess.CalledProcessError) as error:
+            runtime("bad-log")
+
+    assert error.value.returncode == 9
+    failure = next(
+        record.getMessage()
+        for record in caplog.records
+        if "[proc] event=failure tool=bad-log" in record.getMessage()
+    )
+    assert "returncode=9" in failure
+    assert "stderr='nginx-detail'" in failure
+
+
+def test_process_logs_redact_sensitive_arguments(caplog, tmp_path):
+    tool = tmp_path / "safe"
+    tool.write_text("#!/bin/sh\necho ok\n", encoding="utf-8")
+    tool.chmod(0o755)
+    runtime = Gateway()
+    runtime.ingest(str(tool), kind="proc")
+
+    with caplog.at_level(logging.INFO, logger="gway"):
+        runtime("safe --token super-secret --url https://user:pass@example.com/path?token=x")
+
+    combined = "\n".join(record.getMessage() for record in caplog.records)
+    assert "super-secret" not in combined
+    assert "user:pass" not in combined
+    assert "?token=x" not in combined
+    assert "<redacted>" in combined
+
+
+def test_process_logs_redact_authorization_header_arguments(caplog, tmp_path):
+    tool = tmp_path / "header-safe"
+    tool.write_text("#!/bin/sh\necho ok\n", encoding="utf-8")
+    tool.chmod(0o755)
+    runtime = Gateway()
+    runtime.ingest(str(tool), kind="proc")
+
+    with caplog.at_level(logging.INFO, logger="gway"):
+        runtime("header-safe --header 'Authorization: Bearer abc123'")
+
+    combined = "\n".join(record.getMessage() for record in caplog.records)
+    assert "abc123" not in combined
+    assert "Bearer" not in combined
+    assert "Authorization: <redacted>" in combined
+
+
+def test_process_logs_redact_complete_authorization_output(caplog, tmp_path):
+    tool = tmp_path / "output-safe"
+    tool.write_text(
+        "#!/bin/sh\necho 'Authorization: Bearer abc123' >&2\nexit 2\n",
+        encoding="utf-8",
+    )
+    tool.chmod(0o755)
+    runtime = Gateway()
+    runtime.ingest(str(tool), kind="proc")
+
+    with caplog.at_level(logging.ERROR, logger="gway"):
+        with pytest.raises(subprocess.CalledProcessError):
+            runtime("output-safe")
+
+    combined = "\n".join(record.getMessage() for record in caplog.records)
+    assert "abc123" not in combined
+    assert "Bearer" not in combined
+    assert "Authorization: <redacted>" in combined
+
+
+def test_process_logging_never_rejects_malformed_url_argument(caplog, tmp_path):
+    tool = tmp_path / "url-safe"
+    tool.write_text("#!/bin/sh\nprintf '%s\\n' \"$1\"\n", encoding="utf-8")
+    tool.chmod(0o755)
+    runtime = Gateway()
+    runtime.ingest(str(tool), kind="proc")
+
+    malformed = "https://example.com:abc/path"
+    with caplog.at_level(logging.INFO, logger="gway"):
+        result = runtime(f"url-safe {malformed}")
+
+    assert result.stdout.strip() == malformed

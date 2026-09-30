@@ -3,10 +3,15 @@
 from dataclasses import dataclass
 from pathlib import Path
 import os
+import re
+import shlex
 import shutil
 import subprocess
+import time
+from urllib.parse import urlsplit, urlunsplit
 
 from ..identity import execution_identity
+from .. import log
 from .base import IngestedOperation, normalize_path, register_operation, remember_object
 
 
@@ -18,6 +23,101 @@ class ProcessResult:
     returncode: int
     stdout: str
     stderr: str
+
+
+_DIAGNOSTIC_LIMIT = 4000
+_SENSITIVE_OPTION_RE = re.compile(
+    r"(?:authorization|cookie|credential|password|passwd|secret|token|api[-_]?key|"
+    r"private[-_]?key|signature)",
+    re.I,
+)
+_SENSITIVE_ASSIGNMENT_RE = re.compile(
+    r"(?i)\b(cookie|credential|password|passwd|secret|token|"
+    r"api[-_]?key|private[-_]?key|signature)\s*[:=]\s*([^\s&]+)"
+)
+_AUTHORIZATION_RE = re.compile(
+    r"(?im)\bauthorization\s*:\s*[^\r\n]*"
+)
+
+
+def _bounded(value, *, limit=_DIAGNOSTIC_LIMIT):
+    text = "" if value is None else str(value)
+    text = text.strip()
+    if len(text) <= limit:
+        return text
+    return text[-limit:] + "...<truncated>"
+
+
+def _safe_url(value):
+    try:
+        parsed = urlsplit(str(value))
+    except ValueError:
+        return str(value)
+    if not parsed.scheme or not parsed.netloc:
+        return str(value)
+    try:
+        host = parsed.hostname or ""
+        port = parsed.port
+    except ValueError:
+        return str(value)
+    if port is not None:
+        host = f"{host}:{port}"
+    return urlunsplit((parsed.scheme, host, parsed.path, "", ""))
+
+
+def _redact_text(value):
+    text = _bounded(value)
+    if not text:
+        return ""
+    text = _AUTHORIZATION_RE.sub("Authorization: <redacted>", text)
+    text = _SENSITIVE_ASSIGNMENT_RE.sub(lambda m: f"{m.group(1)}=<redacted>", text)
+    return text
+
+
+def _safe_command(command):
+    safe = []
+    redact_next = False
+    for raw in command:
+        value = str(raw)
+        if redact_next:
+            safe.append("<redacted>")
+            redact_next = False
+            continue
+        if value.startswith("--"):
+            name, sep, assigned = value.partition("=")
+            if _SENSITIVE_OPTION_RE.search(name):
+                if sep:
+                    safe.append(f"{name}=<redacted>")
+                else:
+                    safe.append(name)
+                    redact_next = True
+                continue
+        safe.append(_redact_text(_safe_url(value)))
+    return tuple(safe)
+
+
+def _log_process(event, command, *, tool, returncode=None, stdout="", stderr="", elapsed=None):
+    fields = [
+        "[proc]",
+        f"event={event}",
+        f"tool={tool}",
+        f"argv={shlex.join(_safe_command(command))}",
+    ]
+    if returncode is not None:
+        fields.append(f"returncode={returncode}")
+    if elapsed is not None:
+        fields.append(f"elapsed={elapsed:.6f}s")
+    safe_stdout = _redact_text(stdout)
+    safe_stderr = _redact_text(stderr)
+    if safe_stdout:
+        fields.append(f"stdout={safe_stdout!r}")
+    if safe_stderr:
+        fields.append(f"stderr={safe_stderr!r}")
+    message = " ".join(fields)
+    if event == "failure":
+        log.error(message)
+    else:
+        log.info(message)
 
 
 def _option_argv(options):
@@ -51,11 +151,35 @@ def _callable(executable, *, as_user=None):
             *_option_argv(options),
         ]
         command = identity.command(*argv)
-        completed = subprocess.run(
+        tool = Path(executable).name
+        started = time.perf_counter()
+        _log_process("start", command, tool=tool)
+        try:
+            completed = subprocess.run(
+                command,
+                check=True,
+                text=True,
+                capture_output=True,
+            )
+        except subprocess.CalledProcessError as exc:
+            _log_process(
+                "failure",
+                command,
+                tool=tool,
+                returncode=exc.returncode,
+                stdout=exc.stdout,
+                stderr=exc.stderr,
+                elapsed=time.perf_counter() - started,
+            )
+            raise
+        _log_process(
+            "success",
             command,
-            check=True,
-            text=True,
-            capture_output=True,
+            tool=tool,
+            returncode=completed.returncode,
+            stdout=completed.stdout,
+            stderr=completed.stderr,
+            elapsed=time.perf_counter() - started,
         )
         return ProcessResult(
             argv=tuple(command),
