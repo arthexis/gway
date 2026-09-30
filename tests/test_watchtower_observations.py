@@ -143,6 +143,7 @@ def test_watchtower_deploy_status_selects_latest_relevant_run():
         {
             "repository": "arthexis/gway",
             "available": True,
+            "problem": False,
             "run_id": 21,
             "name": "Watchtower candidate",
             "event": "push",
@@ -164,6 +165,7 @@ def test_watchtower_deploy_status_handles_no_relevant_run():
     result = controller.deploy_status("arthexis/gway")
 
     assert result[0]["available"] is False
+    assert result[0]["problem"] is False
     assert result[0]["run_id"] is None
 
 
@@ -216,3 +218,46 @@ role = "watchtower"
         "node.watchtower.release.status",
     ):
         assert gateway.ops.resolve(name).mutates is False
+
+
+def test_watchtower_deploy_status_marks_failed_latest_run_as_problem():
+    controller, github = _controller()
+    github.runs = lambda repository: [
+        {
+            "id": 620,
+            "name": "Watchtower Deploy",
+            "path": ".github/workflows/watchtower-deploy.yml",
+            "event": "repository_dispatch",
+            "status": "completed",
+            "conclusion": "failure",
+            "head_sha": "deadbeef",
+            "head_branch": "main",
+            "created_at": "2026-09-30T04:31:30Z",
+            "updated_at": "2026-09-30T04:32:26Z",
+            "html_url": "https://example.invalid/run/620",
+        }
+    ]
+
+    result = controller.deploy_status("arthexis/arthexis")
+
+    assert result[0]["run_id"] == 620
+    assert result[0]["conclusion"] == "failure"
+    assert result[0]["problem"] is True
+
+
+def test_watchtower_deploy_status_does_not_treat_cancelled_latest_run_as_failure():
+    controller, github = _controller()
+    github.runs = lambda repository: [
+        {
+            "id": 621,
+            "name": "Watchtower Deploy",
+            "path": ".github/workflows/watchtower-deploy.yml",
+            "status": "completed",
+            "conclusion": "cancelled",
+        }
+    ]
+
+    result = controller.deploy_status("arthexis/arthexis")
+
+    assert result[0]["conclusion"] == "cancelled"
+    assert result[0]["problem"] is False
