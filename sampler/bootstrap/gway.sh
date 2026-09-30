@@ -24,10 +24,7 @@ MANIFEST="$(mktemp)"
 trap 'rm -f "$MANIFEST"' EXIT
 curl -fsSL "$CERTIFIED_MANIFEST_URL" -o "$MANIFEST"
 
-GWAY_SHA="$(
-    sed -n 's/.*"gway_sha"[[:space:]]*:[[:space:]]*"\([0-9a-f]\{40\}\)".*/\1/p' "$MANIFEST" |
-        head -n 1
-)"
+GWAY_SHA="$(awk -F'"' '/"gway_sha"/ { print $4; exit }' "$MANIFEST")"
 if test "${#GWAY_SHA}" -ne 40; then
     echo "gway bootstrap: accepted Watchtower manifest has no valid gway_sha" >&2
     exit 1
