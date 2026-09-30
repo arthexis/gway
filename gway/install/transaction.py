@@ -118,6 +118,28 @@ def _product_python(project):
     )
 
 
+def _product_runtime_ready(project, selected):
+    """Return whether a product runtime has an interpreter and consistent packages."""
+    from ..recipe.uv import ensure_uv
+
+    python = _product_python(project)
+    if not python.is_file():
+        return False
+
+    uv = ensure_uv(
+        system=selected.scope == "system",
+        root=selected.root,
+    )
+    result = subprocess.run(
+        [str(uv), "pip", "check", "--python", str(python)],
+        cwd=project,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        check=False,
+    )
+    return result.returncode == 0
+
+
 def _provision_product_runtime(project, selected):
     """Create an isolated runtime and install one product with its dependencies."""
     from ..recipe.uv import ensure_uv
@@ -339,7 +361,8 @@ def install_materialized(
                 )
 
         runtime_ready = (
-            request.kind != "product" or _product_python(destination).is_file()
+            request.kind != "product"
+            or _product_runtime_ready(destination, selected)
         )
         same = (
             not kind_changed
@@ -407,15 +430,31 @@ def install_materialized(
     backup = None
     activated = False
     try:
-        if request.kind == "product":
-            _provision_product_runtime(stage, selected)
-
         if destination.exists() or destination.is_symlink():
             backup = destination_root / (f".{name}.replace-{uuid.uuid4().hex}")
             os.replace(destination, backup)
 
         os.replace(stage, destination)
         activated = True
+
+        if request.kind == "product":
+            try:
+                _provision_product_runtime(destination, selected)
+            except Exception as primary:
+                if destination.exists() or destination.is_symlink():
+                    _attempt_recovery(
+                        primary,
+                        "failed product removal",
+                        lambda: _remove_path(destination),
+                    )
+                if backup is not None and (backup.exists() or backup.is_symlink()):
+                    _attempt_recovery(
+                        primary,
+                        "previous product restoration",
+                        lambda: os.replace(backup, destination),
+                    )
+                activated = False
+                raise
 
         record = _record_for(
             source_identity,
