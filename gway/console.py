@@ -8,6 +8,7 @@ import json
 import sys
 from .gateway import Gateway
 from .mutation import MUTATE_UNSET
+from .normalization import MissingArgumentError
 from .recipe import execute_recipe, parse_recipe_context
 from .dispatch import dispatch_program
 from .tokens import statements
@@ -275,7 +276,7 @@ def cli_main():
     with gway_log.output_scope(**log_kwargs):
         try:
             return _run_cli(parser, args, unknown, runtime=runtime)
-        except LookupError as exception:
+        except (LookupError, MissingArgumentError) as exception:
             if args.debug:
                 raise
             print(f"gway: {exception}", file=sys.stderr)
