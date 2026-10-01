@@ -9,7 +9,12 @@ except ModuleNotFoundError:
 
 from . import semantics as scope_semantics
 from .scopes import Scope, ScopeRegistry
-from .validation import require_valid_scope, validate_definitions, validate_scope
+from .validation import (
+    require_valid_scope,
+    validate_definitions,
+    validate_published,
+    validate_scope,
+)
 
 
 __all__ = ()
@@ -67,6 +72,18 @@ class Controller:
                 else sorted(authority.environment)
             ),
         }
+
+    def converge(self, *, retire_missing=True):
+        """Validate and atomically converge all currently published scopes."""
+        from .defaults import converge_scope_registry
+
+        validate_published(self.gateway)
+        return converge_scope_registry(
+            self.registry,
+            getattr(self.gateway, "_published_scopes", {}),
+            retire_missing=retire_missing,
+            report=True,
+        )
 
     def rename(self, name, new_name):
         """Rename one scope while preserving grants and bearer bindings."""

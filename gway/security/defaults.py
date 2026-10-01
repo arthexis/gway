@@ -1,5 +1,7 @@
 """Canonical Gway-owned security scope definitions."""
 
+from .publication import normalize_publications
+
 
 CORE_SCOPE_DEFINITIONS = {
     "full-access": {
@@ -87,43 +89,145 @@ CORE_SCOPE_DEFINITIONS = {
 CORE_SCOPE_NAMES = frozenset(CORE_SCOPE_DEFINITIONS)
 
 
-def converge_scope_registry(registry, published=(), *, retire_missing=True):
-    """Converge Gway-owned and product-published scopes into one registry."""
-    published = dict(published)
-    for name, definition in CORE_SCOPE_DEFINITIONS.items():
-        registry.replace_owned(
-            name,
-            owner="gway",
-            operations=definition["operations"],
-            environment=definition["environment"],
-            semantic_terms=definition.get("semantic_terms", ()),
-            allow_claim_unowned=True,
+def _definition_signature(scope):
+    return (
+        scope.owner,
+        scope.operations,
+        scope.environment,
+        scope.semantic_terms,
+    )
+
+
+def _replace_owned(connection, registry, name, definition, *, owner):
+    """Replace one owned scope using an existing convergence transaction."""
+    row = connection.execute(
+        "SELECT id, owner FROM scopes WHERE name = ?",
+        (name,),
+    ).fetchone()
+    if row is None:
+        connection.execute(
+            "INSERT INTO scopes (name, owner) VALUES (?, ?)",
+            (name, owner),
+        )
+        row = connection.execute(
+            "SELECT id, owner FROM scopes WHERE name = ?",
+            (name,),
+        ).fetchone()
+    elif row["owner"] is None:
+        connection.execute(
+            "UPDATE scopes SET owner = ? WHERE id = ?",
+            (owner, row["id"]),
+        )
+    elif row["owner"] != owner:
+        raise ValueError(
+            f"Security scope {name} is owned by {row['owner']}, not {owner}"
         )
 
-    active_product_names = set()
-    for name, definition in sorted(published.items()):
+    scope_id = row["id"]
+    operations = registry._grants(definition.get("operations", ()), label="operation")
+    environment = registry._grants(definition.get("environment", ()), label="environment")
+    semantic_terms = registry._semantic_terms(definition.get("semantic_terms", ()))
+    connection.execute("DELETE FROM scope_operations WHERE scope_id = ?", (scope_id,))
+    connection.execute("DELETE FROM scope_environment WHERE scope_id = ?", (scope_id,))
+    connection.execute("DELETE FROM scope_semantic_terms WHERE scope_id = ?", (scope_id,))
+    connection.executemany(
+        "INSERT INTO scope_operations (scope_id, operation) VALUES (?, ?)",
+        ((scope_id, operation) for operation in sorted(operations)),
+    )
+    connection.executemany(
+        "INSERT INTO scope_environment (scope_id, variable_name) VALUES (?, ?)",
+        ((scope_id, variable) for variable in sorted(environment)),
+    )
+    connection.executemany(
+        "INSERT INTO scope_semantic_terms (scope_id, term) VALUES (?, ?)",
+        ((scope_id, term) for term in sorted(semantic_terms)),
+    )
+
+
+def converge_scope_registry(
+    registry,
+    published=(),
+    *,
+    retire_missing=True,
+    report=False,
+):
+    """Atomically converge Gway-owned and externally published scopes."""
+    published = normalize_publications(published)
+    for name, publication in published.items():
         if name in CORE_SCOPE_NAMES:
             raise ValueError(f"Published security scope shadows Gway core scope: {name}")
-        source = str(definition.get("source") or "").strip()
-        if not source:
-            raise ValueError(f"Published security scope {name} has no publisher source")
-        owner = f"project:{source}"
-        registry.replace_owned(
-            name,
-            owner=owner,
-            operations=definition.get("operations", ()),
-            environment=definition.get("environment", ()),
-            semantic_terms=definition.get("semantic_terms", ()),
-            allow_claim_unowned=True,
-        )
-        active_product_names.add(name)
+        publication.owner  # validate provenance before opening the transaction
 
-    if retire_missing:
-        registry.remove_owned_missing(
-            owner_prefix="project:",
-            active_names=active_product_names,
-        )
-    return {
+    desired = {
+        name: ("gway", definition)
+        for name, definition in CORE_SCOPE_DEFINITIONS.items()
+    }
+    desired.update(
+        {
+            name: (publication.owner, publication.as_definition())
+            for name, publication in published.items()
+        }
+    )
+    active_product_names = set(published)
+
+    with registry.state.connect() as connection:
+        before_rows = connection.execute(
+            "SELECT id, name, owner FROM scopes ORDER BY name"
+        ).fetchall()
+        before = {
+            row["name"]: registry._row_scope(connection, row)
+            for row in before_rows
+        }
+
+        for name, (owner, definition) in sorted(desired.items()):
+            _replace_owned(connection, registry, name, definition, owner=owner)
+
+        retired = []
+        if retire_missing:
+            rows = connection.execute(
+                "SELECT name FROM scopes WHERE owner LIKE 'project:%'"
+            ).fetchall()
+            for row in rows:
+                name = row["name"]
+                if name in active_product_names:
+                    continue
+                connection.execute("DELETE FROM scopes WHERE name = ?", (name,))
+                retired.append(name)
+
+        after_rows = connection.execute(
+            "SELECT id, name, owner FROM scopes ORDER BY name"
+        ).fetchall()
+        after = {
+            row["name"]: registry._row_scope(connection, row)
+            for row in after_rows
+        }
+
+    result = {
         **CORE_SCOPE_DEFINITIONS,
-        **published,
+        **{name: publication.as_definition() for name, publication in published.items()},
+    }
+    if not report:
+        return result
+
+    added = sorted(name for name in desired if name not in before and name in after)
+    updated = sorted(
+        name
+        for name in desired
+        if name in before
+        and name in after
+        and _definition_signature(before[name]) != _definition_signature(after[name])
+    )
+    unchanged = sorted(
+        name
+        for name in desired
+        if name in before
+        and name in after
+        and _definition_signature(before[name]) == _definition_signature(after[name])
+    )
+    return {
+        "added": added,
+        "updated": updated,
+        "retired": sorted(retired),
+        "unchanged": unchanged,
+        "scopes": sorted(desired),
     }
