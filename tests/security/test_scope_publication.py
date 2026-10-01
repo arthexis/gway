@@ -11,6 +11,7 @@ def test_pyproject_scopes_adapt_to_normalized_publications():
                 "scopes": {
                     "demo-read": {
                         "operations": ["demo.status"],
+                        "environment": [],
                         "semantic_terms": ["Demo", "read"],
                     }
                 }
