@@ -11,6 +11,9 @@ from gway.security.django_publication import (
 )
 
 
+_UNSET = object()
+
+
 class DjangoScopeHarness:
     """Build minimal owned Django surfaces for scope-publication contracts."""
 
@@ -49,7 +52,7 @@ class DjangoScopeHarness:
         return app
 
     @staticmethod
-    def operation(app, name, *, mutates):
+    def operation(app, name, *, mutates=_UNSET, kind="django-model"):
         meta = SimpleNamespace(app_config=app)
         model = type("Model", (), {"_meta": meta})
 
@@ -57,11 +60,12 @@ class DjangoScopeHarness:
             return None
 
         invoke.__gway_source__ = model
-        invoke.__gway_source_kind__ = "django-model"
-        invoke.mutates = mutates
+        invoke.__gway_source_kind__ = kind
+        if mutates is not _UNSET:
+            invoke.mutates = mutates
         return SimpleNamespace(name=name, callable=invoke)
 
-    def command(self, name, *, mutates):
+    def command(self, name, *, mutates=_UNSET):
         def invoke():
             return None
 
@@ -72,7 +76,8 @@ class DjangoScopeHarness:
             "command": name,
             "settings": self.mount.settings,
         }
-        invoke.mutates = mutates
+        if mutates is not _UNSET:
+            invoke.mutates = mutates
         return SimpleNamespace(name=f"{self.mount.name}.{name}", callable=invoke)
 
     def records(self, *records):
@@ -103,7 +108,30 @@ def test_scope_identity_is_derived_from_product_and_app(tmp_path, app_label):
     assert scope.source == f"django:demo:{app_label}"
 
 
-def test_mutation_contract_partitions_operations_into_read_and_write(django_scope):
+@pytest.mark.parametrize(
+    ("mutates", "expected_leaf"),
+    [
+        (False, "demo-widgets-read"),
+        (True, "demo-widgets-write"),
+        (_UNSET, "demo-widgets-write"),
+    ],
+)
+def test_mutation_contract_selects_authority_leaf(
+    django_scope,
+    mutates,
+    expected_leaf,
+):
+    django_scope.records(
+        django_scope.operation(django_scope.app, "widgets.operation", mutates=mutates),
+    )
+
+    scopes = django_scope.scopes()
+
+    assert list(scopes) == [expected_leaf]
+    assert scopes[expected_leaf].operations == frozenset({"widgets.operation"})
+
+
+def test_read_and_write_operations_are_partitioned_without_overlap(django_scope):
     django_scope.records(
         django_scope.operation(django_scope.app, "widgets.list", mutates=False),
         django_scope.operation(django_scope.app, "widgets.create", mutates=True),
@@ -114,6 +142,19 @@ def test_mutation_contract_partitions_operations_into_read_and_write(django_scop
     assert set(scopes) == {"demo-widgets-read", "demo-widgets-write"}
     assert scopes["demo-widgets-read"].operations == frozenset({"widgets.list"})
     assert scopes["demo-widgets-write"].operations == frozenset({"widgets.create"})
+
+
+def test_non_django_operation_never_enters_django_authority(django_scope):
+    django_scope.records(
+        django_scope.operation(
+            django_scope.app,
+            "widgets.list",
+            mutates=False,
+            kind="python-callable",
+        ),
+    )
+
+    assert django_scope.scopes() == {}
 
 
 def test_app_outside_project_root_does_not_publish_authority(django_scope, tmp_path):
@@ -132,6 +173,7 @@ def test_app_outside_project_root_does_not_publish_authority(django_scope, tmp_p
     [
         ("inspect_widgets", False, "demo-widgets-read"),
         ("sync_widgets", True, "demo-widgets-write"),
+        ("unknown_widgets", _UNSET, "demo-widgets-write"),
     ],
 )
 def test_management_command_uses_owned_app_and_mutation_contract(
