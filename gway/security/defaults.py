@@ -1,7 +1,5 @@
 """Canonical Gway-owned security scope definitions."""
 
-from .publication import normalize_publications
-
 
 _OPERATOR_READ_OPERATIONS = frozenset(
     {
@@ -94,7 +92,6 @@ CORE_SCOPE_DEFINITIONS = {
             }
         ),
         "environment": frozenset(),
-        "semantic_terms": frozenset({"logs", "read"}),
     },
     "source-read": {
         "operations": frozenset(
@@ -108,7 +105,6 @@ CORE_SCOPE_DEFINITIONS = {
             }
         ),
         "environment": frozenset(),
-        "semantic_terms": frozenset({"source", "read"}),
     },
     "source-admin": {
         "operations": frozenset(
@@ -132,17 +128,14 @@ CORE_SCOPE_DEFINITIONS = {
             }
         ),
         "environment": frozenset(),
-        "semantic_terms": frozenset({"source", "admin"}),
     },
     "operator-read": {
         "operations": _OPERATOR_READ_OPERATIONS,
         "environment": frozenset(),
-        "semantic_terms": frozenset({"operator", "read"}),
     },
     "operator-write": {
         "operations": _OPERATOR_WRITE_OPERATIONS,
         "environment": frozenset(),
-        "semantic_terms": frozenset({"operator", "write"}),
     },
 }
 
@@ -154,7 +147,6 @@ def _definition_signature(scope):
         scope.owner,
         scope.operations,
         scope.environment,
-        scope.semantic_terms,
     )
 
 
@@ -186,7 +178,6 @@ def _replace_owned(connection, registry, name, definition, *, owner):
     scope_id = row["id"]
     operations = registry._grants(definition.get("operations", ()), label="operation")
     environment = registry._grants(definition.get("environment", ()), label="environment")
-    semantic_terms = registry._semantic_terms(definition.get("semantic_terms", ()))
     connection.execute("DELETE FROM scope_operations WHERE scope_id = ?", (scope_id,))
     connection.execute("DELETE FROM scope_environment WHERE scope_id = ?", (scope_id,))
     connection.execute("DELETE FROM scope_semantic_terms WHERE scope_id = ?", (scope_id,))
@@ -198,10 +189,6 @@ def _replace_owned(connection, registry, name, definition, *, owner):
         "INSERT INTO scope_environment (scope_id, variable_name) VALUES (?, ?)",
         ((scope_id, variable) for variable in sorted(environment)),
     )
-    connection.executemany(
-        "INSERT INTO scope_semantic_terms (scope_id, term) VALUES (?, ?)",
-        ((scope_id, term) for term in sorted(semantic_terms)),
-    )
 
 
 def converge_scope_registry(
@@ -211,24 +198,17 @@ def converge_scope_registry(
     retire_missing=True,
     report=False,
 ):
-    """Atomically converge Gway-owned and externally published scopes."""
-    published = normalize_publications(published)
-    for name, publication in published.items():
-        if name in CORE_SCOPE_NAMES:
-            raise ValueError(f"Published security scope shadows Gway core scope: {name}")
-        publication.owner
+    """Atomically converge only Gway-owned bundled scopes.
 
+    Product/Django/Odoo ingestion no longer publishes authorization scopes.
+    Existing generated project scopes are retired during writable convergence;
+    user-managed scopes remain untouched.
+    """
+    del published
     desired = {
         name: ("gway", definition)
         for name, definition in CORE_SCOPE_DEFINITIONS.items()
     }
-    desired.update(
-        {
-            name: (publication.owner, publication.as_definition())
-            for name, publication in published.items()
-        }
-    )
-    active_product_names = set(published)
 
     with registry.state.connect() as connection:
         before_rows = connection.execute(
@@ -248,11 +228,8 @@ def converge_scope_registry(
                 "SELECT name FROM scopes WHERE owner LIKE 'project:%'"
             ).fetchall()
             for row in rows:
-                name = row["name"]
-                if name in active_product_names:
-                    continue
-                connection.execute("DELETE FROM scopes WHERE name = ?", (name,))
-                retired.append(name)
+                connection.execute("DELETE FROM scopes WHERE name = ?", (row["name"],))
+                retired.append(row["name"])
 
         after_rows = connection.execute(
             "SELECT id, name, owner FROM scopes ORDER BY name"
@@ -262,12 +239,8 @@ def converge_scope_registry(
             for row in after_rows
         }
 
-    result = {
-        **CORE_SCOPE_DEFINITIONS,
-        **{name: publication.as_definition() for name, publication in published.items()},
-    }
     if not report:
-        return result
+        return dict(CORE_SCOPE_DEFINITIONS)
 
     added = sorted(name for name in desired if name not in before and name in after)
     updated = sorted(
