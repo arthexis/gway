@@ -122,4 +122,4 @@ class ScriptedGitHubClient:
 def github_client():
     """Build a recording GitHub client with optional scripted responses."""
 
-    return ScriptedGitHubClient()
+    return ScriptedGitHubClient
