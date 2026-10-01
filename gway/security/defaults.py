@@ -92,6 +92,7 @@ def converge_scope_registry(registry, published=(), *, retire_missing=True):
             owner="gway",
             operations=definition["operations"],
             environment=definition["environment"],
+            semantic_terms=definition.get("semantic_terms", ()),
             allow_claim_unowned=True,
         )
 
@@ -108,6 +109,7 @@ def converge_scope_registry(registry, published=(), *, retire_missing=True):
             owner=owner,
             operations=definition.get("operations", ()),
             environment=definition.get("environment", ()),
+            semantic_terms=definition.get("semantic_terms", ()),
             allow_claim_unowned=True,
         )
         active_product_names.add(name)

@@ -14,23 +14,21 @@
     <h1>Authorize remote access</h1>
     <form class="consent-form" method="post" action="/consent">
       <input type="hidden" name="csrf" value="[csrf]">
-    <p class="meta muted">Client: <code>[client_id]</code></p>
-    [resource_html]
-    <div class="notice"><strong>Review this authority carefully.</strong><br>[authority_notice]</div>
+      <p class="meta muted">Client: <code>[client_id]</code></p>
+      [resource_html]
+      <div class="notice"><strong>Review this authority carefully.</strong><br>[authority_notice]</div>
 
-    <div class="summary-grid">
-      <div class="summary"><strong>Operations</strong>[operations_summary]</div>
-      <div class="summary"><strong>Environment</strong>[environment_summary]</div>
-    </div>
+      <p>Authorization grants only the exact and union authority shown below.</p>
 
-    <h2>Bearer scopes</h2>
-    <ul class="scope-list">[scope_items_html]</ul>
+      <h2>Exact scopes</h2>
+      <ul class="scope-list">[scope_items_html]</ul>
 
-    <h2>Environment access</h2>
-    <ul class="environment-list">[environment_items_html]</ul>
+      <h2>Union scopes</h2>
+      <ul class="scope-list">[union_items_html]</ul>
 
-    <form method="post" action="/consent">
-      <input type="hidden" name="csrf" value="[csrf]">
+      <h2>Environment access</h2>
+      <ul class="environment-list">[environment_items_html]</ul>
+
       <div class="actions two">
         <button class="primary" name="decision" value="approve" type="submit">Authorize</button>
         <button class="danger" name="decision" value="deny" type="submit">Deny</button>

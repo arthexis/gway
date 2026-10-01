@@ -191,7 +191,7 @@ def test_secure_public_origin_marks_browser_cookie_secure(tmp_path):
         thread.join(timeout=2)
 
 
-def test_real_http_consent_is_informational_and_grants_full_bearer_scope_set(tmp_path):
+def test_real_http_consent_shows_and_grants_only_requested_scope_set(tmp_path):
     path = tmp_path / "security.sqlite"
     scopes = ScopeRegistry(path)
     tokens = TokenRegistry(path)
@@ -247,9 +247,9 @@ def test_real_http_consent_is_informational_and_grants_full_bearer_scope_set(tmp
         html = response.read().decode()
         consent_csrf = _csrf(html)
         assert "<strong>read</strong>" in html
-        assert "<strong>write</strong>" in html
+        assert "<strong>write</strong>" not in html
         assert 'name="scope"' not in html
-        assert "informational" in html
+        assert "Authorization grants only" in html
         assert "1 operations" in html
 
         connection.request(
@@ -267,12 +267,13 @@ def test_real_http_consent_is_informational_and_grants_full_bearer_scope_set(tmp
 
         session = account.sessions.require(second_cookie.split("=", 1)[1])
         grant = oauth.get_grant(session.approved_grant_id)
-        assert grant.scopes == frozenset({"read", "write"})
+        assert grant.scopes == frozenset({"read"})
     finally:
         connection.close()
         server.shutdown()
         server.server_close()
         thread.join(timeout=2)
+
 
 def test_consent_renders_preview_and_expandable_full_operations_per_scope(tmp_path):
     path = tmp_path / "security.sqlite"

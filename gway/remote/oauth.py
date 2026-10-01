@@ -59,21 +59,37 @@ class OAuthClientResolver:
             or parsed.fragment
             or parsed.path in {"", "/"}
         ):
-            raise OAuthProtocolError("invalid_client", "CIMD client_id must be an HTTPS document URL")
+            raise OAuthProtocolError(
+                "invalid_client",
+                "CIMD client_id must be an HTTPS document URL",
+            )
         return parsed
 
     @staticmethod
     def _require_public_host(hostname, port):
         try:
-            addresses = socket.getaddrinfo(hostname, port or 443, type=socket.SOCK_STREAM)
+            addresses = socket.getaddrinfo(
+                hostname,
+                port or 443,
+                type=socket.SOCK_STREAM,
+            )
         except OSError as error:
-            raise OAuthProtocolError("invalid_client", "CIMD host cannot be resolved") from error
+            raise OAuthProtocolError(
+                "invalid_client",
+                "CIMD host cannot be resolved",
+            ) from error
         if not addresses:
-            raise OAuthProtocolError("invalid_client", "CIMD host cannot be resolved")
+            raise OAuthProtocolError(
+                "invalid_client",
+                "CIMD host cannot be resolved",
+            )
         for item in addresses:
             address = ipaddress.ip_address(item[4][0])
             if not address.is_global:
-                raise OAuthProtocolError("invalid_client", "CIMD host must resolve only to public addresses")
+                raise OAuthProtocolError(
+                    "invalid_client",
+                    "CIMD host must resolve only to public addresses",
+                )
 
     @classmethod
     def _fetch_cimd(cls, client_id):
@@ -89,21 +105,36 @@ class OAuthClientResolver:
         opener = build_opener(_NoRedirect)
         request = Request(
             client_id,
-            headers={"Accept": "application/json", "User-Agent": "gway-oauth-cimd/1"},
+            headers={
+                "Accept": "application/json",
+                "User-Agent": "gway-oauth-cimd/1",
+            },
         )
         try:
             with opener.open(request, timeout=5) as response:
                 payload = response.read(65537)
         except Exception as error:
-            raise OAuthProtocolError("invalid_client", "CIMD document could not be fetched") from error
+            raise OAuthProtocolError(
+                "invalid_client",
+                "CIMD document could not be fetched",
+            ) from error
         if len(payload) > 65536:
-            raise OAuthProtocolError("invalid_client", "CIMD document is too large")
+            raise OAuthProtocolError(
+                "invalid_client",
+                "CIMD document is too large",
+            )
         try:
             document = json.loads(payload.decode("utf-8"))
         except (UnicodeDecodeError, json.JSONDecodeError) as error:
-            raise OAuthProtocolError("invalid_client", "CIMD document is not valid JSON") from error
+            raise OAuthProtocolError(
+                "invalid_client",
+                "CIMD document is not valid JSON",
+            ) from error
         if not isinstance(document, dict):
-            raise OAuthProtocolError("invalid_client", "CIMD document must be a JSON object")
+            raise OAuthProtocolError(
+                "invalid_client",
+                "CIMD document must be a JSON object",
+            )
         return document
 
     def resolve(self, client_id):
@@ -124,13 +155,22 @@ class OAuthClientResolver:
         self._client_url(client_id)
         document = self.fetcher(client_id)
         if not isinstance(document, dict) or document.get("client_id") != client_id:
-            raise OAuthProtocolError("invalid_client", "CIMD client_id does not match its document URL")
+            raise OAuthProtocolError(
+                "invalid_client",
+                "CIMD client_id does not match its document URL",
+            )
         redirects = document.get("redirect_uris")
         if not isinstance(redirects, list) or not redirects:
-            raise OAuthProtocolError("invalid_client", "CIMD redirect_uris are required")
+            raise OAuthProtocolError(
+                "invalid_client",
+                "CIMD redirect_uris are required",
+            )
         redirects = frozenset(str(uri) for uri in redirects if str(uri).strip())
         if not redirects:
-            raise OAuthProtocolError("invalid_client", "CIMD redirect_uris are required")
+            raise OAuthProtocolError(
+                "invalid_client",
+                "CIMD redirect_uris are required",
+            )
 
         methods = document.get("token_endpoint_auth_methods_supported")
         if methods is None:
@@ -139,7 +179,10 @@ class OAuthClientResolver:
             method = document.get("token_endpoint_auth_method")
             methods = ["none"] if method is None else [method]
         if not isinstance(methods, list) or "none" not in methods:
-            raise OAuthProtocolError("invalid_client", "CIMD client must support public-client token exchange")
+            raise OAuthProtocolError(
+                "invalid_client",
+                "CIMD client must support public-client token exchange",
+            )
         return ResolvedOAuthClient(client_id, redirects, "none")
 
 
@@ -180,7 +223,9 @@ class RemoteOAuthProtocol:
     def _redirect_with(uri, values):
         parsed = urlsplit(uri)
         query = list(parse_qsl(parsed.query, keep_blank_values=True))
-        query.extend((key, value) for key, value in values.items() if value is not None)
+        query.extend(
+            (key, value) for key, value in values.items() if value is not None
+        )
         return urlunsplit(
             (parsed.scheme, parsed.netloc, parsed.path, urlencode(query), parsed.fragment)
         )
@@ -193,11 +238,17 @@ class RemoteOAuthProtocol:
         client = self.clients.resolve(client_id)
         redirect_uri = self._required(params, "redirect_uri")
         if redirect_uri not in client.redirect_uris:
-            raise OAuthProtocolError("invalid_request", "redirect_uri is not registered for this client")
+            raise OAuthProtocolError(
+                "invalid_request",
+                "redirect_uri is not registered for this client",
+            )
 
         resource = self._required(params, "resource")
         if resource != self.metadata.resource:
-            raise OAuthProtocolError("invalid_target", "resource does not match this protected resource")
+            raise OAuthProtocolError(
+                "invalid_target",
+                "resource does not match this protected resource",
+            )
 
         challenge = str(params.get("code_challenge") or "").strip()
         method = str(params.get("code_challenge_method") or "").strip()
@@ -206,41 +257,47 @@ class RemoteOAuthProtocol:
                 "invalid_request",
                 "code_challenge is required",
             )
-        if challenge:
-            if method != "S256":
-                raise OAuthProtocolError(
-                    "invalid_request",
-                    "PKCE S256 is required",
-                )
-            if len(challenge) != 43 or any(
-                character not in "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"
-                for character in challenge
-            ):
-                raise OAuthProtocolError(
-                    "invalid_request",
-                    "PKCE S256 code_challenge is malformed",
-                )
-        elif method:
+        if method != "S256":
             raise OAuthProtocolError(
                 "invalid_request",
-                "code_challenge is required when code_challenge_method is supplied",
+                "PKCE S256 is required",
+            )
+        if len(challenge) != 43 or any(
+            character
+            not in "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"
+            for character in challenge
+        ):
+            raise OAuthProtocolError(
+                "invalid_request",
+                "PKCE S256 code_challenge is malformed",
             )
 
         scope = str(params.get("scope") or "").strip()
-        if not scope:
+        union_scope = str(params.get("union_scope") or "").strip()
+        if not scope and not union_scope:
             scope = self.default_scope
-        if not scope and len(self.metadata.scopes_supported) == 1:
+        if (
+            not scope
+            and not union_scope
+            and len(self.metadata.scopes_supported) == 1
+        ):
             scope = self.metadata.scopes_supported[0]
-        if not scope:
-            raise OAuthProtocolError("invalid_request", "scope is required")
+        if not scope and not union_scope:
+            raise OAuthProtocolError(
+                "invalid_request",
+                "scope or union_scope is required",
+            )
         self.account.stage_consent(
             session,
             client_id,
             scope,
+            union_scopes=union_scope,
             resource=resource,
         )
         session.pending_redirect_uri = redirect_uri
-        session.pending_state = None if params.get("state") is None else str(params["state"])
+        session.pending_state = (
+            None if params.get("state") is None else str(params["state"])
+        )
         session.pending_code_challenge = challenge
         return session
 
@@ -385,7 +442,7 @@ class RemoteOAuthProtocol:
                     refresh_lifetime_seconds=self.refresh_lifetime_seconds,
                 )
             elif grant_type == "refresh_token":
-                if params.get("scope") is not None:
+                if params.get("scope") is not None or params.get("union_scope") is not None:
                     raise OAuthProtocolError(
                         "invalid_scope",
                         "Refresh cannot change the granted G-Way scopes",
@@ -408,6 +465,9 @@ class RemoteOAuthProtocol:
             "expires_in": self.access_lifetime_seconds,
             "refresh_token": issued.refresh_token,
             "scope": " ".join(sorted(issued.grant.scopes)),
+            "union_scopes": [
+                list(terms) for terms in sorted(issued.grant.union_scopes)
+            ],
             "resource": issued.grant.resource,
         }
 

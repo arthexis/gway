@@ -67,7 +67,7 @@ def project_scopes(data, *, source=None):
             raise ValueError("published scope names must be non-empty strings")
         if not isinstance(declaration, dict):
             raise ValueError(f"[tool.gway.scopes.{name}] must be a table")
-        unknown = set(declaration) - {"operations", "environment"}
+        unknown = set(declaration) - {"operations", "environment", "semantic_terms"}
         if unknown:
             raise ValueError(
                 f"Unknown published scope fields for {name}: "
@@ -75,6 +75,7 @@ def project_scopes(data, *, source=None):
             )
         operations = declaration.get("operations", ())
         environment = declaration.get("environment", ())
+        semantic_terms = declaration.get("semantic_terms")
         if not isinstance(operations, list) or any(
             not isinstance(value, str) or not value.strip() for value in operations
         ):
@@ -83,11 +84,27 @@ def project_scopes(data, *, source=None):
             not isinstance(value, str) or not value.strip() for value in environment
         ):
             raise ValueError(f"{name} environment must be an array of non-empty strings")
-        published[name] = {
+        if semantic_terms is not None and (
+            not isinstance(semantic_terms, list)
+            or not semantic_terms
+            or any(
+                not isinstance(value, str) or not value.strip()
+                for value in semantic_terms
+            )
+        ):
+            raise ValueError(
+                f"{name} semantic_terms must be a non-empty array of non-empty strings"
+            )
+        definition = {
             "operations": frozenset(value.strip() for value in operations),
             "environment": frozenset(value.strip() for value in environment),
             "source": source,
         }
+        if semantic_terms is not None:
+            definition["semantic_terms"] = frozenset(
+                value.strip().lower() for value in semantic_terms
+            )
+        published[name] = definition
     return published
 
 
@@ -686,6 +703,10 @@ def _publish_project_capabilities(runtime, data, *, source):
         if existing is not None and existing.get("source") != definition.get("source"):
             raise ValueError(f"Published security scope collision: {name}")
         scopes[name] = definition
+
+    from .security.validation import validate_definitions
+
+    validate_definitions(runtime, scopes)
 
     contributors = list(getattr(runtime, "_survey_contributors", ()))
     by_section = {item["section"]: item for item in contributors}

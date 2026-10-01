@@ -54,7 +54,7 @@ def test_security_state_migrates_v1_scopes_to_v2_without_data_loss(tmp_path):
     assert issued.token.scopes == frozenset({"logs"})
 
     with sqlite3.connect(path) as connection:
-        assert connection.execute("PRAGMA user_version").fetchone()[0] == 7
+        assert connection.execute("PRAGMA user_version").fetchone()[0] == 9
 
 
 def test_token_create_returns_secret_once_and_persists_only_safe_metadata(tmp_path):
@@ -204,7 +204,6 @@ def test_security_token_gway_command_surface(gateway, tmp_path):
     scopes = ScopeRegistry(path)
     scopes.create("logs")
 
-
     bearer = gateway("security token create reader logs")
     assert bearer.startswith("gwt_")
 
@@ -227,7 +226,6 @@ def test_security_token_gway_command_surface(gateway, tmp_path):
 
     assert gateway("security token delete reader") is True
     assert gateway("security token list") == []
-
 
 
 def test_security_state_migrates_v2_tokens_to_v3_with_nullable_expiry(tmp_path):
@@ -282,7 +280,7 @@ def test_security_state_migrates_v2_tokens_to_v3_with_nullable_expiry(tmp_path):
             for row in connection.execute("PRAGMA table_info(tokens)")
         }
         assert "expires_at" in columns
-        assert connection.execute("PRAGMA user_version").fetchone()[0] == 7
+        assert connection.execute("PRAGMA user_version").fetchone()[0] == 9
 
 
 def test_token_expiry_is_enforced_as_authentication_failure(tmp_path):
@@ -328,7 +326,6 @@ def test_security_token_create_accepts_expiry_flag(gateway, tmp_path):
 
     assert bearer.startswith("gwt_")
     assert gateway("security token show reader").expires_at == expires
-
 
 
 def test_security_token_reads_support_forced_non_mutation(
