@@ -1,4 +1,4 @@
-"""Canonical Gway-owned security scope definitions."""
+"""Canonical Gway-owned curated security scope definitions."""
 
 
 _OPERATOR_READ_OPERATIONS = frozenset(
