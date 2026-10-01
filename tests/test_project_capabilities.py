@@ -62,6 +62,43 @@ command = ["demo", "status"]
     )
 
 
+def test_retired_project_scope_declaration_has_no_authorization_effect(
+    tmp_path,
+    monkeypatch,
+):
+    (tmp_path / "pyproject.toml").write_text(
+        """
+[project]
+name = "demo"
+
+[tool.gway.scopes.demo-read]
+operations = ["demo.status"]
+environment = []
+semantic_terms = ["demo", "read"]
+
+[[tool.gway.survey]]
+section = "demo"
+command = ["demo", "status"]
+""".lstrip(),
+        encoding="utf-8",
+    )
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("GWAY_DATA_DIR", str(tmp_path / "data"))
+    monkeypatch.setenv("GWAY_CACHE_DIR", str(tmp_path / "cache"))
+
+    gateway = Gateway()
+
+    assert not gateway.security_path.exists()
+    assert not hasattr(gateway, "_published_scopes")
+    assert gateway._survey_contributors == (
+        {
+            "section": "demo",
+            "command": ("demo", "status"),
+            "source": "demo",
+        },
+    )
+
+
 def test_project_survey_rejects_ambiguous_command_string():
     document = _document()
     document["tool"]["gway"]["survey"][0]["command"] = "demo status"
