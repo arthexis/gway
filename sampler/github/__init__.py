@@ -5,7 +5,7 @@ from __future__ import annotations
 from gway.ingestion.python import ingest_python
 
 from .github import Client, GitHubError, GitHubResponse, RateLimit
-from .rollout import Controller
+from .status import Controller
 from .githubops import ADMIN_OPERATIONS, WRITE_OPERATIONS
 
 
