@@ -47,6 +47,23 @@ class Controller:
         """Return one named security scope."""
         return self._registry(converge=mutate).require(name, readonly=not mutate)
 
+    def inspect(self, name, *, mutate=True):
+        """Return persisted grants plus live operation-binding health."""
+        registry = self._registry(converge=mutate)
+        scope = registry.require(name, readonly=not mutate)
+        validation = validate_scope(self.gateway, scope)
+        return {
+            "name": scope.name,
+            "owner": scope.owner,
+            "operations": sorted(scope.operations),
+            "environment": sorted(scope.environment),
+            "registered": list(validation.registered),
+            "missing": list(validation.missing),
+            "mutating": list(validation.mutating),
+            "unknown": list(validation.unknown),
+            "mutation_capable": validation.mutation_capable,
+        }
+
     def list(self, *, mutate=True):
         """Return all named security scopes."""
         return self._registry(converge=mutate).all(readonly=not mutate)
