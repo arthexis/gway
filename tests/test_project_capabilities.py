@@ -66,7 +66,8 @@ def test_retired_project_scope_declaration_has_no_authorization_effect(
     tmp_path,
     monkeypatch,
 ):
-    (tmp_path / "pyproject.toml").write_text(
+    project_file = tmp_path / "pyproject.toml"
+    project_file.write_text(
         """
 [project]
 name = "demo"
@@ -88,6 +89,7 @@ command = ["demo", "status"]
 
     gateway = Gateway()
 
+    assert project_file.is_file()
     assert not gateway.security_path.exists()
     assert not hasattr(gateway, "_published_scopes")
     assert gateway._survey_contributors == (
