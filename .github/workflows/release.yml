@@ -52,6 +52,7 @@ jobs:
           DEPLOYED_SHA: ${{ inputs.deployed_sha }}
           COMPANION_SHA: ${{ inputs.companion_sha }}
           WATCHTOWER_RUN: ${{ inputs.watchtower_run }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -Eeuo pipefail
           [[ "$COMPANION_SHA" =~ ^[0-9a-f]{40}$ ]] || {
@@ -60,9 +61,10 @@ jobs:
           }
           manifest="$(mktemp)"
           trap 'rm -f "$manifest"' EXIT
-          curl --fail --silent --show-error --location \
-            "https://raw.githubusercontent.com/arthexis/arthexis/watchtower-state/.watchtower/accepted.json" \
-            --output "$manifest"
+          gh api \
+            -H "Accept: application/vnd.github.raw+json" \
+            "/repos/arthexis/arthexis/contents/.watchtower/accepted.json?ref=watchtower-state" \
+            > "$manifest"
           MANIFEST="$manifest" OWN_FIELD="gway_sha" COMPANION_FIELD="arthexis_sha" \
           python - <<'PY'
           import json
@@ -104,13 +106,14 @@ jobs:
 
           sha = os.environ["DEPLOYED_SHA"]
           repository = os.environ["GITHUB_REPOSITORY"]
+          headers = {
+              "Accept": "application/vnd.github+json",
+              "Authorization": f"Bearer {os.environ['GH_TOKEN']}",
+              "X-GitHub-Api-Version": "2022-11-28",
+          }
           req = urllib.request.Request(
               f"https://api.github.com/repos/{repository}/commits/{sha}/pulls",
-              headers={
-                  "Accept": "application/vnd.github+json",
-                  "Authorization": f"Bearer {os.environ['GH_TOKEN']}",
-                  "X-GitHub-Api-Version": "2022-11-28",
-              },
+              headers=headers,
           )
           with urllib.request.urlopen(req) as response:
               pulls = json.load(response)
@@ -120,11 +123,12 @@ jobs:
               for pull in pulls
           )
           if not requested:
-              manifest_url = (
-                  "https://raw.githubusercontent.com/arthexis/arthexis/"
-                  "watchtower-state/.watchtower/accepted.json"
+              req = urllib.request.Request(
+                  "https://api.github.com/repos/arthexis/arthexis/contents/"
+                  ".watchtower/accepted.json?ref=watchtower-state",
+                  headers={**headers, "Accept": "application/vnd.github.raw+json"},
               )
-              with urllib.request.urlopen(manifest_url) as response:
+              with urllib.request.urlopen(req) as response:
                   manifest = json.load(response)
               requested = (
                   manifest.get("release_intent") == "manual"
@@ -132,7 +136,7 @@ jobs:
                   and os.environ["DEPLOYED_SHA"] in {
                       manifest.get("arthexis_sha"), manifest.get("gway_sha")
                   }
-                  and manifest.get("stages") == ["arthexis", "remote"]
+                  and manifest.get("stages") == ["0-gway", "1-arthexis", "2-remote"]
               )
           if not requested:
               raise SystemExit(
@@ -563,4 +567,3 @@ jobs:
           encoded="$(base64 -w0 release-manifest.json)"
           GH_TOKEN="$GH_TOKEN" gh api             --method PUT             -H "Accept: application/vnd.github+json"             "/repos/arthexis/arthexis/contents/$target"             -f message="Record certified ${PACKAGE} ${VERSION} release"             -f content="$encoded"             -f branch="watchtower-state" >/dev/null
           echo "release_manifest=recorded"
-
