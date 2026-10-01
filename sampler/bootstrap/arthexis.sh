@@ -191,14 +191,13 @@ fi
 "$GWAY" service install --name worker --environment "ARTHEXIS_DATA_DIR=$ARTHEXIS_DATA_DIR" -- arthexis worker
 "$GWAY" service install --name beat --environment "ARTHEXIS_DATA_DIR=$ARTHEXIS_DATA_DIR" -- arthexis beat
 
-for service in web worker beat; do
-    "$GWAY" service start --name "$service" -- arthexis "$service"
-done
-
-# A Satellite bootstrap is intended to leave a fully operational node behind.
-# Give supervised processes a short settling window and refuse to report the
-# installation complete if any required role has already stopped.
+# Satellite installation is complete only when its persistent Arthexis roles
+# have been started and remain active after a short settling window. Other role
+# startup behavior remains unchanged until it is considered separately.
 if test "[installer]" = "satellite"; then
+    for service in web worker beat; do
+        "$GWAY" service start --name "$service" -- arthexis "$service"
+    done
     sleep "${ARTHEXIS_BOOTSTRAP_START_SETTLE:-2}"
     for service in web worker beat; do
         if ! "$GWAY" service status --name "$service" -- arthexis "$service" | grep -q '^Running: yes$'; then
@@ -207,6 +206,10 @@ if test "[installer]" = "satellite"; then
             exit 1
         fi
     done
+else
+    "$GWAY" service restart --name web -- arthexis web
+    "$GWAY" service restart --name worker -- arthexis worker
+    "$GWAY" service restart --name beat -- arthexis beat
 fi
 
 printf '\n%s\n' "[installer_title] installation complete."
