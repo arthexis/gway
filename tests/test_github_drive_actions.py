@@ -16,23 +16,32 @@ class ActionClient:
         return SimpleNamespace(data={"message": "branch update scheduled"})
 
     def graphql(self, query, variables=None):
-        self.graphql_calls.append((query, dict(variables or {})))
-        return SimpleNamespace(
-            data={
-                "data": {
-                    "enablePullRequestAutoMerge": {
-                        "pullRequest": {
-                            "id": "PR_node",
-                            "number": 10,
-                            "autoMergeRequest": {
-                                "enabledAt": "2026-10-01T00:00:00Z",
-                                "mergeMethod": (variables or {}).get("method"),
-                            },
-                        }
+        variables = dict(variables or {})
+        self.graphql_calls.append((query, variables))
+        if "disablePullRequestAutoMerge" in query:
+            data = {
+                "disablePullRequestAutoMerge": {
+                    "pullRequest": {
+                        "id": "PR_node",
+                        "number": 10,
+                        "autoMergeRequest": None,
                     }
                 }
             }
-        )
+        else:
+            data = {
+                "enablePullRequestAutoMerge": {
+                    "pullRequest": {
+                        "id": "PR_node",
+                        "number": 10,
+                        "autoMergeRequest": {
+                            "enabledAt": "2026-10-01T00:00:00Z",
+                            "mergeMethod": variables.get("method"),
+                        },
+                    }
+                }
+            }
+        return SimpleNamespace(data={"data": data})
 
 
 class ActionController(DriveController):
@@ -132,6 +141,40 @@ def test_ensure_auto_merge_enables_native_state_with_repository_method():
         "id": "PR_node",
         "method": "SQUASH",
     }
+
+
+def test_ensure_auto_merge_disabled_is_convergent_when_already_disabled():
+    controller = ActionController(pr=pull_request(node_id="PR_node", auto_merge=None))
+
+    result = controller._execute_drive_action(
+        REPOSITORY,
+        10,
+        {"kind": "ensure-auto-merge-disabled", "expected_head_sha": "head"},
+    )
+
+    assert result["kind"] == "ensure-auto-merge-disabled"
+    assert result["result"] == "already"
+    assert controller.client.graphql_calls == []
+
+
+def test_ensure_auto_merge_disabled_disarms_native_authorization():
+    controller = ActionController(
+        pr=pull_request(
+            node_id="PR_node",
+            auto_merge={"merge_method": "SQUASH"},
+        )
+    )
+
+    result = controller._execute_drive_action(
+        REPOSITORY,
+        10,
+        {"kind": "ensure-auto-merge-disabled", "expected_head_sha": "head"},
+    )
+
+    assert result["result"] == "changed"
+    query, variables = controller.client.graphql_calls[0]
+    assert "disablePullRequestAutoMerge" in query
+    assert variables == {"id": "PR_node"}
 
 
 def test_guarded_merge_forwards_expected_head_to_merge_primitive():
