@@ -284,6 +284,8 @@ class Controller(StatusController):
             "update-branch": self._drive_update_branch,
             "enable-auto-merge": self._drive_enable_auto_merge,
             "ensure-auto-merge": self._drive_enable_auto_merge,
+            "disable-auto-merge": self._drive_disable_auto_merge,
+            "ensure-auto-merge-disabled": self._drive_disable_auto_merge,
             "merge-pull": self._drive_merge_pull,
         }
         handler = handlers.get(kind)
@@ -375,6 +377,46 @@ class Controller(StatusController):
             "provider": (
                 (payload.get("data") or {})
                 .get("enablePullRequestAutoMerge", {})
+                .get("pullRequest")
+            ),
+        }
+
+    def _drive_disable_auto_merge(self, repository, pull, action):
+        pr, expected, actual = self._drive_guarded_pull(repository, pull, action)
+        if actual != expected:
+            return self._drive_stale_action(
+                "ensure-auto-merge-disabled", expected, actual
+            )
+        if pr.get("auto_merge") is None:
+            return {
+                "kind": "ensure-auto-merge-disabled",
+                "result": "already",
+                "expected_head_sha": expected,
+            }
+        node_id = pr.get("node_id")
+        if not node_id:
+            raise ValueError("pull request response is missing node_id")
+        query = """
+        mutation($id: ID!) {
+          disablePullRequestAutoMerge(input: {pullRequestId: $id}) {
+            pullRequest {
+              id
+              number
+              autoMergeRequest { enabledAt mergeMethod }
+            }
+          }
+        }
+        """
+        payload = self._github().graphql(query, {"id": node_id}).data
+        if payload.get("errors"):
+            raise RuntimeError(f"GitHub GraphQL error: {payload['errors']}")
+        return {
+            "kind": "ensure-auto-merge-disabled",
+            "result": "changed",
+            "expected_head_sha": expected,
+            "provider": (
+                (payload.get("data") or {})
+                .get("disablePullRequestAutoMerge", {})
                 .get("pullRequest")
             ),
         }
