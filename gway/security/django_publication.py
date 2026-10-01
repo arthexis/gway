@@ -109,9 +109,9 @@ def derive_django_publications(gateway):
     therefore never acquire read authority by inference.
 
     Ownership is fail-closed: an app must live beneath the mounted project root.
-    Django's management-command registry is used only to map an already exposed
-    command back to that verified app; command names themselves never imply a
-    semantic boundary or read/write classification.
+    Django's management-command registry maps an already exposed command back to
+    that verified app; command names themselves never imply a semantic boundary
+    or read/write classification.
     """
     mounts, by_object, by_name = _ownership_indexes(gateway)
     try:
