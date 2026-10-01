@@ -100,6 +100,10 @@ class Controller:
         """Return safe metadata for all named tokens."""
         return self.registry.all(readonly=not mutate)
 
+    def rename(self, name, new_name):
+        """Rename one token without rotating or changing its authority."""
+        return self.registry.rename(name, new_name)
+
     def delete(self, name):
         """Permanently revoke and remove one named token."""
         return self.registry.remove(name)
