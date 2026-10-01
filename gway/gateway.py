@@ -287,13 +287,6 @@ class Gateway(Resolver):
         self._http_controller = HTTPController()
         ingest_python(self, self._http_controller, path=("http",))
 
-        from .githubops import ADMIN_OPERATIONS as github_admin
-        from .githubops import Controller as GitHubController
-        from .githubops import WRITE_OPERATIONS as github_writes
-
-        self._github_controller = GitHubController(self)
-        ingest_python(self, self._github_controller, path=("github",))
-
         from .watchtower import register as register_watchtower
 
         register_watchtower(self)
@@ -305,20 +298,6 @@ class Gateway(Resolver):
         from .tailing import register as register_tailing
 
         register_tailing(self)
-        for record in self.ops.records():
-            if record.name.startswith("github."):
-                operation = record.name.removeprefix("github.")
-                access = "write" if operation in github_writes else "read"
-                metadata = dict(getattr(record.callable, "__gway_metadata__", {}) or {})
-                topics = (*metadata.get("topics", ()), "github", "source", access)
-                if operation in github_admin:
-                    topics = (*topics, "admin")
-                metadata["topics"] = tuple(dict.fromkeys(topics))
-                record.callable.__gway_metadata__ = metadata
-                record.callable.mutates = access == "write"
-                record.callable.__gway_mutates__ = record.callable.mutates
-                if access == "read":
-                    record.callable.__gway_supports_no_mutate__ = True
 
         from .dns import Controller as DNSController
         from .network import Controller as NetworkController

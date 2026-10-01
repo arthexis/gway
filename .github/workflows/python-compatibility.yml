@@ -1,4 +1,5 @@
 name: python / Python compatibility
+run-name: "PR #${{ inputs.pr_number || github.event.pull_request.number }} @ ${{ inputs.head_sha || github.event.pull_request.head.sha || github.sha }}"
 
 on:
   push:
@@ -55,6 +56,8 @@ jobs:
       DOCS_PR: ${{ inputs.docs_pr || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'docs-only')) }}
       BASE_SHA: ${{ inputs.base_sha || github.event.pull_request.base.sha || '' }}
       HEAD_SHA: ${{ inputs.head_sha || github.event.pull_request.head.sha || github.sha }}
+      WORKFLOW_PR: ${{ inputs.workflow_pr || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'workflow')) }}
+      INTEGRATION_PR: ${{ inputs.integration_pr || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'integration')) || (github.event_name != 'pull_request' && github.event_name != 'workflow_dispatch') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -95,16 +98,21 @@ jobs:
         if: env.VERSION_PR != 'true' && env.DOCS_PR != 'true'
         env:
           PYTHONFAULTHANDLER: '1'
-          WORKFLOW_PR: ${{ inputs.workflow_pr || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'workflow')) }}
-          INTEGRATION_PR: ${{ inputs.integration_pr || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'integration')) || (github.event_name != 'pull_request' && github.event_name != 'workflow_dispatch') }}
         run: |
           if [[ "$INTEGRATION_PR" == "true" ]]; then
-            timeout -s ABRT 300s python -m gway ci
+            timeout -s ABRT 300s python -m gway ci -o "$RUNNER_TEMP/ci-result.json"
           elif [[ "$WORKFLOW_PR" == "true" ]]; then
             timeout -s ABRT 300s python -m gway test run architecture - check --is 0
           else
             timeout -s ABRT 300s python -m gway test run --keyword "not architecture" - check --is 0
           fi
+      - name: Publish structured CI result
+        if: ${{ always() && env.VERSION_PR != 'true' && env.DOCS_PR != 'true' && env.INTEGRATION_PR == 'true' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: gway-ci-result
+          path: ${{ runner.temp }}/ci-result.json
+          if-no-files-found: ignore
 
   forward-compatibility:
     name: Compatibility (Python 3.13)

@@ -21,7 +21,6 @@ class ServiceInstallRecord:
     restart_sec: float | None = None
     command: tuple[str, ...] = ()
     environment: tuple[str, ...] = ()
-    enabled: bool = True
 
 
 class ServiceInstallState:
@@ -51,7 +50,6 @@ class ServiceInstallState:
                 restart_sec=item.get("restart_sec"),
                 command=tuple(item.get("command", ())),
                 environment=tuple(item.get("environment", ())),
-                enabled=bool(item.get("enabled", True)),
             )
             for item in data
         ]

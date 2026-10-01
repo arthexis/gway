@@ -191,26 +191,9 @@ fi
 "$GWAY" service install --name worker --environment "ARTHEXIS_DATA_DIR=$ARTHEXIS_DATA_DIR" -- arthexis worker
 "$GWAY" service install --name beat --environment "ARTHEXIS_DATA_DIR=$ARTHEXIS_DATA_DIR" -- arthexis beat
 
-# Installers may opt into leaving all persistent Arthexis roles running. The
-# role-specific policy is supplied by the renderer so this shared template does
-# not need to know individual role names.
-if test "[installer_autostart|0]" = "1"; then
-    for service in web worker beat; do
-        "$GWAY" service start --name "$service" -- arthexis "$service"
-    done
-    sleep "${ARTHEXIS_BOOTSTRAP_START_SETTLE:-2}"
-    for service in web worker beat; do
-        if ! "$GWAY" service status --name "$service" -- arthexis "$service" | grep -q '^Running: yes$'; then
-            echo "Arthexis bootstrap: required service '$service' did not remain running." >&2
-            echo "Inspect it with: gway service status --name $service -- arthexis $service" >&2
-            exit 1
-        fi
-    done
-else
-    "$GWAY" service restart --name web -- arthexis web
-    "$GWAY" service restart --name worker -- arthexis worker
-    "$GWAY" service restart --name beat -- arthexis beat
-fi
+"$GWAY" service restart --name web -- arthexis web
+"$GWAY" service restart --name worker -- arthexis worker
+"$GWAY" service restart --name beat -- arthexis beat
 
 printf '\n%s\n' "[installer_title] installation complete."
 printf '  Arthexis project: %s\n' "$ARTHEXIS_HOME"
