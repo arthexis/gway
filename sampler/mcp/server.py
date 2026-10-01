@@ -8,6 +8,7 @@ import base64
 import json
 from pathlib import Path  # noqa: F401 - exposed to managed companion probes
 import secrets
+import shlex
 import socket
 import struct
 import threading
@@ -16,6 +17,7 @@ from urllib.parse import urlsplit
 from fastmcp import FastMCP as _FastMCP
 from fastmcp.dependencies import Progress
 from fastmcp.tools import ToolResult
+from fastmcp.tools.base import Tool
 from fastmcp.server.auth import TokenVerifier as _TokenVerifier
 from fastmcp.server.auth.auth import AccessToken as _AccessToken
 from fastmcp.server.dependencies import get_http_headers as _get_http_headers
@@ -182,6 +184,8 @@ class _GwayTokenVerifier(_TokenVerifier):
 _auth = _GwayTokenVerifier()
 mcp = _FastMCP("GWAY", auth=_auth)
 _FRAME = struct.Struct("!I")
+
+
 def _encode_parent_bridge(host, port, token):
     """Serialize one ephemeral parent-Gateway bridge bootstrap."""
     payload = json.dumps(
@@ -308,6 +312,9 @@ class _SocketParentGateway:
             raise RuntimeError(response.get("error") or "Parent Gateway request failed")
         return response.get("result")
 
+    def list_operations(self):
+        return self._request("gateway.list")
+
     def execute(self, command, mutate=None):
         params = {"command": command}
         if mutate is not None:
@@ -346,6 +353,7 @@ def _callback_connection(stream, token):
         return
     method = request.get("method")
     if method not in {
+        "gateway.list",
         "gateway.execute",
         "gateway.authenticate_bearer",
         "gateway.execute_authenticated",
@@ -353,7 +361,9 @@ def _callback_connection(stream, token):
         _send_json(stream, {"ok": False, "error": "Unsupported MCP callback method"})
         return
     try:
-        if method == "gateway.authenticate_bearer":
+        if method == "gateway.list":
+            result = _validate_result(_gway_parent.list_operations())
+        elif method == "gateway.authenticate_bearer":
             result = _validate_result(
                 _gway_parent.authenticate_bearer(
                     request["bearer"],
@@ -445,25 +455,107 @@ def _has_http_request():
     return True
 
 
-def _project_tools(tools, identity):
-    """Project the advertised MCP surface without changing execution authority."""
-    if identity.get("mutation_capable", True):
-        return tools
-    return [tool for tool in tools if getattr(tool, "name", None) != "gway"]
+def _live_operation_names(parent):
+    """Return canonical operations registered in the authoritative parent."""
+    listing = getattr(parent, "list_operations", None)
+    if callable(listing):
+        return frozenset(str(name) for name in listing())
+    ops = getattr(parent, "ops", None)
+    records = getattr(ops, "records", None)
+    if callable(records):
+        return frozenset(record.name for record in records())
+    raise RuntimeError("Parent Gateway does not expose its live operation registry")
+
+
+def _authorized_operation_names(parent, bearer, resource):
+    """Intersect the bearer's exact authority with the live operation registry."""
+    current = parent.execute_authenticated(
+        bearer,
+        "security scope current",
+        resource,
+        mutate=False,
+    )
+    authorized = frozenset(current.get("operations") or ())
+    live = _live_operation_names(parent)
+    if "__all__" in authorized:
+        return tuple(sorted(live))
+    return tuple(sorted(live.intersection(authorized)))
+
+
+def _operation_tool(parent, bearer, resource, operation, *, read_only=False):
+    """Build one ephemeral MCP tool for an exact authorized Gway operation."""
+
+    def invoke(tokens: list[str] | None = None):
+        values = [] if tokens is None else [str(value) for value in tokens]
+        suffix = " ".join(shlex.quote(value) for value in values)
+        command = operation if not suffix else f"{operation} {suffix}"
+        return _tool_result(
+            parent.execute_authenticated(
+                bearer,
+                command,
+                resource,
+            )
+        )
+
+    return Tool.from_function(
+        invoke,
+        name=operation,
+        description=(
+            f"Invoke the exact authorized GWAY operation `{operation}`. "
+            "Pass CLI argument/flag tokens in order through `tokens`; each token "
+            "is quoted before dispatch so it cannot introduce another command."
+        ),
+        output_schema=_OUTPUT_SCHEMA,
+        annotations={
+            "readOnlyHint": bool(read_only),
+            "destructiveHint": not bool(read_only),
+            "openWorldHint": True,
+        },
+        run_in_thread=False,
+    )
+
+
+def _authorized_operation_tools(parent, bearer, resource):
+    """Build the current per-bearer MCP surface from curated scope authority."""
+    identity = parent.authenticate_bearer(bearer, resource)
+    read_only = not identity.get("mutation_capable", True)
+    return tuple(
+        _operation_tool(
+            parent,
+            bearer,
+            resource,
+            operation,
+            read_only=read_only,
+        )
+        for operation in _authorized_operation_names(parent, bearer, resource)
+    )
 
 
 class _CapabilityProjectionMiddleware(Middleware):
-    """Hide the mutating tool when the authenticated authority is read-only."""
+    """Project HTTP MCP tools directly from the authenticated bearer authority."""
 
     async def on_list_tools(self, context, call_next):
-        tools = await call_next(context)
         if not _has_http_request():
-            return tools
-        identity = _parent().authenticate_bearer(
-            _bearer_from_http(),
-            _auth.resource,
-        )
-        return _project_tools(tools, identity)
+            return await call_next(context)
+        parent = _parent()
+        bearer = _bearer_from_http()
+        return _authorized_operation_tools(parent, bearer, _auth.resource)
+
+    async def on_call_tool(self, context, call_next):
+        if not _has_http_request():
+            return await call_next(context)
+        parent = _parent()
+        bearer = _bearer_from_http()
+        tools = {
+            tool.name: tool
+            for tool in _authorized_operation_tools(parent, bearer, _auth.resource)
+        }
+        tool = tools.get(context.message.name)
+        if tool is None:
+            raise PermissionError(
+                f"MCP tool is not authorized for this bearer: {context.message.name}"
+            )
+        return await tool.run(arguments=context.message.arguments or {})
 
 
 mcp.add_middleware(_CapabilityProjectionMiddleware())
