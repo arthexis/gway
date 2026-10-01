@@ -27,6 +27,8 @@ SYSTEM_GWAY_CANDIDATE=""
 SYSTEM_GWAY_BACKUP=""
 SYSTEM_GWAY_PROMOTED=0
 GWAY_BOOTSTRAPPED=0
+GWAY_TEMP_TOOL=0
+UV=""
 
 restore_runtime() {
     if test -n "$RUNTIME_HOLD" && test -d "$RUNTIME_HOLD/var"; then
@@ -39,6 +41,26 @@ restore_runtime() {
         rmdir "$RUNTIME_HOLD" 2>/dev/null || true
         RUNTIME_HOLD=""
     fi
+}
+
+cleanup_temp_gway() {
+    if test "$GWAY_TEMP_TOOL" != 1; then
+        return
+    fi
+
+    cleanup_uv="$UV"
+    if test -z "$cleanup_uv"; then
+        if command -v uv >/dev/null 2>&1; then
+            cleanup_uv="$(command -v uv)"
+        elif test -x "$HOME/.local/bin/uv"; then
+            cleanup_uv="$HOME/.local/bin/uv"
+        fi
+    fi
+
+    if test -n "$cleanup_uv"; then
+        "$cleanup_uv" tool uninstall gway >/dev/null 2>&1 || true
+    fi
+    GWAY_TEMP_TOOL=0
 }
 
 cleanup() {
@@ -60,6 +82,7 @@ cleanup() {
             run_root mv "$SYSTEM_GWAY_BACKUP" "$SYSTEM_GWAY_VENV" || true
         fi
     fi
+    cleanup_temp_gway
     exit "$status"
 }
 trap cleanup EXIT HUP INT TERM
@@ -85,6 +108,7 @@ if test -n "${GWAY_BOOTSTRAP_GWAY:-}"; then
 else
     curl -fsSL "https://[domain]/gway" | sh
     GWAY_BOOTSTRAPPED=1
+    GWAY_TEMP_TOOL=1
 
     if command -v uv >/dev/null 2>&1; then
         UV="$(command -v uv)"
@@ -212,6 +236,11 @@ EOF
     SYSTEM_GWAY_PROMOTED=0
 
     "$UV" tool uninstall gway
+    GWAY_TEMP_TOOL=0
+    if test -e "$TOOL_BIN/gway"; then
+        echo "Arthexis bootstrap: temporary user Gway entrypoint survived cleanup: $TOOL_BIN/gway" >&2
+        exit 1
+    fi
     GWAY="$SYSTEM_GWAY_COMMAND"
     printf 'Gway appliance runtime: %s (%s)\n' "$SYSTEM_GWAY_COMMAND" "$SYSTEM_GWAY_VERSION"
 fi
