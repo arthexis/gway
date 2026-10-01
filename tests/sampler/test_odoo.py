@@ -2,6 +2,7 @@ import pytest
 
 from gway import Gateway
 from gway import sampler
+from gway.security.scopes import ScopeRegistry
 
 
 class FakeOdooClient:
@@ -60,6 +61,18 @@ def test_odoo_sampler_is_lazy_and_registers_on_resolution_miss(monkeypatch):
             "kwargs": {},
         }
     ]
+
+
+def test_odoo_registration_does_not_publish_security_scopes(tmp_path):
+    module = sampler.load("odoo")
+    gateway = Gateway(context=credentials())
+    gateway.security_path = tmp_path / "security.sqlite"
+
+    module.register(gateway, client_factory=FakeOdooClient)
+
+    assert gateway.ops.resolve("query.odoo") is not None
+    assert gateway.ops.resolve("fields.odoo") is not None
+    assert ScopeRegistry(gateway.security_path).all() == []
 
 
 def test_odoo_query_passes_safe_domain_fields_and_paging():
