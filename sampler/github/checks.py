@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 import io
 import json
 import re
@@ -93,8 +94,49 @@ class Controller(BaseController):
             raise TypeError("canonical CI artifact must contain a JSON object")
         return value
 
-    def check_ci(self, repository, pull):
-        """Return normalized current-head CI facts for one pull request."""
+    def check_ci(self, repository, *pulls, issue=None, serial=False):
+        """Return normalized current-head CI facts for one or more PR targets.
+
+        Explicit PR targets and ``--issue`` are mutually exclusive. Issue mode
+        resolves its targets through ``github issue prs`` so later checks/status
+        can share the same provider-backed relationship rule.
+        """
+        targets = [int(pull) for pull in pulls]
+        if issue is not None:
+            if targets:
+                raise ValueError("pull targets and --issue are mutually exclusive")
+            targets = [
+                int(item["number"])
+                for item in self.issue_prs(repository, int(issue), state="open")
+            ]
+        if not targets:
+            raise ValueError("at least one pull target or --issue is required")
+
+        if len(targets) == 1 and issue is None:
+            return self._check_ci_pull(repository, targets[0])
+
+        if serial or len(targets) == 1:
+            results = [self._check_ci_pull(repository, pull) for pull in targets]
+        else:
+            workers = min(8, len(targets))
+            with ThreadPoolExecutor(max_workers=workers) as executor:
+                results = list(
+                    executor.map(
+                        lambda pull: self._check_ci_pull(repository, pull),
+                        targets,
+                    )
+                )
+
+        result = {
+            "repository": str(repository),
+            "targets": targets,
+            "pulls": results,
+        }
+        if issue is not None:
+            result["issue"] = int(issue)
+        return result
+
+    def _check_ci_pull(self, repository, pull):
         root = self._repo(repository)
         pull = int(pull)
         pr = self._github().request("GET", f"{root}/pulls/{pull}").data
