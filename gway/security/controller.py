@@ -53,7 +53,16 @@ class Controller:
         stash=False,
         system=False,
     ):
-        """Install or upgrade one artifact, then converge discovered scope policy."""
+        """Converge one local or Git artifact installation toward requested state.
+
+        Args:
+            source: Local product or extension path, Git source, GitHub shorthand, or known installation identity.
+            ref: Branch, tag, or commit requested for Git sources.
+            upgrade: Replace an existing installation when the requested source state changes.
+            force: Discard drift in a dirty managed installation before reconciliation.
+            stash: Preserve a dirty managed installation before reconciliation.
+            system: Use system-wide data and launcher locations instead of user locations.
+        """
         result = self.gateway._install(
             source,
             ref=ref,
@@ -62,11 +71,22 @@ class Controller:
             stash=stash,
             system=system,
         )
-        self._refresh_publications()
+        # Installing Gway itself can cross a reload/process boundary.  The
+        # successor runtime owns its own bootstrap state, and forcing project
+        # rediscovery in the predecessor can disturb reload acknowledgement and
+        # rollback semantics.  Gway is an extension rather than a product scope
+        # publisher, so there is no project publication to reconcile here.
+        if getattr(result, "name", None) != "gway":
+            self._refresh_publications()
         return result
 
     def _uninstall(self, project, *, system=False):
-        """Uninstall one artifact, then retire no-longer-published scope policy."""
+        """Converge one managed project toward absence.
+
+        Args:
+            project: Installed project identity to remove.
+            system: Remove the project from the system-wide installation scope.
+        """
         result = self.gateway._uninstall(project, system=system)
         self._refresh_publications()
         return result
