@@ -54,6 +54,13 @@ class RepositoryOperations:
             "GET", f"{self._repo(repository)}/commits/{segment(commit)}"
         ).data
 
+    def compare(self, repository, base, head):
+        """Compare two commits/refs using GitHub's native compare result."""
+        return self._github().request(
+            "GET",
+            f"{self._repo(repository)}/compare/{segment(base)}...{segment(head)}",
+        ).data
+
     def file(self, repository, path, ref=None):
         """Return repository file or directory metadata/content."""
         params = {"ref": ref} if ref is not None else None
