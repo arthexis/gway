@@ -21,6 +21,34 @@ Authorization remains operation-specific. Remote/MCP callers must be authorized 
 the concrete operation they invoke. Global no-mutate execution rejects GitHub
 mutations before network access, including future admin mutations.
 
+## Drive
+
+`github drive REPOSITORY PR` performs one bounded deterministic reconciliation pass.
+It applies only whitelisted guarded actions, re-reads provider state after actions,
+and returns when the PR reaches `done`, `wait`, or `escalate`. GitHub remains the
+source of lifecycle truth; Drive does not persist a separate workflow state.
+
+Pass `--stream` to keep the invocation attached across deterministic wait states:
+
+```console
+gway github drive arthexis/gway 123 --stream
+```
+
+Streaming Drive emits structured `action`, `status`, `transition`, and terminal
+events. `--interval` controls wait-state polling and `--timeout` bounds the attached
+stream. The normal command remains bounded when `--stream` is absent, which is the
+preferred behavior for CI workflows that will be invoked again by later GitHub
+events.
+
+The action budget applies across the entire streaming invocation. Interrupting a
+stream does not lose lifecycle state: rerunning Drive reconstructs current state from
+GitHub and resumes from there.
+
+The generic `tail` operator currently executes wrapped commands with mutation
+disabled, so it must not be used to bypass Drive's write authorization. A future
+higher-order tail integration may opt into a target's explicit streaming parameter
+while preserving the target operation's own authorization and mutation contract.
+
 ## Mutation safety
 
 Ruleset creation and replacement require one complete explicit policy mapping with

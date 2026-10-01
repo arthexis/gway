@@ -4,7 +4,7 @@ on:
   push:
     branches: [main]
   pull_request_target:
-    types: [opened, reopened, synchronize, ready_for_review, unlabeled]
+    types: [opened, reopened, synchronize, ready_for_review, labeled, unlabeled, converted_to_draft]
   workflow_dispatch:
     inputs:
       pr_number:
@@ -13,149 +13,114 @@ on:
         type: number
 
 permissions:
+  actions: read
+  checks: read
   contents: write
-  issues: write
   pull-requests: write
 
 concurrency:
-  group: pr-branch-update-${{ github.repository }}
+  group: pr-drive-${{ github.repository }}
   cancel-in-progress: false
 
 jobs:
-  update-stale:
-    name: Update stale PRs
+  reconcile:
+    name: Reconcile PRs with Drive
     runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.BRANCH_UPDATE_TOKEN }}
+      GWAY_GITHUB_TOKEN: ${{ secrets.BRANCH_UPDATE_TOKEN }}
+      REPOSITORY: ${{ github.repository }}
+      EVENT_NAME: ${{ github.event_name }}
+      EVENT_PR_NUMBER: ${{ github.event.pull_request.number }}
+      INPUT_PR_NUMBER: ${{ inputs.pr_number }}
     steps:
-      - name: Find and update stale PRs
-        env:
-          GH_TOKEN: ${{ github.token }}
-          BRANCH_UPDATE_TOKEN: ${{ secrets.BRANCH_UPDATE_TOKEN }}
-          REPOSITORY: ${{ github.repository }}
-          EVENT_NAME: ${{ github.event_name }}
-          EVENT_ACTION: ${{ github.event.action }}
-          EVENT_LABEL: ${{ github.event.label.name }}
-          EVENT_PR_NUMBER: ${{ github.event.pull_request.number }}
-          INPUT_PR_NUMBER: ${{ inputs.pr_number }}
-          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+      - name: Check out trusted reconciler
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.10'
+          cache: pip
+
+      - name: Install Gway
+        run: python -m pip install -e .
+
+      - name: Reconcile selected pull requests
         shell: bash
         run: |
-          set -euo pipefail
+          set -Eeuo pipefail
 
-          update_pr() {
-            local pr_number="$1"
-            local pr_json state head_repo base_ref head_sha live_base_sha compare_json behind_by
-            local current_json current_head update_output update_status
-
-            pr_json="$(gh api "repos/$REPOSITORY/pulls/$pr_number")"
-            state="$(jq -r '.state' <<< "$pr_json")"
-            head_repo="$(jq -r '.head.repo.full_name // ""' <<< "$pr_json")"
-            base_ref="$(jq -r '.base.ref' <<< "$pr_json")"
-
-            if [[ "$state" != "open" ]]; then
-              echo "PR #$pr_number: not open; skipping."
-              return
-            fi
-
-            if [[ "$head_repo" != "$REPOSITORY" ]]; then
-              echo "PR #$pr_number: fork PR; automatic branch update is disabled."
-              return
-            fi
-
-            if [[ "$base_ref" != "$DEFAULT_BRANCH" ]]; then
-              echo "PR #$pr_number: targets $base_ref, not $DEFAULT_BRANCH; skipping."
-              return
-            fi
-
-            if jq -e '[.labels[].name | ascii_downcase] | any(. == "on-hold" or . == "on hold")' <<< "$pr_json" >/dev/null; then
-              echo "PR #$pr_number: on-hold; skipping."
-              return
-            fi
-
-
-            head_sha="$(jq -r '.head.sha' <<< "$pr_json")"
-            live_base_sha="$(gh api "repos/$REPOSITORY/git/ref/heads/$base_ref" --jq '.object.sha')"
-            compare_json="$(gh api "repos/$REPOSITORY/compare/$live_base_sha...$head_sha")"
-            behind_by="$(jq -r '.behind_by' <<< "$compare_json")"
-
-            if (( behind_by == 0 )); then
-              echo "PR #$pr_number: already up to date."
-              return
-            fi
-
-            current_json="$(gh api "repos/$REPOSITORY/pulls/$pr_number")"
-            current_head="$(jq -r '.head.sha' <<< "$current_json")"
-
-            if [[ "$current_head" != "$head_sha" ]]; then
-              echo "PR #$pr_number: head moved while checking; skipping stale update."
-              return
-            fi
-
-            if jq -e '[.labels[].name | ascii_downcase] | any(. == "on-hold" or . == "on hold")' <<< "$current_json" >/dev/null; then
-              echo "PR #$pr_number: became on-hold before update; skipping."
-              return
-            fi
-
-            echo "PR #$pr_number: updating branch ($behind_by commit(s) behind) with expected head $head_sha."
-
-            set +e
-            update_output="$(
-              GH_TOKEN="$BRANCH_UPDATE_TOKEN" gh api                 --method PUT                 -H "Accept: application/vnd.github+json"                 "repos/$REPOSITORY/pulls/$pr_number/update-branch"                 -f "expected_head_sha=$head_sha" 2>&1
-            )"
-            update_status=$?
-            set -e
-
-
-            if (( update_status != 0 )); then
-              echo "PR #$pr_number: branch update failed; update attempt finished."
-              echo "$update_output"
-              {
-                echo "### PR #$pr_number branch update failed"
-                echo
-                echo 'GitHub could not automatically update this branch from the default branch.'
-                echo
-                echo 'Manual conflict resolution may be required.'
-              } >> "$GITHUB_STEP_SUMMARY"
-              return
-            fi
-
-            echo "PR #$pr_number: branch update requested successfully; update attempt finished."
-          }
-
-          if [[ -z "${BRANCH_UPDATE_TOKEN:-}" ]]; then
-            echo "::error::BRANCH_UPDATE_TOKEN is not configured; refusing to update PRs with github.token because bot-authored updates suppress normal PR CI."
+          if [[ -z "${GWAY_GITHUB_TOKEN:-}" ]]; then
+            echo "::error::BRANCH_UPDATE_TOKEN is not configured; Drive requires a token whose writes can trigger normal PR CI."
             exit 1
           fi
 
+          results="$RUNNER_TEMP/drive-results"
+          mkdir -p "$results"
+
+          drive_pr() {
+            local pr_number="$1"
+            local result="$results/pr-${pr_number}.json"
+
+            echo "Reconciling PR #$pr_number with GitHub Drive."
+            python -m gway github drive "$REPOSITORY" "$pr_number" -o "$result"
+
+            python - "$result" "$GITHUB_STEP_SUMMARY" <<'PY'
+          import json
+          import sys
+
+          result_path, summary_path = sys.argv[1:]
+          with open(result_path, encoding="utf-8") as handle:
+              result = json.load(handle)
+
+          actions = result.get("actions") or []
+          applied = [item.get("kind") for item in actions if item.get("result") == "changed"]
+          with open(summary_path, "a", encoding="utf-8") as summary:
+              summary.write(
+                  f"- PR #{result['pr']}: **{result['outcome']}** → "
+                  f"`{result['final_status']}` / `{result['disposition']}`"
+              )
+              if applied:
+                  summary.write(f"; applied: {', '.join(applied)}")
+              if result.get("reason"):
+                  summary.write(f"; reason: `{result['reason']}`")
+              summary.write("\n")
+          PY
+          }
+
           case "$EVENT_NAME" in
             pull_request_target)
-              if [[ "$EVENT_ACTION" == "unlabeled" ]]; then
-                case "${EVENT_LABEL,,}" in
-                  on-hold|"on hold")
-                    ;;
-                  *)
-                    echo "PR #$EVENT_PR_NUMBER: removed label does not release a hold; skipping."
-                    exit 0
-                    ;;
-                esac
-              fi
-              update_pr "$EVENT_PR_NUMBER"
+              drive_pr "$EVENT_PR_NUMBER"
               ;;
             workflow_dispatch)
               if [[ -n "${INPUT_PR_NUMBER:-}" ]]; then
-                update_pr "$INPUT_PR_NUMBER"
+                drive_pr "$INPUT_PR_NUMBER"
               else
                 while IFS= read -r pr_number; do
-                  update_pr "$pr_number"
+                  drive_pr "$pr_number"
                 done < <(
-                  gh pr list --repo "$REPOSITORY" --state open --limit 1000                     --json number --jq '.[].number'
+                  gh pr list --repo "$REPOSITORY" --state open --limit 1000 \
+                    --json number --jq '.[].number'
                 )
               fi
               ;;
             push)
               while IFS= read -r pr_number; do
-                update_pr "$pr_number"
+                drive_pr "$pr_number"
               done < <(
-                gh pr list --repo "$REPOSITORY" --state open --limit 1000                   --json number --jq '.[].number'
+                gh pr list --repo "$REPOSITORY" --state open --limit 1000 \
+                  --json number --jq '.[].number'
               )
               ;;
           esac
+
+      - name: Publish Drive results
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: github-drive-results-${{ github.run_id }}
+          path: ${{ runner.temp }}/drive-results/*.json
+          if-no-files-found: ignore
