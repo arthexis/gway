@@ -11,11 +11,7 @@ class Controller:
         self.gateway = gateway
 
     def whoami(self, *, mutate=False):
-        """Return the current caller identity and effective authority.
-
-        Security scopes are independent of install/project ingestion lifecycle;
-        product ingestion exposes operations but does not publish authorization.
-        """
+        """Return the current caller identity and effective authority."""
         del mutate
         authority = self.gateway.authorization
         if authority is None:
