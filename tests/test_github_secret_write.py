@@ -3,6 +3,7 @@ import base64
 import pytest
 
 from gway.githubops import Controller
+from gway.tokens import tokenize
 
 
 def test_secret_key_is_read_only_metadata(github_client):
@@ -62,6 +63,11 @@ def test_secret_write_requires_pynacl_when_unavailable(monkeypatch):
 
 
 def test_secret_operations_have_split_read_write_authorization(gateway):
+    assert gateway.operation_routes.expand(
+        gateway,
+        tokenize("github secret key"),
+    ) is True
+
     read = gateway.ops.resolve("github.secret_key")
     assert read is not None
     assert read.mutates is False
