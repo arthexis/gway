@@ -3,6 +3,76 @@
 from .publication import normalize_publications
 
 
+_OPERATOR_READ_OPERATIONS = frozenset(
+    {
+        "survey",
+        "help",
+        "guide",
+        "version",
+        "log.sources",
+        "log.read",
+        "log.tail",
+        "log.search",
+        "security.whoami",
+        "security.scope.current",
+        "node",
+        "products",
+        "extensions",
+        "builtins",
+        "filter",
+        "service.list",
+        "service.status",
+        "service.statuses",
+        "wire.check",
+        "sous.chef.list",
+        "sous.chef.inspect",
+    }
+)
+
+_OPERATOR_WRITE_OPERATIONS = frozenset(
+    {
+        "github.drive",
+        "github.create_ruleset",
+        "github.update_ruleset",
+        "github.delete_ruleset",
+        "github.update_branch_protection",
+        "github.delete_branch_protection",
+        "github.set_actions_permissions",
+        "github.set_actions_workflow_permissions",
+        "github.set_variable",
+        "github.delete_variable",
+        "github.set_secret",
+        "github.delete_secret",
+        "github.create_issue",
+        "github.update_issue",
+        "github.close_issue",
+        "github.reopen_issue",
+        "github.comment_issue",
+        "github.create_pull",
+        "github.update_pull",
+        "github.close_pull",
+        "github.reopen_pull",
+        "github.reply_review_comment",
+        "github.add_labels",
+        "github.remove_label",
+        "github.ready_pull",
+        "github.draft_pull",
+        "github.merge_pull",
+        "github.dispatch_workflow",
+        "github.dispatch_repository",
+        "github.create_release",
+        "github.update_release",
+        "github.create_ref",
+        "github.create_branch",
+        "github.delete_ref",
+        "github.delete_branch",
+        "github.create_file",
+        "github.update_file",
+        "github.delete_file",
+    }
+)
+
+
 CORE_SCOPE_DEFINITIONS = {
     "full-access": {
         "operations": frozenset({"__all__"}),
@@ -65,24 +135,14 @@ CORE_SCOPE_DEFINITIONS = {
         "semantic_terms": frozenset({"source", "admin"}),
     },
     "operator-read": {
-        "operations": frozenset(
-            {
-                "survey",
-                "node",
-                "products",
-                "extensions",
-                "builtins",
-                "filter",
-                "service.list",
-                "service.status",
-                "service.statuses",
-                "wire.check",
-                "sous.chef.list",
-                "sous.chef.inspect",
-            }
-        ),
+        "operations": _OPERATOR_READ_OPERATIONS,
         "environment": frozenset(),
         "semantic_terms": frozenset({"operator", "read"}),
+    },
+    "operator-write": {
+        "operations": _OPERATOR_WRITE_OPERATIONS,
+        "environment": frozenset(),
+        "semantic_terms": frozenset({"operator", "write"}),
     },
 }
 
@@ -156,7 +216,7 @@ def converge_scope_registry(
     for name, publication in published.items():
         if name in CORE_SCOPE_NAMES:
             raise ValueError(f"Published security scope shadows Gway core scope: {name}")
-        publication.owner  # validate provenance before opening the transaction
+        publication.owner
 
     desired = {
         name: ("gway", definition)
