@@ -33,24 +33,25 @@ class Controller(StatusController):
 
         while True:
             disposition = current.get("disposition")
+            changed = self._drive_changed(actions)
             if disposition == "done":
                 return self._drive_result(
-                    repository, pull, "changed" if actions else "done",
+                    repository, pull, "changed" if changed else "done",
                     initial, current, actions,
                 )
             if disposition == "wait":
                 return self._drive_result(
-                    repository, pull, "changed" if actions else "waiting",
+                    repository, pull, "changed" if changed else "waiting",
                     initial, current, actions,
                 )
             if disposition == "escalate":
                 return self._drive_result(
-                    repository, pull, "changed" if actions else "escalated",
+                    repository, pull, "changed" if changed else "escalated",
                     initial, current, actions,
                 )
             if disposition != "auto":
                 return self._drive_result(
-                    repository, pull, "changed" if actions else "escalated",
+                    repository, pull, "changed" if changed else "escalated",
                     initial, current, actions,
                     reason="drive-unknown-disposition",
                 )
@@ -58,13 +59,13 @@ class Controller(StatusController):
             action = current.get("action")
             if not isinstance(action, dict) or not action.get("kind"):
                 return self._drive_result(
-                    repository, pull, "changed" if actions else "escalated",
+                    repository, pull, "changed" if changed else "escalated",
                     initial, current, actions,
                     reason="drive-missing-action",
                 )
             if len(actions) >= max_actions:
                 return self._drive_result(
-                    repository, pull, "changed" if actions else "escalated",
+                    repository, pull, "changed" if changed else "escalated",
                     initial, current, actions,
                     reason="drive-action-budget-exhausted",
                     pending_action=action,
@@ -75,7 +76,7 @@ class Controller(StatusController):
             )
             if execution is None:
                 return self._drive_result(
-                    repository, pull, "changed" if actions else "escalated",
+                    repository, pull, "changed" if changed else "escalated",
                     initial, current, actions,
                     reason="drive-action-not-implemented",
                     pending_action=action,
@@ -86,8 +87,12 @@ class Controller(StatusController):
             current = self._drive_status(repository, pull)
             if self._drive_fingerprint(current) == previous_fingerprint:
                 return self._drive_result(
-                    repository, pull, "changed",
-                    initial, current, actions,
+                    repository,
+                    pull,
+                    "changed" if self._drive_changed(actions) else "escalated",
+                    initial,
+                    current,
+                    actions,
                     reason="drive-no-progress",
                 )
 
@@ -229,6 +234,11 @@ class Controller(StatusController):
             "expected_head_sha": expected,
             "provider": provider,
         }
+
+    @staticmethod
+    def _drive_changed(actions):
+        """Return whether this invocation actually applied a provider mutation."""
+        return any(action.get("result") == "changed" for action in actions)
 
     @staticmethod
     def _drive_fingerprint(status):
