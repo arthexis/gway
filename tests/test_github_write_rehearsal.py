@@ -4,6 +4,7 @@ import pytest
 
 from gway.authorization import AuthorizationError
 from gway.githubops import Controller
+from gway.tokens import tokenize
 
 
 class RehearsalClient:
@@ -69,6 +70,10 @@ def test_read_authority_cannot_invoke_write_operation(gateway):
 
 def test_write_authority_can_invoke_registered_write(monkeypatch, gateway):
     client = RehearsalClient()
+    assert gateway.operation_routes.expand(
+        gateway,
+        tokenize("github set variable"),
+    ) is True
     gateway._github_controller._client = client
 
     with gateway.authorized(operations={"github.set_variable"}):
