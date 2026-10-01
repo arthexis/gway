@@ -200,9 +200,9 @@ def converge_scope_registry(
 ):
     """Atomically converge only Gway-owned bundled scopes.
 
-    Product/Django/Odoo ingestion no longer publishes authorization scopes.
-    Existing generated project scopes are retired during writable convergence;
-    user-managed scopes remain untouched.
+    Product/Django/Odoo ingestion exposes operations but no longer publishes
+    authorization scopes. Existing generated project scopes are retired during
+    writable convergence; user-managed scopes remain untouched.
     """
     del published
     desired = {
