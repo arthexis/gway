@@ -24,7 +24,7 @@ def test_scope_create_round_trips_and_versions_schema(tmp_path):
     assert registry.get("logs-read") == Scope("logs-read")
 
     with sqlite3.connect(path) as connection:
-        assert connection.execute("PRAGMA user_version").fetchone()[0] == 9
+        assert connection.execute("PRAGMA user_version").fetchone()[0] == 10
 
 
 def test_scope_replace_is_atomic_complete_definition(tmp_path):
@@ -253,7 +253,6 @@ def test_failed_replace_rolls_back_previous_scope(tmp_path, monkeypatch):
     assert registry.get("logs") == original
 
 
-
 def test_security_scope_gway_command_surface(gateway, tmp_path):
     path = tmp_path / "security.sqlite"
     gateway.security_path = path
@@ -294,7 +293,6 @@ def test_security_scope_gway_command_surface(gateway, tmp_path):
     remaining = gateway("security scope list")
     assert all(scope.name != "logs-custom" for scope in remaining)
     assert any(scope.name == "full-access" for scope in remaining)
-
 
 
 def test_scope_toml_apply_and_export_round_trip(gateway, tmp_path):
@@ -391,7 +389,6 @@ def test_scope_toml_rejects_unknown_fields(tmp_path):
         registry.replace_many(
             {"logs": {"operations": ["log.read"], "wildcard": ["*"]}}
         )
-
 
 
 def test_readonly_security_state_never_migrates_schema(tmp_path):
