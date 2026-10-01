@@ -220,6 +220,28 @@ class TokenRegistry:
             self._replace_union_bindings(connection, cursor.lastrowid, unions)
         return IssuedToken(self.require(name), bearer)
 
+    def rename(self, name, new_name):
+        """Rename a token while preserving its stable identity and all bindings."""
+        name = self._name(name)
+        new_name = self._name(new_name)
+        with self.state.connect() as connection:
+            row = connection.execute(
+                "SELECT id FROM tokens WHERE name = ?",
+                (name,),
+            ).fetchone()
+            if row is None:
+                raise LookupError(f"Unknown security token: {name}")
+            if connection.execute(
+                "SELECT 1 FROM tokens WHERE name = ?",
+                (new_name,),
+            ).fetchone():
+                raise ValueError(f"Security token already exists: {new_name}")
+            connection.execute(
+                "UPDATE tokens SET name = ? WHERE id = ?",
+                (new_name, row["id"]),
+            )
+        return self.require(new_name)
+
     def remove(self, name):
         if not self.path.is_file():
             return False
