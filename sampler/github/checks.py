@@ -207,6 +207,7 @@ class Controller(BaseController):
         pr = self.pull(repository, pull)
         head = (pr.get("head") or {}).get("sha")
         auto = pr.get("auto_merge") is not None
+        mergeable_state = pr.get("mergeable_state")
         if pr.get("merged"):
             state, authorization, action = "merged", "complete", None
         elif pr.get("state") == "closed":
@@ -218,22 +219,27 @@ class Controller(BaseController):
         elif pr.get("mergeable") is None:
             state, authorization, action = "pending", "unknown", None
         elif pr.get("mergeable") is False:
-            state = "conflict" if pr.get("mergeable_state") == "dirty" else "blocked"
+            state = "conflict" if mergeable_state == "dirty" else "blocked"
             authorization, action = "unavailable", None
         elif auto:
             state, authorization, action = "ready", "native-auto-merge", None
-        else:
-            # GitHub rejects enabling auto-merge once the PR is already mergeable.
-            # At that point the deterministic continuation is an expected-head merge.
+        elif mergeable_state == "clean":
+            # GitHub rejects enabling auto-merge once all requirements are met and
+            # the PR is immediately mergeable. Continue with an expected-head merge.
             state, authorization = "ready", "direct-merge-required"
             action = {"kind": "merge-pull", "expected_head_sha": head}
+        else:
+            # The branches merge cleanly but checks/reviews/other policy still block
+            # immediate merge, so native auto-merge remains the deterministic path.
+            state, authorization = "blocked", "not-authorized"
+            action = {"kind": "enable-auto-merge", "expected_head_sha": head}
         result = {
             "repository": str(repository),
             "pr": int(pull),
             "state": state,
             "head_sha": head,
             "mergeable": pr.get("mergeable"),
-            "mergeable_state": pr.get("mergeable_state"),
+            "mergeable_state": mergeable_state,
             "authorization": {"state": authorization, "auto_merge_enabled": auto},
         }
         if action is not None:
