@@ -22,6 +22,7 @@ CORE_SCOPE_DEFINITIONS = {
             }
         ),
         "environment": frozenset(),
+        "semantic_terms": frozenset({"logs", "read"}),
     },
     "source-read": {
         "operations": frozenset(
@@ -35,6 +36,7 @@ CORE_SCOPE_DEFINITIONS = {
             }
         ),
         "environment": frozenset(),
+        "semantic_terms": frozenset({"source", "read"}),
     },
     "source-admin": {
         "operations": frozenset(
@@ -58,6 +60,7 @@ CORE_SCOPE_DEFINITIONS = {
             }
         ),
         "environment": frozenset(),
+        "semantic_terms": frozenset({"source", "admin"}),
     },
     "operator-read": {
         "operations": frozenset(
@@ -77,6 +80,7 @@ CORE_SCOPE_DEFINITIONS = {
             }
         ),
         "environment": frozenset(),
+        "semantic_terms": frozenset({"operator", "read"}),
     },
 }
 

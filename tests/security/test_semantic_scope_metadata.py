@@ -93,7 +93,7 @@ def test_product_publication_persists_optional_semantic_terms(tmp_path):
     published = registry.require("odoo-cards-read")
     assert published.owner == "project:odoo"
     assert published.semantic_terms == frozenset({"odoo", "cards", "read"})
-    assert registry.require("logs-read").semantic_terms == frozenset()
+    assert registry.require("logs-read").semantic_terms == frozenset({"logs", "read"})
 
 
 def test_semantic_terms_toml_round_trip(gateway, tmp_path):
