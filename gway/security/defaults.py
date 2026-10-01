@@ -147,9 +147,17 @@ def _definition_signature(scope):
 
 
 def _replace_owned(connection, registry, name, definition, *, owner):
-    """Replace one owned scope using an existing convergence transaction."""
+    """Replace one publisher-owned scope inside the convergence transaction.
+
+    Existing user-managed scopes are never silently claimed. A legacy unowned
+    scope may be adopted only when its exact grants already match the bundled
+    definition, so migration cannot change authority merely by assigning owner
+    provenance.
+    """
+    operations = registry._grants(definition.get("operations", ()), label="operation")
+    environment = registry._grants(definition.get("environment", ()), label="environment")
     row = connection.execute(
-        "SELECT id, owner FROM scopes WHERE name = ?",
+        "SELECT id, name, owner FROM scopes WHERE name = ?",
         (name,),
     ).fetchone()
     if row is None:
@@ -158,10 +166,15 @@ def _replace_owned(connection, registry, name, definition, *, owner):
             (name, owner),
         )
         row = connection.execute(
-            "SELECT id, owner FROM scopes WHERE name = ?",
+            "SELECT id, name, owner FROM scopes WHERE name = ?",
             (name,),
         ).fetchone()
     elif row["owner"] is None:
+        current = registry._row_scope(connection, row)
+        if current.operations != operations or current.environment != environment:
+            raise ValueError(
+                f"Security scope {name} is user-managed and differs from bundled {owner} policy"
+            )
         connection.execute(
             "UPDATE scopes SET owner = ? WHERE id = ?",
             (owner, row["id"]),
@@ -172,8 +185,6 @@ def _replace_owned(connection, registry, name, definition, *, owner):
         )
 
     scope_id = row["id"]
-    operations = registry._grants(definition.get("operations", ()), label="operation")
-    environment = registry._grants(definition.get("environment", ()), label="environment")
     connection.execute("DELETE FROM scope_operations WHERE scope_id = ?", (scope_id,))
     connection.execute("DELETE FROM scope_environment WHERE scope_id = ?", (scope_id,))
     connection.executemany(
