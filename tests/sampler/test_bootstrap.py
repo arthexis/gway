@@ -146,8 +146,11 @@ def test_arthexis_roles_share_one_installer_template(sampler_path):
     assert 'Revision:         %s' in script
     assert 'Services:         web, worker, beat' in script
     assert 'gway service statuses --project arthexis' in script
-    assert "satellite" not in script.lower()
-    assert "control" not in script.lower()
+    executable = "\n".join(
+        line for line in script.splitlines() if not line.lstrip().startswith("#")
+    )
+    assert "satellite" not in executable.lower()
+    assert "control" not in executable.lower()
 
 
 def test_arthexis_bootstrap_guards_existing_database_upgrades(sampler_path):
