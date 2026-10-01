@@ -4,12 +4,14 @@ from __future__ import annotations
 
 import io
 import json
+import re
 import zipfile
 
 from .githubops import Controller as BaseController
 
 
 _ARTIFACT_NAME = "gway-ci-result"
+_DISPATCH_TITLE = re.compile(r"\bPR\s*#(?P<pull>\d+)\s*@\s*(?P<head>[0-9a-fA-F]{7,40})\b")
 _STATE = {
     "success": "passed",
     "failure": "failed",
@@ -40,6 +42,23 @@ def _aggregate(states):
     if all(value in {"passed", "skipped", "neutral"} for value in states):
         return "neutral" if "neutral" in states else "skipped"
     return "unknown"
+
+
+def _dispatch_target(run):
+    """Return ``(pull, head)`` encoded by a label-dispatched workflow run."""
+    if run.get("event") != "workflow_dispatch":
+        return None
+    match = _DISPATCH_TITLE.search(str(run.get("display_title") or ""))
+    if match is None:
+        return None
+    return int(match.group("pull")), match.group("head").lower()
+
+
+def _targets_head(run, *, pull, head):
+    if str(run.get("head_sha") or "").lower() == head.lower():
+        return True
+    target = _dispatch_target(run)
+    return target == (int(pull), head.lower())
 
 
 class Controller(BaseController):
@@ -83,21 +102,36 @@ class Controller(BaseController):
         if not head:
             raise ValueError("pull request response is missing head SHA")
 
-        current = self._all_enveloped(
+        direct = self._all_enveloped(
             f"{root}/actions/runs",
             "workflow_runs",
             params={"per_page": 100, "head_sha": head},
         )
+        dispatched = self._all_enveloped(
+            f"{root}/actions/runs",
+            "workflow_runs",
+            params={"per_page": 100, "event": "workflow_dispatch"},
+        )
+        by_id = {}
+        for run in (*direct, *dispatched):
+            if _targets_head(run, pull=pull, head=head):
+                by_id[run.get("id")] = run
+        current = [run for run_id, run in by_id.items() if run_id is not None]
+
         all_runs = self._all_enveloped(
             f"{root}/actions/runs",
             "workflow_runs",
             params={"per_page": 100, "event": "pull_request"},
         )
-        stale = [run for run in all_runs if run.get("head_branch") == ((pr.get("head") or {}).get("ref")) and run.get("head_sha") != head]
+        stale = [
+            run
+            for run in all_runs
+            if run.get("head_branch") == ((pr.get("head") or {}).get("ref"))
+            and run.get("head_sha") != head
+        ]
 
         workflows = []
-        artifact_result = None
-        artifact_error = None
+        artifact_errors = []
         diagnostic = None
         for run in current:
             run_id = run.get("id")
@@ -105,50 +139,84 @@ class Controller(BaseController):
             normalized_jobs = []
             for job in jobs:
                 state = _state(job.get("status"), job.get("conclusion"))
-                normalized_jobs.append({
-                    "id": job.get("id"),
-                    "name": job.get("name"),
-                    "state": state,
-                    "status": job.get("status"),
-                    "conclusion": job.get("conclusion"),
-                    "started_at": job.get("started_at"),
-                    "completed_at": job.get("completed_at"),
-                    "url": job.get("html_url"),
-                })
+                normalized_jobs.append(
+                    {
+                        "id": job.get("id"),
+                        "name": job.get("name"),
+                        "state": state,
+                        "status": job.get("status"),
+                        "conclusion": job.get("conclusion"),
+                        "started_at": job.get("started_at"),
+                        "completed_at": job.get("completed_at"),
+                        "url": job.get("html_url"),
+                    }
+                )
                 if diagnostic is None and state == "failed":
-                    diagnostic = {"kind": "github-ci", "run_id": run_id, "job_id": job.get("id")}
+                    diagnostic = {
+                        "kind": "github-ci",
+                        "run_id": run_id,
+                        "job_id": job.get("id"),
+                    }
 
             artifact = None
+            canonical = None
             try:
-                matches = self.artifacts(repository, run_id, name=_ARTIFACT_NAME) if run_id is not None else []
+                matches = (
+                    self.artifacts(repository, run_id, name=_ARTIFACT_NAME)
+                    if run_id is not None
+                    else []
+                )
                 if matches:
                     selected = max(matches, key=lambda item: item.get("id", 0))
-                    artifact = {"name": _ARTIFACT_NAME, "available": True, "id": selected.get("id")}
-                    if artifact_result is None:
-                        artifact_result = self.artifact_json(repository, selected["id"])
+                    artifact = {
+                        "name": _ARTIFACT_NAME,
+                        "available": True,
+                        "id": selected.get("id"),
+                    }
+                    canonical = self.artifact_json(repository, selected["id"])
                 else:
                     artifact = {"name": _ARTIFACT_NAME, "available": False}
             except (ValueError, TypeError, json.JSONDecodeError, zipfile.BadZipFile) as exc:
                 artifact = {"name": _ARTIFACT_NAME, "available": True, "valid": False}
-                artifact_error = str(exc)
+                artifact_errors.append({"run_id": run_id, "error": str(exc)})
 
-            workflows.append({
-                "id": run_id,
-                "name": run.get("name"),
-                "state": _state(run.get("status"), run.get("conclusion")),
-                "status": run.get("status"),
-                "conclusion": run.get("conclusion"),
-                "head_sha": run.get("head_sha"),
-                "current": run.get("head_sha") == head,
-                "url": run.get("html_url"),
-                "jobs": normalized_jobs,
-                "artifact": artifact,
-            })
+            workflows.append(
+                {
+                    "id": run_id,
+                    "name": run.get("name"),
+                    "state": _state(run.get("status"), run.get("conclusion")),
+                    "status": run.get("status"),
+                    "conclusion": run.get("conclusion"),
+                    "head_sha": run.get("head_sha"),
+                    "tested_head_sha": head,
+                    "current": True,
+                    "url": run.get("html_url"),
+                    "jobs": normalized_jobs,
+                    "artifact": artifact,
+                    "result": canonical,
+                }
+            )
 
         state = _aggregate(item["state"] for item in workflows)
         failure_kind = None
+        artifact_result = next(
+            (item["result"] for item in workflows if item["result"] is not None),
+            None,
+        )
         if state == "failed":
-            failure_kind = "ci" if artifact_result is not None else "infrastructure"
+            failed = [item for item in workflows if item["state"] == "failed"]
+            modeled = [
+                item
+                for item in failed
+                if isinstance(item["result"], dict)
+                and item["result"].get("state") == "failed"
+            ]
+            if failed and len(modeled) == len(failed):
+                failure_kind = "ci"
+                artifact_result = modeled[0]["result"]
+            else:
+                failure_kind = "infrastructure"
+                artifact_result = None
 
         result = {
             "repository": str(repository),
@@ -162,6 +230,6 @@ class Controller(BaseController):
             "failure_kind": failure_kind,
             "diagnostic_target": diagnostic,
         }
-        if artifact_error is not None:
-            result["artifact_error"] = artifact_error
+        if artifact_errors:
+            result["artifact_errors"] = artifact_errors
         return result
