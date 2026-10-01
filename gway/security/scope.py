@@ -11,7 +11,6 @@ from .scopes import Scope, ScopeRegistry
 from .validation import (
     require_valid_scope,
     validate_definitions,
-    validate_published,
     validate_scope,
 )
 
@@ -73,13 +72,11 @@ class Controller:
         }
 
     def converge(self, *, retire_missing=True):
-        """Validate and atomically converge all currently published scopes."""
+        """Atomically converge the bundled Gway scopes."""
         from .defaults import converge_scope_registry
 
-        validate_published(self.gateway)
         return converge_scope_registry(
             self.registry,
-            getattr(self.gateway, "_published_scopes", {}),
             retire_missing=retire_missing,
             report=True,
         )
