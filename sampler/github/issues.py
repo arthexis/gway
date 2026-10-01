@@ -5,6 +5,41 @@ from __future__ import annotations
 from .base import segment
 
 
+def _same_repository(issue, repository):
+    """Return whether an embedded GitHub issue belongs to ``repository``."""
+    expected = str(repository).strip("/").lower()
+    embedded = ((issue.get("repository") or {}).get("full_name") or "").lower()
+    if embedded:
+        return embedded == expected
+    repository_url = str(issue.get("repository_url") or "").rstrip("/").lower()
+    return bool(repository_url) and repository_url.endswith(f"/repos/{expected}")
+
+
+def _linked_pull(event, repository):
+    """Normalize a same-repository PR from one GitHub cross-reference event."""
+    if event.get("event") != "cross-referenced":
+        return None
+    source = event.get("source") or {}
+    if source.get("type") != "issue":
+        return None
+    issue = source.get("issue") or {}
+    pull = issue.get("pull_request")
+    if not isinstance(pull, dict) or not _same_repository(issue, repository):
+        return None
+    number = issue.get("number")
+    if number is None:
+        return None
+    return {
+        "number": int(number),
+        "title": issue.get("title"),
+        "state": issue.get("state"),
+        "draft": bool(issue.get("draft", False)),
+        "merged_at": pull.get("merged_at"),
+        "url": issue.get("html_url") or pull.get("html_url"),
+        "relationship": "cross-referenced",
+    }
+
+
 class IssueOperations:
     def issues(self, repository, state="open"):
         """List issue records, including pull requests as GitHub returns them."""
@@ -18,6 +53,33 @@ class IssueOperations:
         return self._github().request(
             "GET", f"{self._repo(repository)}/issues/{int(number)}"
         ).data
+
+    def issue_prs(self, repository, issue, state="open"):
+        """Return PRs GitHub cross-references from an issue timeline.
+
+        Linkage is intentionally provider-backed: this operation does not infer
+        relationships from branch names, titles, body text, or model judgment.
+        ``state`` accepts ``open``, ``closed``, or ``all`` and defaults to the
+        active/open PRs that are useful to the Drive workflow.
+        """
+        state = str(state).lower()
+        if state not in {"open", "closed", "all"}:
+            raise ValueError("state must be open, closed, or all")
+        events = self._all(
+            f"{self._repo(repository)}/issues/{int(issue)}/timeline",
+            params={"per_page": 100},
+        )
+        result = []
+        seen = set()
+        for event in events:
+            pull = _linked_pull(event, repository)
+            if pull is None or pull["number"] in seen:
+                continue
+            if state != "all" and pull["state"] != state:
+                continue
+            seen.add(pull["number"])
+            result.append(pull)
+        return result
 
     def comments(self, repository, number):
         """List conversation comments for an issue or pull request."""
