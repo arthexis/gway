@@ -28,6 +28,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       GH_TOKEN: ${{ secrets.BRANCH_UPDATE_TOKEN }}
+      GITHUB_TOKEN: ${{ secrets.BRANCH_UPDATE_TOKEN }}
       GWAY_GITHUB_TOKEN: ${{ secrets.BRANCH_UPDATE_TOKEN }}
       REPOSITORY: ${{ github.repository }}
       EVENT_NAME: ${{ github.event_name }}
