@@ -2,6 +2,8 @@
 
 from dataclasses import dataclass
 
+from .publication import normalize_publications
+
 
 @dataclass(frozen=True)
 class ScopeValidation:
@@ -64,22 +66,17 @@ def require_valid_scope(gateway, scope):
 
 
 def validate_definitions(gateway, definitions):
-    """Validate explicit semantic scope definitions before publication."""
+    """Validate normalized semantic scope publications before convergence."""
     from .scopes import Scope
 
     results = []
-    for name, definition in dict(definitions).items():
-        definition = dict(definition)
+    for publication in normalize_publications(definitions).values():
         scope = Scope(
-            str(name),
-            frozenset(definition.get("operations", ())),
-            frozenset(definition.get("environment", ())),
+            publication.name,
+            publication.operations,
+            publication.environment,
             None,
-            frozenset(
-                str(term).strip().lower()
-                for term in definition.get("semantic_terms", ())
-                if str(term).strip()
-            ),
+            publication.semantic_terms,
         )
         results.append(require_valid_scope(gateway, scope))
     return tuple(results)
