@@ -1,10 +1,5 @@
 """Public GWAY core interface."""
 
-from . import githubops as _githubops
-from .githubcheck import Controller as _GitHubController
-
-_githubops.Controller = _GitHubController
-
 from .cache import Cache
 from .gateway import Gateway, gw
 from .install import Installation, InstallRequest, InstallState, Stash, UninstallRequest
