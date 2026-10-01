@@ -79,9 +79,33 @@ class Controller(RolloutController):
             )
 
         pr = self._check_pr_pull(repository, pull)
+        auto_merge = (pr.get("auto_merge") or {}).get("enabled") is True
+        head_sha = ((pr.get("head") or {}).get("sha"))
         if pr.get("on_hold"):
+            if auto_merge:
+                return self._result(
+                    repository,
+                    pull,
+                    "on-hold",
+                    "auto",
+                    action={
+                        "kind": "ensure-auto-merge-disabled",
+                        "expected_head_sha": head_sha,
+                    },
+                )
             return self._result(repository, pull, "on-hold", "wait")
         if pr.get("state") == "draft":
+            if auto_merge:
+                return self._result(
+                    repository,
+                    pull,
+                    "draft",
+                    "auto",
+                    action={
+                        "kind": "ensure-auto-merge-disabled",
+                        "expected_head_sha": head_sha,
+                    },
+                )
             return self._result(repository, pull, "draft", "wait")
 
         reviews = self._check_reviews_pull(repository, pull)
