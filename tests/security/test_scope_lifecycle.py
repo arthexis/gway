@@ -5,7 +5,7 @@ import pytest
 from gway.security.controller import Controller
 
 
-class _Gateway:
+class LifecycleGateway:
     def __init__(self):
         self.install = None
         self.uninstall = None
@@ -29,24 +29,46 @@ class _Gateway:
         return {"added": [], "updated": [], "retired": [], "unchanged": []}
 
 
-def test_install_lifecycle_converges_after_success(monkeypatch):
-    gateway = _Gateway()
-    controller = Controller(gateway)
-    monkeypatch.setattr(controller, "_refresh_publications", lambda: gateway.events.append(("refresh",)))
+@pytest.fixture
+def lifecycle():
+    gateway = LifecycleGateway()
+    return gateway, Controller(gateway)
+
+
+def test_install_lifecycle_refreshes_after_success(lifecycle, monkeypatch):
+    gateway, controller = lifecycle
+    monkeypatch.setattr(
+        controller,
+        "_refresh_publications",
+        lambda: gateway.events.append(("refresh",)),
+    )
 
     result = gateway.install("demo", ref="main", upgrade=True)
 
     assert result == {"installed": "demo"}
     assert gateway.events[-2:] == [
-        ("install", "demo", {"ref": "main", "upgrade": True, "force": False, "stash": False, "system": False}),
+        (
+            "install",
+            "demo",
+            {
+                "ref": "main",
+                "upgrade": True,
+                "force": False,
+                "stash": False,
+                "system": False,
+            },
+        ),
         ("refresh",),
     ]
 
 
-def test_uninstall_lifecycle_refreshes_for_scope_retirement(monkeypatch):
-    gateway = _Gateway()
-    controller = Controller(gateway)
-    monkeypatch.setattr(controller, "_refresh_publications", lambda: gateway.events.append(("refresh",)))
+def test_uninstall_lifecycle_refreshes_for_scope_retirement(lifecycle, monkeypatch):
+    gateway, controller = lifecycle
+    monkeypatch.setattr(
+        controller,
+        "_refresh_publications",
+        lambda: gateway.events.append(("refresh",)),
+    )
 
     result = gateway.uninstall("demo")
 
@@ -57,9 +79,8 @@ def test_uninstall_lifecycle_refreshes_for_scope_retirement(monkeypatch):
     ]
 
 
-def test_convergence_failure_blocks_lifecycle_success(monkeypatch):
-    gateway = _Gateway()
-    controller = Controller(gateway)
+def test_convergence_failure_blocks_lifecycle_success(lifecycle, monkeypatch):
+    gateway, controller = lifecycle
 
     def fail():
         raise ValueError("unsafe published read scope")
@@ -72,9 +93,8 @@ def test_convergence_failure_blocks_lifecycle_success(monkeypatch):
     assert gateway.events[-1][0] == "install"
 
 
-def test_refresh_rediscovers_publishers_before_convergence(monkeypatch):
-    gateway = _Gateway()
-    controller = Controller(gateway)
+def test_refresh_discovers_before_convergence(lifecycle, monkeypatch):
+    gateway, controller = lifecycle
 
     import gway.config as config
 
@@ -92,7 +112,8 @@ def test_refresh_rediscovers_publishers_before_convergence(monkeypatch):
     assert gateway.events[-2:] == [("discover",), ("converge",)]
 
 
-def test_refresh_republishes_active_local_project(monkeypatch, tmp_path):
+def test_refresh_republishes_active_local_project(lifecycle, monkeypatch, tmp_path):
+    gateway, controller = lifecycle
     project = tmp_path / "pyproject.toml"
     project.write_text(
         """
@@ -106,10 +127,7 @@ semantic_terms = ["local", "read"]
 """.lstrip(),
         encoding="utf-8",
     )
-
-    gateway = _Gateway()
     gateway._project_path = Path(project)
-    controller = Controller(gateway)
 
     import gway.config as config
 
@@ -118,7 +136,6 @@ semantic_terms = ["local", "read"]
         "discover_managed_projects",
         lambda runtime: setattr(runtime, "_published_scopes", {}),
     )
-
     published = []
 
     def publish(runtime, data, *, source):
