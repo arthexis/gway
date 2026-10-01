@@ -199,18 +199,16 @@ def _replace_owned(connection, registry, name, definition, *, owner):
 
 def converge_scope_registry(
     registry,
-    published=(),
     *,
     retire_missing=True,
     report=False,
 ):
     """Atomically converge only Gway-owned bundled scopes.
 
-    Product/Django/Odoo ingestion exposes operations but no longer publishes
-    authorization scopes. Existing generated project scopes are retired during
-    writable convergence; user-managed scopes remain untouched.
+    Operation ingestion never manufactures authorization scopes. Existing
+    generated project scopes are retired during writable convergence; user-managed
+    scopes remain untouched.
     """
-    del published
     desired = {
         name: ("gway", definition)
         for name, definition in CORE_SCOPE_DEFINITIONS.items()

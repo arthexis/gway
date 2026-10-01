@@ -95,12 +95,8 @@ class RemoteApplication(RemoteDiscoveryApplication):
                 operation_resolver=resolve_runtime_operation,
             )
         self.account = RemoteAccountApplication() if account is None else account
-        published_scopes = (
-            {} if runtime is None else getattr(runtime, "_published_scopes", {})
-        )
         converge_scope_registry(
             self.account.oauth.scopes,
-            published_scopes,
             retire_missing=False,
         )
         self.oauth = RemoteOAuthProtocol(
@@ -563,13 +559,10 @@ def build_server(
     runtime=None,
 ):
     """Build the remote HTTP server without starting its lifecycle."""
-    published_scopes = (
-        set() if runtime is None else set(getattr(runtime, "_published_scopes", {}))
-    )
     metadata = RemoteOAuthMetadata.from_origin(
         public_origin,
         resource_path=resource_path,
-        scopes_supported=tuple(sorted(CORE_SCOPE_NAMES | published_scopes)),
+        scopes_supported=tuple(sorted(CORE_SCOPE_NAMES)),
         allow_insecure_loopback=allow_insecure_loopback,
     )
     application = RemoteApplication(

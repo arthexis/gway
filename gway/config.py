@@ -48,66 +48,6 @@ def project_bindings(data):
     return tuple(bindings)
 
 
-def project_scopes(data, *, source=None):
-    """Return validated named security scopes published by one project."""
-    if not isinstance(data, dict):
-        return {}
-    tool = data.get("tool")
-    gway = tool.get("gway") if isinstance(tool, dict) else None
-    scopes = gway.get("scopes") if isinstance(gway, dict) else None
-    if scopes is None:
-        return {}
-    if not isinstance(scopes, dict):
-        raise ValueError("[tool.gway.scopes] must be a table")
-
-    published = {}
-    for name, declaration in scopes.items():
-        name = str(name).strip()
-        if not name:
-            raise ValueError("published scope names must be non-empty strings")
-        if not isinstance(declaration, dict):
-            raise ValueError(f"[tool.gway.scopes.{name}] must be a table")
-        unknown = set(declaration) - {"operations", "environment", "semantic_terms"}
-        if unknown:
-            raise ValueError(
-                f"Unknown published scope fields for {name}: "
-                + ", ".join(sorted(unknown))
-            )
-        operations = declaration.get("operations", ())
-        environment = declaration.get("environment", ())
-        semantic_terms = declaration.get("semantic_terms")
-        if not isinstance(operations, list) or any(
-            not isinstance(value, str) or not value.strip() for value in operations
-        ):
-            raise ValueError(f"{name} operations must be an array of non-empty strings")
-        if not isinstance(environment, list) or any(
-            not isinstance(value, str) or not value.strip() for value in environment
-        ):
-            raise ValueError(f"{name} environment must be an array of non-empty strings")
-        if semantic_terms is not None and (
-            not isinstance(semantic_terms, list)
-            or not semantic_terms
-            or any(
-                not isinstance(value, str) or not value.strip()
-                for value in semantic_terms
-            )
-        ):
-            raise ValueError(
-                f"{name} semantic_terms must be a non-empty array of non-empty strings"
-            )
-        definition = {
-            "operations": frozenset(value.strip() for value in operations),
-            "environment": frozenset(value.strip() for value in environment),
-            "source": source,
-        }
-        if semantic_terms is not None:
-            definition["semantic_terms"] = frozenset(
-                value.strip().lower() for value in semantic_terms
-            )
-        published[name] = definition
-    return published
-
-
 def project_survey(data, *, source=None):
     """Return validated generic Survey contributors published by one project."""
     if not isinstance(data, dict):
@@ -695,19 +635,8 @@ def expand_installed_project(runtime, installation, *, path=None):
     return loaded
 
 
-def _publish_project_capabilities(runtime, data, *, source):
-    """Merge one project's declarative integration capabilities into runtime state."""
-    scopes = dict(getattr(runtime, "_published_scopes", {}))
-    for name, definition in project_scopes(data, source=source).items():
-        existing = scopes.get(name)
-        if existing is not None and existing.get("source") != definition.get("source"):
-            raise ValueError(f"Published security scope collision: {name}")
-        scopes[name] = definition
-
-    from .security.validation import validate_definitions
-
-    validate_definitions(runtime, scopes)
-
+def _publish_project_survey(runtime, data, *, source):
+    """Merge one project's declarative Survey contributions into runtime state."""
     contributors = list(getattr(runtime, "_survey_contributors", ()))
     by_section = {item["section"]: item for item in contributors}
     for contributor in project_survey(data, source=source):
@@ -720,23 +649,21 @@ def _publish_project_capabilities(runtime, data, *, source):
             contributors.append(contributor)
             by_section[contributor["section"]] = contributor
 
-    runtime._published_scopes = scopes
     runtime._survey_contributors = tuple(contributors)
-    return scopes, tuple(contributors)
+    return tuple(contributors)
 
 
-def _discover_installed_capabilities(runtime, installations):
-    """Discover declarative capabilities without importing installed product code."""
+def _discover_installed_surveys(runtime, installations):
+    """Discover declarative Survey contributions without importing product code."""
     from . import toml
 
-    runtime._published_scopes = {}
     runtime._survey_contributors = ()
     for installation in installations:
         project_file = installation.install_path / "pyproject.toml"
         if not project_file.is_file():
             continue
         data = toml.load(project_file)
-        _publish_project_capabilities(
+        _publish_project_survey(
             runtime,
             data,
             source=installation.name,
@@ -796,7 +723,7 @@ def discover_managed_projects(runtime):
             project_record.paths.add(parts)
 
     runtime._installed = discovered
-    _discover_installed_capabilities(runtime, discovered.values())
+    _discover_installed_surveys(runtime, discovered.values())
 
     from .souschef.discovery import discover as discover_souschef
 
@@ -834,7 +761,7 @@ def bootstrap(runtime, *, start=None):
     )
     runtime._guide_rules = project_guidance(data, source=guide_source)
     runtime._guide_documents = project_guide_documents(data, project_file.parent)
-    _publish_project_capabilities(runtime, data, source=guide_source)
+    _publish_project_survey(runtime, data, source=guide_source)
     if isinstance(project_name, str) and project_name.strip():
         from .project import project_scripts
 
