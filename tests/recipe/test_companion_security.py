@@ -1,8 +1,8 @@
 from io import BytesIO
 
 from gway.recipe import companion
-from gway.security.scopes import EffectiveScope
-from gway.security.tokens import AuthenticatedToken, Token
+from gway.security.scopes import EffectiveScope, ScopeRegistry
+from gway.security.tokens import AuthenticatedToken, Token, TokenRegistry
 
 
 def test_companion_bearer_authentication_uses_parent_security_path(
@@ -88,6 +88,52 @@ def test_authority_mutation_capability_uses_operation_metadata(gateway):
         gateway,
         {"__all__"},
     ) is True
+
+
+def test_companion_reports_mutation_capability_from_exact_curated_bundle(
+    gateway,
+    tmp_path,
+):
+    gateway.security_path = tmp_path / "security.sqlite"
+
+    def observe(*, mutate=False):
+        return mutate
+
+    def restart():
+        return True
+
+    gateway.observe = gateway.wrap("demo.observe", observe)
+    gateway.restart = gateway.wrap("demo.restart", restart)
+
+    scopes = ScopeRegistry(gateway.security_path)
+    scopes.replace("observer", operations={"demo.observe"})
+    scopes.replace("operator", operations={"demo.restart"})
+    tokens = TokenRegistry(gateway.security_path)
+    reader = tokens.create("reader", scopes={"observer"})
+    writer = tokens.create("writer", scopes={"observer", "operator"})
+
+    def authenticate(bearer, request_id):
+        stream = BytesIO()
+        companion._service_parent_request(
+            gateway,
+            stream,
+            {
+                "type": "request",
+                "id": request_id,
+                "method": "gateway.authenticate_bearer",
+                "params": {"bearer": bearer},
+            },
+        )
+        stream.seek(0)
+        return companion._read_message(stream)["result"]
+
+    read_identity = authenticate(reader.bearer, "reader")
+    write_identity = authenticate(writer.bearer, "writer")
+
+    assert read_identity["scopes"] == ["observer"]
+    assert read_identity["mutation_capable"] is False
+    assert write_identity["scopes"] == ["observer", "operator"]
+    assert write_identity["mutation_capable"] is True
 
 
 def test_parent_bridge_parses_leading_globals(gateway):
