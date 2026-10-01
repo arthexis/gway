@@ -14,7 +14,7 @@ def test_github_is_discovered_lazily_through_sampler_route():
     resolution = resolve_operation(gateway, tokenize("github status"))
 
     operation = gateway.ops.resolve("github.status")
-    assert resolution.operation is operation
+    assert resolution.callable is operation
     assert operation is not None
     assert operation.mutates is False
     assert {"github", "source", "read"} <= set(
