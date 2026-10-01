@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+from concurrent.futures import ThreadPoolExecutor
 import json
 
 from .observe import Controller as ObserveController
@@ -14,6 +15,10 @@ _WATCHTOWER_MANIFEST = ".watchtower/accepted.json"
 _WATCHTOWER_SHA_FIELDS = {
     "arthexis/gway": "gway_sha",
     "arthexis/arthexis": "arthexis_sha",
+}
+_WATCHTOWER_REQUIRED_STAGE = {
+    "arthexis/gway": "0-gway",
+    "arthexis/arthexis": "1-arthexis",
 }
 
 
@@ -44,9 +49,32 @@ class Controller(ObserveController):
             raise TypeError("Watchtower accepted manifest must contain a JSON object")
         return manifest
 
+    def _run_rollout(self, operation, repository, pulls, *, issue=None, serial=False):
+        targets = [int(pull) for pull in pulls]
+        if issue is not None:
+            if targets:
+                raise ValueError("pull targets and --issue are mutually exclusive")
+            targets = [
+                int(item["number"])
+                for item in self.issue_prs(repository, int(issue), state="all")
+            ]
+        if not targets:
+            raise ValueError("at least one pull target or --issue is required")
+        if len(targets) == 1 and issue is None:
+            return operation(repository, targets[0])
+        if serial or len(targets) == 1:
+            results = [operation(repository, pull) for pull in targets]
+        else:
+            with ThreadPoolExecutor(max_workers=min(8, len(targets))) as executor:
+                results = list(executor.map(lambda pull: operation(repository, pull), targets))
+        result = {"repository": str(repository), "targets": targets, "pulls": results}
+        if issue is not None:
+            result["issue"] = int(issue)
+        return result
+
     def check_rollout(self, repository, *pulls, issue=None, serial=False):
         """Return merge/main/Watchtower certification state for PR targets."""
-        return self._run_check(
+        return self._run_rollout(
             self._check_rollout_pull,
             repository,
             pulls,
@@ -65,39 +93,43 @@ class Controller(ObserveController):
         branch = self.branch(repository, default_branch) if default_branch else {}
         main_sha = ((branch.get("commit") or {}).get("sha")) if isinstance(branch, dict) else None
 
-        main_compare = None
         on_main = False
         if merged and merge_sha and main_sha:
-            main_compare = self.compare(repository, merge_sha, main_sha)
-            on_main = _ancestor(main_compare)
+            on_main = _ancestor(self.compare(repository, merge_sha, main_sha))
 
+        required_stage = _WATCHTOWER_REQUIRED_STAGE.get(repository)
         watchtower = {
             "available": repository in _WATCHTOWER_SHA_FIELDS,
             "certified": False,
+            "required_stage": required_stage,
             "accepted_sha": None,
             "accepted_at": None,
             "run_id": None,
             "run_url": None,
             "stages": [],
         }
-        certification_compare = None
-        manifest = None
         if on_main and watchtower["available"]:
             manifest = self._accepted_watchtower()
-            field = _WATCHTOWER_SHA_FIELDS[repository]
-            accepted_sha = manifest.get(field)
+            accepted_sha = manifest.get(_WATCHTOWER_SHA_FIELDS[repository])
+            stages = list(manifest.get("stages") or ())
             watchtower.update(
                 {
                     "accepted_sha": accepted_sha,
                     "accepted_at": manifest.get("accepted_at"),
                     "run_id": manifest.get("run_id"),
                     "run_url": manifest.get("run_url"),
-                    "stages": list(manifest.get("stages") or ()),
+                    "stages": stages,
                 }
             )
-            if merge_sha and accepted_sha:
-                certification_compare = self.compare(repository, merge_sha, accepted_sha)
-                watchtower["certified"] = _ancestor(certification_compare)
+            accepted_contains_pr = bool(
+                merge_sha
+                and accepted_sha
+                and _ancestor(self.compare(repository, merge_sha, accepted_sha))
+            )
+            watchtower["certified"] = bool(
+                accepted_contains_pr
+                and (required_stage is None or required_stage in stages)
+            )
 
         if not merged:
             state = "open" if pr.get("state") == "open" else "closed"
@@ -136,7 +168,7 @@ class Controller(ObserveController):
 
     def observe_rollout(self, repository, *pulls, issue=None, serial=False):
         """Expand rollout state into ancestry and Watchtower acceptance evidence."""
-        return self._run_check(
+        return self._run_rollout(
             self._observe_rollout_pull,
             repository,
             pulls,
