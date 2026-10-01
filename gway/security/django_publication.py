@@ -113,6 +113,11 @@ def derive_django_publications(gateway):
     that verified app; command names themselves never imply a semantic boundary
     or read/write classification.
     """
+    operation_registry = getattr(gateway, "ops", None)
+    records = getattr(operation_registry, "records", None)
+    if not callable(records):
+        return ()
+
     mounts, by_object, by_name = _ownership_indexes(gateway)
     try:
         commands = _command_sources()
@@ -120,7 +125,7 @@ def derive_django_publications(gateway):
         commands = {}
 
     grouped = defaultdict(set)
-    for record in gateway.ops.records():
+    for record in records():
         operation = record.callable
         kind = getattr(operation, "__gway_source_kind__", "") or ""
         if not str(kind).startswith("django-"):
