@@ -1,4 +1,3 @@
-from pathlib import Path
 from types import SimpleNamespace
 
 import gway.security.django_publication as publication
