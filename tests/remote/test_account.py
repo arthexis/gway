@@ -162,7 +162,6 @@ def test_revoke_connection_invalidates_existing_grant(tmp_path):
         oauth.issue_tokens(grant.id)
 
 
-
 def test_permission_summary_renders_full_access_as_future_proof(tmp_path):
     scopes, _, _, account = _account(tmp_path)
     scopes.replace(
@@ -285,7 +284,7 @@ def test_permission_summary_applies_preview_limit_per_scope(tmp_path):
     assert all(name.startswith("beta.") for name in by_name["beta"]["operations_preview"])
 
 
-def test_approval_grants_current_full_bearer_scope_set(tmp_path):
+def test_approval_grants_only_requested_bearer_scope_set(tmp_path):
     scopes, tokens, oauth, account = _account(tmp_path)
     scopes.create("read")
     scopes.create("write")
@@ -301,8 +300,8 @@ def test_approval_grants_current_full_bearer_scope_set(tmp_path):
         decision="approve",
     )
 
-    assert grant.scopes == frozenset({"read", "write", "admin"})
-    assert oauth.get_grant(grant.id).scopes == frozenset({"read", "write", "admin"})
+    assert grant.scopes == frozenset({"read"})
+    assert oauth.get_grant(grant.id).scopes == frozenset({"read"})
 
 
 def test_approval_revalidates_current_bearer_scope_set(tmp_path):
@@ -325,7 +324,7 @@ def test_approval_revalidates_current_bearer_scope_set(tmp_path):
     assert grant.scopes == frozenset({"read"})
 
 
-def test_refresh_preserves_bearer_derived_grant_scope_set(tmp_path):
+def test_refresh_preserves_requested_grant_scope_set(tmp_path):
     scopes, tokens, oauth, account = _account(tmp_path)
     scopes.replace("read", operations={"log.read"})
     scopes.replace("write", operations={"service.restart"})
@@ -342,11 +341,9 @@ def test_refresh_preserves_bearer_derived_grant_scope_set(tmp_path):
     issued_oauth = oauth.issue_tokens(grant.id)
     refreshed = oauth.rotate_refresh(issued_oauth.refresh_token)
 
-    assert issued_oauth.grant.scopes == frozenset({"read", "write"})
-    assert refreshed.grant.scopes == frozenset({"read", "write"})
-    assert oauth.authenticate_access(refreshed.access_token).grant.scopes == frozenset(
-        {"read", "write"}
-    )
+    assert issued_oauth.grant.scopes == frozenset({"read"})
+    assert refreshed.grant.scopes == frozenset({"read"})
+    assert oauth.authenticate_access(refreshed.access_token).grant.scopes == frozenset({"read"})
 
 
 def test_scope_policy_changes_affect_effective_authority_without_broadening_grant(tmp_path):
@@ -369,10 +366,8 @@ def test_scope_policy_changes_affect_effective_authority_without_broadening_gran
     refreshed = oauth.rotate_refresh(issued_oauth.refresh_token)
     authenticated = oauth.authenticate_access(refreshed.access_token)
 
-    assert authenticated.grant.scopes == frozenset({"read", "write"})
-    assert authenticated.authority.operations == frozenset(
-        {"log.read", "log.tail", "service.restart"}
-    )
+    assert authenticated.grant.scopes == frozenset({"read"})
+    assert authenticated.authority.operations == frozenset({"log.read", "log.tail"})
 
 
 def test_legacy_consent_page_keeps_decision_controls(tmp_path):
