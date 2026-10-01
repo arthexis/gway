@@ -143,11 +143,7 @@ CORE_SCOPE_NAMES = frozenset(CORE_SCOPE_DEFINITIONS)
 
 
 def _definition_signature(scope):
-    return (
-        scope.owner,
-        scope.operations,
-        scope.environment,
-    )
+    return (scope.owner, scope.operations, scope.environment)
 
 
 def _replace_owned(connection, registry, name, definition, *, owner):
@@ -180,7 +176,6 @@ def _replace_owned(connection, registry, name, definition, *, owner):
     environment = registry._grants(definition.get("environment", ()), label="environment")
     connection.execute("DELETE FROM scope_operations WHERE scope_id = ?", (scope_id,))
     connection.execute("DELETE FROM scope_environment WHERE scope_id = ?", (scope_id,))
-    connection.execute("DELETE FROM scope_semantic_terms WHERE scope_id = ?", (scope_id,))
     connection.executemany(
         "INSERT INTO scope_operations (scope_id, operation) VALUES (?, ?)",
         ((scope_id, operation) for operation in sorted(operations)),
