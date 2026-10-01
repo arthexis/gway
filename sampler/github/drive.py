@@ -1,4 +1,4 @@
-"""Bounded deterministic GitHub PR reconciliation.
+"""Bounded and streaming deterministic GitHub PR reconciliation.
 
 Drive consumes normalized lifecycle status and applies only a small whitelist of
 convergent, guarded mutations. Provider state remains authoritative; no Drive-
@@ -8,25 +8,61 @@ local lifecycle state is persisted.
 from __future__ import annotations
 
 import json
+import time
 
 from .status import Controller as StatusController
 
 
 DRIVE_OUTCOMES = frozenset({"done", "waiting", "escalated", "changed"})
 DEFAULT_MAX_ACTIONS = 8
+DEFAULT_STREAM_INTERVAL = 2.0
 
 
 class Controller(StatusController):
     """Reconcile one PR until policy reaches a deterministic boundary."""
 
-    def drive(self, repository, pull, max_actions=DEFAULT_MAX_ACTIONS, mutate=True):
-        """Run one bounded, resumable reconciliation pass for a pull request."""
+    def drive(
+        self,
+        repository,
+        pull,
+        max_actions=DEFAULT_MAX_ACTIONS,
+        stream=False,
+        interval=DEFAULT_STREAM_INTERVAL,
+        timeout=None,
+        mutate=True,
+    ):
+        """Reconcile a PR once, or stream reconciliation across wait states."""
         repository = str(repository)
         pull = int(pull)
         max_actions = int(max_actions)
         if max_actions < 1:
             raise ValueError("max_actions must be at least 1")
+        if stream:
+            return self._drive_stream(
+                repository,
+                pull,
+                max_actions=max_actions,
+                interval=interval,
+                timeout=timeout,
+                mutate=mutate,
+            )
+        return self._drive_once(
+            repository,
+            pull,
+            max_actions=max_actions,
+            mutate=mutate,
+        )
 
+    def _drive_once(
+        self,
+        repository,
+        pull,
+        *,
+        max_actions=DEFAULT_MAX_ACTIONS,
+        mutate=True,
+        action_offset=0,
+    ):
+        """Run one bounded, resumable reconciliation pass."""
         initial = self._drive_status(repository, pull)
         current = initial
         actions = []
@@ -63,7 +99,7 @@ class Controller(StatusController):
                     initial, current, actions,
                     reason="drive-missing-action",
                 )
-            if len(actions) >= max_actions:
+            if action_offset + len(actions) >= max_actions:
                 return self._drive_result(
                     repository, pull, "changed" if changed else "escalated",
                     initial, current, actions,
@@ -95,6 +131,147 @@ class Controller(StatusController):
                     actions,
                     reason="drive-no-progress",
                 )
+
+    def _drive_stream(
+        self,
+        repository,
+        pull,
+        *,
+        max_actions=DEFAULT_MAX_ACTIONS,
+        interval=DEFAULT_STREAM_INTERVAL,
+        timeout=None,
+        mutate=True,
+        sleep=time.sleep,
+        clock=time.monotonic,
+    ):
+        """Yield structured Drive events while continuing across wait states."""
+        interval = float(interval)
+        if interval < 0:
+            raise ValueError("Drive stream interval cannot be negative")
+        if timeout is not None:
+            timeout = float(timeout)
+            if timeout < 0:
+                raise ValueError("Drive stream timeout cannot be negative")
+
+        def events():
+            started = clock()
+            sequence = 0
+            action_count = 0
+            changed = False
+            last_status = None
+            last_fingerprint = None
+
+            def emit(event, **value):
+                nonlocal sequence
+                sequence += 1
+                return {
+                    "sequence": sequence,
+                    "event": event,
+                    "repository": repository,
+                    "pr": pull,
+                    **value,
+                }
+
+            while True:
+                result = self._drive_once(
+                    repository,
+                    pull,
+                    max_actions=max_actions,
+                    mutate=mutate,
+                    action_offset=action_count,
+                )
+                for action in result.get("actions", []):
+                    action_count += 1
+                    changed = changed or action.get("result") == "changed"
+                    yield emit("action", action=action)
+
+                boundary = self._drive_status(repository, pull)
+                fingerprint = self._drive_fingerprint(boundary)
+                status = boundary.get("status")
+                disposition = boundary.get("disposition")
+                if last_status is not None and fingerprint != last_fingerprint:
+                    yield emit("transition", before=last_status, after=status)
+                if fingerprint != last_fingerprint:
+                    yield emit(
+                        "status",
+                        status=status,
+                        disposition=disposition,
+                        diagnostic_target=boundary.get("diagnostic_target"),
+                    )
+                last_status = status
+                last_fingerprint = fingerprint
+
+                reason = result.get("reason")
+                if reason is not None:
+                    yield emit(
+                        "terminal",
+                        outcome="escalated",
+                        status=status,
+                        disposition=disposition,
+                        reason=reason,
+                        changed=changed,
+                        pending_action=result.get("pending_action"),
+                        diagnostic_target=boundary.get("diagnostic_target"),
+                        terminal=True,
+                    )
+                    return
+                if disposition == "done":
+                    yield emit(
+                        "terminal",
+                        outcome="done",
+                        status=status,
+                        disposition=disposition,
+                        changed=changed,
+                        terminal=True,
+                    )
+                    return
+                if disposition == "escalate":
+                    yield emit(
+                        "terminal",
+                        outcome="escalated",
+                        status=status,
+                        disposition=disposition,
+                        changed=changed,
+                        diagnostic_target=boundary.get("diagnostic_target"),
+                        terminal=True,
+                    )
+                    return
+                if disposition != "wait":
+                    continue
+
+                while True:
+                    if timeout is not None and clock() - started >= timeout:
+                        yield emit(
+                            "timeout",
+                            status=last_status,
+                            disposition="wait",
+                            changed=changed,
+                            terminal=True,
+                        )
+                        return
+                    if interval:
+                        sleep(interval)
+                    current = self._drive_status(repository, pull)
+                    current_fingerprint = self._drive_fingerprint(current)
+                    if current_fingerprint == last_fingerprint:
+                        continue
+                    current_status = current.get("status")
+                    yield emit(
+                        "transition",
+                        before=last_status,
+                        after=current_status,
+                    )
+                    yield emit(
+                        "status",
+                        status=current_status,
+                        disposition=current.get("disposition"),
+                        diagnostic_target=current.get("diagnostic_target"),
+                    )
+                    last_status = current_status
+                    last_fingerprint = current_fingerprint
+                    break
+
+        return events()
 
     def _drive_status(self, repository, pull):
         """Read one fresh normalized lifecycle status for Drive."""
