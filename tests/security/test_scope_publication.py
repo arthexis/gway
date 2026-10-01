@@ -88,3 +88,70 @@ def test_conflicting_iterable_publications_fail_closed():
         assert "Conflicting publications for scope demo-read" in str(exc)
     else:
         raise AssertionError("conflicting publications unexpectedly normalized")
+
+
+def test_convergence_report_is_idempotent_and_retires_missing_publications(tmp_path):
+    registry = ScopeRegistry(tmp_path / "security.sqlite")
+    publication = PublishedScope(
+        "demo-read",
+        "demo",
+        operations={"demo.status"},
+    )
+
+    first = converge_scope_registry(registry, [publication], report=True)
+    assert "demo-read" in first["added"]
+    assert first["updated"] == []
+
+    second = converge_scope_registry(registry, [publication], report=True)
+    assert second["added"] == []
+    assert second["updated"] == []
+    assert "demo-read" in second["unchanged"]
+
+    retired = converge_scope_registry(registry, [], report=True)
+    assert retired["retired"] == ["demo-read"]
+    assert registry.get("demo-read") is None
+
+
+def test_convergence_rolls_back_all_changes_when_owned_scope_conflicts(tmp_path):
+    registry = ScopeRegistry(tmp_path / "security.sqlite")
+    registry.replace_owned(
+        "z-conflict",
+        owner="project:original",
+        operations={"old.operation"},
+    )
+    before = registry.all()
+
+    publications = [
+        PublishedScope("a-new", "demo", operations={"new.operation"}),
+        PublishedScope("z-conflict", "demo", operations={"replacement.operation"}),
+    ]
+
+    try:
+        converge_scope_registry(registry, publications, report=True)
+    except ValueError as exc:
+        assert "owned by project:original" in str(exc)
+    else:
+        raise AssertionError("conflicting convergence unexpectedly succeeded")
+
+    assert registry.all() == before
+
+
+def test_scope_converge_operation_validates_before_writing(gateway, tmp_path):
+    gateway.security_path = tmp_path / "security.sqlite"
+    gateway._published_scopes = {
+        "demo-read": PublishedScope(
+            "demo-read",
+            "demo",
+            operations={"missing.operation"},
+            semantic_terms={"demo", "read"},
+        )
+    }
+
+    try:
+        gateway("security scope converge")
+    except ValueError as exc:
+        assert "missing.operation" in str(exc)
+    else:
+        raise AssertionError("unsafe semantic read publication unexpectedly converged")
+
+    assert not gateway.security_path.exists()
