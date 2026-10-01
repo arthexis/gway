@@ -93,8 +93,6 @@ class RemoteAccountApplication:
             raise ValueError("OAuth client id is required")
         exact = _scopes(scopes)
         unions = _union_scopes(union_scopes)
-        if not exact and not unions:
-            raise ValueError("At least one exact or union G-Way scope is required")
         session.pending_client_id = client_id
         session.pending_scopes = exact
         session.pending_union_scopes = unions
@@ -126,6 +124,13 @@ class RemoteAccountApplication:
             identity = self.tokens.authenticate(str(bearer or ""))
         except AuthenticationError:
             raise PermissionError("Invalid bearer token") from None
+
+        if (
+            session.pending_client_id
+            and not session.pending_scopes
+            and not session.pending_union_scopes
+        ):
+            session.pending_scopes = identity.token.scopes
 
         link_name = f"remote-{secrets.token_hex(12)}"
         self.oauth.link(link_name, identity.token.name)
@@ -220,9 +225,7 @@ class RemoteAccountApplication:
     def consent_details(self, session):
         if not session.link_name:
             raise PermissionError("G-Way connection required")
-        if not session.pending_client_id or (
-            not session.pending_scopes and not session.pending_union_scopes
-        ):
+        if not session.pending_client_id:
             raise ValueError("No pending consent request")
 
         link = self.oauth.get_link(session.link_name)
@@ -231,6 +234,10 @@ class RemoteAccountApplication:
         token = self.tokens.require(link.token_name)
 
         exact_scopes = frozenset(session.pending_scopes)
+        union_scopes = frozenset(session.pending_union_scopes)
+        if not exact_scopes and not union_scopes:
+            raise PermissionError("Linked bearer grants no scopes")
+
         missing_requested = exact_scopes - token.scopes
         if missing_requested:
             raise PermissionError(
@@ -238,7 +245,6 @@ class RemoteAccountApplication:
                 + ", ".join(sorted(missing_requested))
             )
 
-        union_scopes = frozenset(session.pending_union_scopes)
         unavailable_unions = [
             terms
             for terms in union_scopes
