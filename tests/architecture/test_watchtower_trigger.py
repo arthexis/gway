@@ -1,25 +1,6 @@
 from pathlib import Path
 
 
-def test_legacy_watchtower_deploy_trigger_is_manual_only() -> None:
-    workflow = Path(".github/workflows/watchtower-deploy-trigger.yml").read_text(
-        encoding="utf-8"
-    )
-
-    assert "workflow_dispatch:" in workflow
-    assert "push:" not in workflow
-    assert "branches: [main]" not in workflow
-    assert "workflow_run:" not in workflow
-    assert "schedule:" not in workflow
-    assert "WATCHTOWER_DEPLOY_TOKEN: ${{ secrets.WATCHTOWER_DEPLOY_TOKEN }}" in workflow
-    assert (
-        "https://api.github.com/repos/arthexis/arthexis/actions/workflows/"
-        "watchtower-deploy.yml/dispatches"
-    ) in workflow
-    assert '"ref":"main"' in workflow
-    assert 'echo "watchtower_deploy=dispatched"' in workflow
-
-
 def test_automatic_watchtower_candidate_flow_classifies_main_pushes() -> None:
     workflow = Path(".github/workflows/watchtower-candidate.yml").read_text(
         encoding="utf-8"
@@ -45,11 +26,14 @@ def test_automatic_watchtower_candidate_flow_classifies_main_pushes() -> None:
     assert "remote-only" not in workflow
 
 
-def test_cross_repo_trigger_uses_only_explicit_secret() -> None:
-    workflow = Path(".github/workflows/watchtower-deploy-trigger.yml").read_text(
+def test_github_maintenance_purges_retired_workflow_history() -> None:
+    workflow = Path(".github/workflows/github-maintenance.yml").read_text(
         encoding="utf-8"
     )
 
-    assert "github.token" not in workflow
-    assert "repository_dispatch" not in workflow
-    assert "actions: write" not in workflow
+    assert "actions: write" in workflow
+    assert "purge-retired-workflows:" in workflow
+    assert '"watchtower-deploy-trigger.yml"' in workflow
+    assert "actions/workflows?per_page=100" in workflow
+    assert "actions/runs/$run_id" in workflow
+    assert 'DRY_RUN: ${{ inputs.dry_run }}' in workflow
