@@ -78,7 +78,6 @@ def test_unsupported_bearers_fail_uniformly(tmp_path, bearer):
         authenticate_bearer(bearer, path=tmp_path / "security.sqlite")
 
 
-
 def test_bearer_authentication_does_not_modify_security_database(tmp_path):
     scopes, tokens, oauth = _registries(tmp_path)
     scopes.replace("reader", operations={"log.read"})
@@ -109,3 +108,60 @@ def test_bearer_authentication_does_not_modify_security_database(tmp_path):
     assert native_identity.authority.operations == frozenset({"log.read"})
     assert oauth_identity.authority.operations == frozenset({"log.read"})
     assert path.read_bytes() == before
+
+
+def test_legacy_union_metadata_does_not_broaden_native_bearer(tmp_path):
+    scopes, tokens, _oauth = _registries(tmp_path)
+    scopes.replace("reader", operations={"log.read"})
+    scopes.replace(
+        "legacy-write",
+        operations={"github.drive"},
+        semantic_terms={"github", "write"},
+    )
+    issued = tokens.create(
+        "native-client",
+        scopes={"reader"},
+        union_scopes={("write",)},
+    )
+
+    legacy = tokens.authenticate(issued.bearer)
+    assert legacy.authority.operations == frozenset({"log.read", "github.drive"})
+
+    identity = authenticate_bearer(issued.bearer, tokens=tokens)
+    assert identity.scopes == frozenset({"reader"})
+    assert identity.authority.operations == frozenset({"log.read"})
+
+
+def test_legacy_union_metadata_does_not_broaden_oauth_bearer(tmp_path):
+    scopes, tokens, oauth = _registries(tmp_path)
+    scopes.replace("reader", operations={"log.read"})
+    scopes.replace(
+        "legacy-write",
+        operations={"github.drive"},
+        semantic_terms={"github", "write"},
+    )
+    tokens.create(
+        "operator",
+        scopes={"reader"},
+        union_scopes={("write",)},
+    )
+    oauth.link("chatgpt", "operator")
+    grant = oauth.create_grant(
+        "chatgpt",
+        "chatgpt-client",
+        scopes={"reader"},
+        union_scopes={("write",)},
+        resource=RESOURCE,
+    )
+    issued = oauth.issue_tokens(grant.id)
+
+    legacy = oauth.authenticate_access(issued.access_token)
+    assert legacy.authority.operations == frozenset({"log.read", "github.drive"})
+
+    identity = authenticate_bearer(
+        issued.access_token,
+        resource=RESOURCE,
+        oauth=oauth,
+    )
+    assert identity.scopes == frozenset({"reader"})
+    assert identity.authority.operations == frozenset({"log.read"})
