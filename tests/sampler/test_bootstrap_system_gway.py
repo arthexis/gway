@@ -73,8 +73,26 @@ def test_arthexis_bootstrap_verifies_then_removes_temporary_uv_gway(sampler_path
     assert script.index(system_version) < script.index(uninstall)
     assert script.index(root_version) < script.index(uninstall)
     assert script.index(uninstall) < script.index(switch)
+    assert 'GWAY_TEMP_TOOL=0' in script
+    assert 'if test -e "$TOOL_BIN/gway"; then' in script
+    assert "temporary user Gway entrypoint survived cleanup" in script
     assert "bootstrap/candidate Gway version mismatch" in script
     assert "user/system Gway version mismatch after promotion" in script
+
+
+def test_arthexis_bootstrap_cleans_temporary_uv_gway_on_failure(sampler_path):
+    script = sampler_path("bootstrap/arthexis.sh").read_text(encoding="utf-8")
+
+    assert 'GWAY_TEMP_TOOL=0' in script
+    assert 'GWAY_TEMP_TOOL=1' in script
+    assert 'cleanup_temp_gway() {' in script
+    assert 'if test "$GWAY_TEMP_TOOL" != 1; then' in script
+    assert '"$cleanup_uv" tool uninstall gway >/dev/null 2>&1 || true' in script
+    assert 'cleanup_temp_gway' in script
+    assert script.index('GWAY_TEMP_TOOL=1') < script.index('USER_GWAY_VERSION=')
+    assert script.index('cleanup_temp_gway\n    exit "$status"') < script.index(
+        'trap cleanup EXIT HUP INT TERM'
+    )
 
 
 def test_arthexis_bootstrap_cleans_wrapper_tempfile_on_failure(sampler_path):
