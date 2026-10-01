@@ -112,6 +112,11 @@ def test_v7_upgrade_preserves_exact_token_and_oauth_authority(tmp_path):
     path = tmp_path / "state.sqlite"
     bearer = _legacy_v7_database(path)
 
+    # Production startup performs one writable security-state open before
+    # credential authentication switches to the read-only path.
+    with SecurityState(path).connect():
+        pass
+
     authenticated = TokenRegistry(path).authenticate(bearer)
     grant = OAuthRegistry(path).get_grant(1)
 
@@ -163,8 +168,11 @@ def test_failed_upgrade_never_marks_schema_current(tmp_path):
     path = tmp_path / "state.sqlite"
     _legacy_v7_database(path)
 
+    # A view occupying a schema-v9 table name forces CREATE TABLE to fail.
+    # Unlike a malformed pre-existing table, SQLite does not treat this as a
+    # successful CREATE TABLE IF NOT EXISTS no-op.
     with sqlite3.connect(path) as connection:
-        connection.execute("CREATE TABLE token_union_scopes (broken TEXT)")
+        connection.execute("CREATE VIEW scope_semantic_terms AS SELECT 1 AS broken")
 
     try:
         SecurityState(path).connect()
