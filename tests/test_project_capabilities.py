@@ -92,7 +92,7 @@ command = ["demo", "status"]
 
     assert project_file.is_file()
     assert not gateway.security_path.exists()
-    assert not hasattr(gateway, "_published_scopes")
+    assert vars(gateway).get("_published_scopes") is None
     assert gateway._survey_contributors == (
         {
             "section": "demo",
