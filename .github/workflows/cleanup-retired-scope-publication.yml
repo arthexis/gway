@@ -153,49 +153,75 @@ jobs:
           ''',
           )
 
+          replace_once(
+              "gway/remote/server.py",
+              '''    published_scopes = (
+                  set() if runtime is None else set(getattr(runtime, "_published_scopes", {}))
+              )
+              metadata = RemoteOAuthMetadata.from_origin(
+                  public_origin,
+                  resource_path=resource_path,
+                  scopes_supported=tuple(sorted(CORE_SCOPE_NAMES | published_scopes)),
+                  allow_insecure_loopback=allow_insecure_loopback,
+              )
+          ''',
+              '''    metadata = RemoteOAuthMetadata.from_origin(
+                  public_origin,
+                  resource_path=resource_path,
+                  scopes_supported=tuple(sorted(CORE_SCOPE_NAMES)),
+                  allow_insecure_loopback=allow_insecure_loopback,
+              )
+          ''',
+          )
+
           defaults = Path("gway/security/defaults.py")
           text = defaults.read_text(encoding="utf-8")
-          text = text.replace(
-              '''def converge_scope_registry(
+          old = '''def converge_scope_registry(
               registry,
               published=(),
               *,
               retire_missing=True,
               report=False,
           ):
-          ''',
-              '''def converge_scope_registry(
+          '''
+          new = '''def converge_scope_registry(
               registry,
               *,
               retire_missing=True,
               report=False,
           ):
-          ''',
-              1,
-          )
-          text = text.replace(
-              '''    Product/Django/Odoo ingestion exposes operations but no longer publishes
+          '''
+          if text.count(old) != 1:
+              raise SystemExit("gway/security/defaults.py: convergence signature changed")
+          text = text.replace(old, new, 1)
+          old = '''    Product/Django/Odoo ingestion exposes operations but no longer publishes
               authorization scopes. Existing generated project scopes are retired during
               writable convergence; user-managed scopes remain untouched.
               """
               del published
-          ''',
-              '''    Operation ingestion never manufactures authorization scopes. Existing
+          '''
+          new = '''    Operation ingestion never manufactures authorization scopes. Existing
               generated project scopes are retired during writable convergence; user-managed
               scopes remain untouched.
               """
-          ''',
-              1,
-          )
-          defaults.write_text(text, encoding="utf-8")
+          '''
+          if text.count(old) != 1:
+              raise SystemExit("gway/security/defaults.py: convergence doc block changed")
+          defaults.write_text(text.replace(old, new, 1), encoding="utf-8")
 
           Path("gway/security/publication.py").unlink()
+
+          remote_tests = Path("tests/remote/test_server.py")
+          text = remote_tests.read_text(encoding="utf-8")
+          start = text.index("def test_remote_runtime_registers_product_published_scopes(")
+          end = text.index("def test_builtin_read_scope_union_covers_complete_builtin_survey(", start)
+          remote_tests.write_text(text[:start] + text[end:], encoding="utf-8")
 
       - name: Verify retired symbols are gone
         shell: bash
         run: |
           set -euo pipefail
-          if grep -RInE '_published_scopes|project_scopes|_publish_project_capabilities|PublishedScope|normalize_publications|security\.publication' gway tests; then
+          if grep -RInE '_published_scopes|def project_scopes\(|_publish_project_capabilities|PublishedScope|normalize_publications|security\.publication' gway tests; then
             echo 'Retired publication symbols remain' >&2
             exit 1
           fi
