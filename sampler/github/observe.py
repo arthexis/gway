@@ -184,6 +184,19 @@ class Controller(CheckController):
                 observed["log"] = _log_text(self.job_logs(repository, item["id"]))
             evidence_jobs.append(observed)
 
+        head = run_data.get("head_sha")
+        check_runs = []
+        if head:
+            for item in self.checks(repository, head):
+                check_runs.append(
+                    {
+                        "check": item,
+                        "annotations": self.check_annotations(repository, item["id"])
+                        if item.get("id")
+                        else [],
+                    }
+                )
+
         artifacts = self.artifacts(repository, int(run))
         canonical = []
         for artifact in artifacts:
@@ -207,6 +220,7 @@ class Controller(CheckController):
             "job": int(job) if job is not None else None,
             "workflow": run_data,
             "jobs": evidence_jobs,
+            "check_runs": check_runs,
             "artifacts": artifacts,
             "canonical_results": canonical,
         }
