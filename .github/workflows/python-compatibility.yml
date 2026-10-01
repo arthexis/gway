@@ -1,5 +1,5 @@
 name: python / Python compatibility
-run-name: ${{ github.event_name == 'workflow_dispatch' && format('PR #{0} @ {1}', inputs.pr_number, inputs.head_sha) || github.workflow }}
+run-name: "PR #${{ inputs.pr_number || github.event.pull_request.number }} @ ${{ inputs.head_sha || github.event.pull_request.head.sha || github.sha }}"
 
 on:
   push:
