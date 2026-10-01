@@ -74,8 +74,6 @@ else
     fi
 fi
 
-# Install the Arthexis half of the same Watchtower-certified pair used by the
-# Gway bootstrap. Do not resolve moving repository HEAD here.
 ARTHEXIS_SOURCE="${ARTHEXIS_BOOTSTRAP_SOURCE:-arthexis/arthexis}"
 ARTHEXIS_SHA="${ARTHEXIS_BOOTSTRAP_SHA:-}"
 
@@ -146,19 +144,19 @@ PY
     printf 'Database backup: %s\n' "$DATABASE_BACKUP"
 fi
 
-# Stop known Arthexis services before moving durable runtime state out of the
-# managed product tree. Missing services are expected on first install.
-for service in web worker beat; do
-    "$GWAY" service stop --name "$service" -- arthexis "$service" >/dev/null 2>&1 || true
-done
-# Retire the pre-role service identity if this node was installed by an older bootstrap.
+# Stop the stable unit identities directly before replacing source. This avoids
+# depending on the old launchable definition still being resolvable during an upgrade.
 if command -v systemctl >/dev/null 2>&1; then
+    for service in web worker beat; do
+        systemctl --user stop "arthexis-$service.service" >/dev/null 2>&1 || true
+    done
     systemctl --user stop arthexis-arthexis-arthexis.service >/dev/null 2>&1 || true
+else
+    for service in web worker beat; do
+        "$GWAY" service stop --name "$service" -- arthexis "$service" >/dev/null 2>&1 || true
+    done
 fi
 
-# Runtime data is deliberately protected outside the managed source tree while
-# Gway reconciles source. This keeps real source drift checks strict while
-# ensuring product replacement can never discard the database or its backups.
 if test -d "$ARTHEXIS_DATA_DIR"; then
     RUNTIME_HOLD="$(mktemp -d "${TMPDIR:-/tmp}/arthexis-runtime.XXXXXX")"
     mv "$ARTHEXIS_DATA_DIR" "$RUNTIME_HOLD/var"
@@ -182,18 +180,67 @@ mkdir -p "$ARTHEXIS_DATA_DIR"
 ARTHEXIS_DATA_DIR="$ARTHEXIS_DATA_DIR" "$GWAY" arthexis migrate --no-interactive
 ARTHEXIS_DATA_DIR="$ARTHEXIS_DATA_DIR" "$GWAY" arthexis seed
 
+ARTHEXIS_SERVE="$ARTHEXIS_HOME/.venv/bin/serve"
+ARTHEXIS_CELERY="$ARTHEXIS_HOME/.venv/bin/celery"
+test -x "$ARTHEXIS_SERVE" || {
+    echo "Arthexis bootstrap: missing runtime entrypoint: $ARTHEXIS_SERVE" >&2
+    exit 1
+}
+test -x "$ARTHEXIS_CELERY" || {
+    echo "Arthexis bootstrap: missing runtime entrypoint: $ARTHEXIS_CELERY" >&2
+    exit 1
+}
+
 if test "${ARTHEXIS_BOOTSTRAP_VERIFY_ONLY:-0}" = "1"; then
+    ARTHEXIS_WEB_PORT="${ARTHEXIS_BOOTSTRAP_WEB_PORT:-0}"
+else
+    ARTHEXIS_WEB_PORT="${ARTHEXIS_BOOTSTRAP_WEB_PORT:-8888}"
+fi
+
+(
+    cd "$ARTHEXIS_HOME"
+    "$GWAY" service install --name web --environment "ARTHEXIS_DATA_DIR=$ARTHEXIS_DATA_DIR" -- "$ARTHEXIS_SERVE" --host 127.0.0.1 --port "$ARTHEXIS_WEB_PORT" --data-dir "$ARTHEXIS_DATA_DIR"
+    "$GWAY" service install --name worker --environment "ARTHEXIS_DATA_DIR=$ARTHEXIS_DATA_DIR" -- "$ARTHEXIS_CELERY" -A arthexis.celery:app worker --loglevel INFO
+    "$GWAY" service install --name beat --environment "ARTHEXIS_DATA_DIR=$ARTHEXIS_DATA_DIR" -- "$ARTHEXIS_CELERY" -A arthexis.celery:app beat --loglevel INFO
+
+    "$GWAY" service restart --name web -- "$ARTHEXIS_SERVE" --host 127.0.0.1 --port "$ARTHEXIS_WEB_PORT" --data-dir "$ARTHEXIS_DATA_DIR"
+    "$GWAY" service restart --name worker -- "$ARTHEXIS_CELERY" -A arthexis.celery:app worker --loglevel INFO
+    "$GWAY" service restart --name beat -- "$ARTHEXIS_CELERY" -A arthexis.celery:app beat --loglevel INFO
+)
+
+SERVICE_SETTLE_SECONDS="${ARTHEXIS_BOOTSTRAP_SERVICE_SETTLE_SECONDS:-2}"
+sleep "$SERVICE_SETTLE_SECONDS"
+
+service_health_failed=0
+if command -v systemctl >/dev/null 2>&1; then
+    for service in web worker beat; do
+        unit="arthexis-$service.service"
+        if ! systemctl --user is-active --quiet "$unit"; then
+            service_health_failed=1
+            printf '\nArthexis bootstrap: service failed after restart: %s\n' "$service" >&2
+            systemctl --user status "$unit" --no-pager --full >&2 || true
+            if command -v journalctl >/dev/null 2>&1; then
+                journalctl --user -u "$unit" -n 80 --no-pager >&2 || true
+            fi
+        fi
+    done
+else
+    echo "Arthexis bootstrap: systemctl is required to verify installed services." >&2
+    service_health_failed=1
+fi
+
+if test "$service_health_failed" != 0; then
+    echo "Arthexis bootstrap: service verification failed; installation is incomplete." >&2
+    exit 1
+fi
+
+if test "${ARTHEXIS_BOOTSTRAP_VERIFY_ONLY:-0}" = "1"; then
+    for service in web worker beat; do
+        systemctl --user stop "arthexis-$service.service" >/dev/null 2>&1 || true
+    done
     printf '%s\n' "Arthexis bootstrap verification complete."
     exit 0
 fi
-
-"$GWAY" service install --name web --environment "ARTHEXIS_DATA_DIR=$ARTHEXIS_DATA_DIR" -- arthexis web
-"$GWAY" service install --name worker --environment "ARTHEXIS_DATA_DIR=$ARTHEXIS_DATA_DIR" -- arthexis worker
-"$GWAY" service install --name beat --environment "ARTHEXIS_DATA_DIR=$ARTHEXIS_DATA_DIR" -- arthexis beat
-
-"$GWAY" service restart --name web -- arthexis web
-"$GWAY" service restart --name worker -- arthexis worker
-"$GWAY" service restart --name beat -- arthexis beat
 
 printf '\n%s\n' "[installer_title] installation complete."
 printf '  Arthexis project: %s\n' "$ARTHEXIS_HOME"
