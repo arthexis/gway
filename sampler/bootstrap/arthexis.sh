@@ -22,6 +22,13 @@ ARTHEXIS_DATABASE_PATH="$ARTHEXIS_DATA_DIR/db.sqlite3"
 MANIFEST=""
 RUNTIME_HOLD=""
 DATABASE_BACKUP=""
+SYSTEM_WRAPPER_TMP=""
+SYSTEM_GWAY_CANDIDATE=""
+SYSTEM_GWAY_BACKUP=""
+SYSTEM_GWAY_PROMOTED=0
+GWAY_BOOTSTRAPPED=0
+GWAY_TEMP_TOOL=0
+UV=""
 
 restore_runtime() {
     if test -n "$RUNTIME_HOLD" && test -d "$RUNTIME_HOLD/var"; then
@@ -36,6 +43,26 @@ restore_runtime() {
     fi
 }
 
+cleanup_temp_gway() {
+    if test "$GWAY_TEMP_TOOL" != 1; then
+        return
+    fi
+
+    cleanup_uv="$UV"
+    if test -z "$cleanup_uv"; then
+        if command -v uv >/dev/null 2>&1; then
+            cleanup_uv="$(command -v uv)"
+        elif test -x "$HOME/.local/bin/uv"; then
+            cleanup_uv="$HOME/.local/bin/uv"
+        fi
+    fi
+
+    if test -n "$cleanup_uv"; then
+        "$cleanup_uv" tool uninstall gway >/dev/null 2>&1 || true
+    fi
+    GWAY_TEMP_TOOL=0
+}
+
 cleanup() {
     status=$?
     trap - EXIT HUP INT TERM
@@ -43,9 +70,34 @@ cleanup() {
     if test -n "$MANIFEST"; then
         rm -f "$MANIFEST"
     fi
+    if test -n "$SYSTEM_WRAPPER_TMP"; then
+        rm -f "$SYSTEM_WRAPPER_TMP"
+    fi
+    if test -n "$SYSTEM_GWAY_CANDIDATE"; then
+        run_root rm -rf "$SYSTEM_GWAY_CANDIDATE" || true
+    fi
+    if test "$status" -ne 0 && test "$SYSTEM_GWAY_PROMOTED" = 1; then
+        run_root rm -rf "$SYSTEM_GWAY_VENV" || true
+        if test -n "$SYSTEM_GWAY_BACKUP" && run_root test -e "$SYSTEM_GWAY_BACKUP"; then
+            run_root mv "$SYSTEM_GWAY_BACKUP" "$SYSTEM_GWAY_VENV" || true
+        fi
+    fi
+    cleanup_temp_gway
     exit "$status"
 }
 trap cleanup EXIT HUP INT TERM
+
+run_root() {
+    if test "$(id -u)" -eq 0; then
+        "$@"
+        return
+    fi
+    if ! command -v sudo >/dev/null 2>&1; then
+        echo "Arthexis bootstrap: sudo is required to provision the system Gway runtime." >&2
+        exit 1
+    fi
+    sudo "$@"
+}
 
 if test -n "${GWAY_BOOTSTRAP_GWAY:-}"; then
     GWAY="$GWAY_BOOTSTRAP_GWAY"
@@ -55,6 +107,8 @@ if test -n "${GWAY_BOOTSTRAP_GWAY:-}"; then
     }
 else
     curl -fsSL "https://[domain]/gway" | sh
+    GWAY_BOOTSTRAPPED=1
+    GWAY_TEMP_TOOL=1
 
     if command -v uv >/dev/null 2>&1; then
         UV="$(command -v uv)"
@@ -76,12 +130,18 @@ fi
 
 ARTHEXIS_SOURCE="${ARTHEXIS_BOOTSTRAP_SOURCE:-arthexis/arthexis}"
 ARTHEXIS_SHA="${ARTHEXIS_BOOTSTRAP_SHA:-}"
+GWAY_SHA="${GWAY_BOOTSTRAP_SHA:-}"
 
-if test -z "$ARTHEXIS_SHA"; then
+if test -z "$ARTHEXIS_SHA" || { test "$GWAY_BOOTSTRAPPED" = 1 && test -z "$GWAY_SHA"; }; then
     CERTIFIED_MANIFEST_URL="https://raw.githubusercontent.com/arthexis/arthexis/watchtower-state/.watchtower/accepted.json"
     MANIFEST="$(mktemp)"
     curl -fsSL "$CERTIFIED_MANIFEST_URL" -o "$MANIFEST"
-    ARTHEXIS_SHA="$(awk -F'"' '/"arthexis_sha"/ { print $4; exit }' "$MANIFEST")"
+    if test -z "$ARTHEXIS_SHA"; then
+        ARTHEXIS_SHA="$(awk -F'"' '/"arthexis_sha"/ { print $4; exit }' "$MANIFEST")"
+    fi
+    if test "$GWAY_BOOTSTRAPPED" = 1 && test -z "$GWAY_SHA"; then
+        GWAY_SHA="$(awk -F'"' '/"gway_sha"/ { print $4; exit }' "$MANIFEST")"
+    fi
 fi
 
 if test "${#ARTHEXIS_SHA}" -ne 40; then
@@ -94,6 +154,96 @@ case "$ARTHEXIS_SHA" in
         exit 1
         ;;
 esac
+
+# Satellite and Control bootstrap use a temporary per-user uv tool only long
+# enough to obtain Gway on a fresh machine. Build the accepted Watchtower
+# revision in a clean candidate venv, validate it, then atomically replace the
+# appliance runtime. A failed promotion restores the previous runtime.
+if test "$GWAY_BOOTSTRAPPED" = 1; then
+    if test "${#GWAY_SHA}" -ne 40; then
+        echo "Arthexis bootstrap: accepted Watchtower manifest has no valid gway_sha" >&2
+        exit 1
+    fi
+    case "$GWAY_SHA" in
+        *[[!0-9a-f]]*)
+            echo "Arthexis bootstrap: gway_sha is invalid" >&2
+            exit 1
+            ;;
+    esac
+
+    SYSTEM_GWAY_VENV="${GWAY_SYSTEM_VENV:-/opt/gway/venv}"
+    SYSTEM_GWAY_COMMAND="${GWAY_SYSTEM_COMMAND:-/usr/local/bin/gway}"
+    SYSTEM_GWAY_CONFIG="${GWAY_SYSTEM_CONFIG_HOME:-/etc/gway}"
+    SYSTEM_GWAY_DATA="${GWAY_SYSTEM_DATA_HOME:-/var/lib/gway}"
+    SYSTEM_GWAY_SOURCE="gway @ https://github.com/arthexis/gway/archive/$GWAY_SHA.tar.gz"
+    SYSTEM_GWAY_CANDIDATE="${SYSTEM_GWAY_VENV}.candidate.$$"
+    SYSTEM_GWAY_BACKUP="${SYSTEM_GWAY_VENV}.previous.$$"
+
+    run_root mkdir -p "$(dirname "$SYSTEM_GWAY_VENV")"
+    run_root rm -rf "$SYSTEM_GWAY_CANDIDATE" "$SYSTEM_GWAY_BACKUP"
+    run_root "$UV" venv "$SYSTEM_GWAY_CANDIDATE" --python python3
+    run_root "$UV" pip install \
+        --python "$SYSTEM_GWAY_CANDIDATE/bin/python" \
+        "$SYSTEM_GWAY_SOURCE"
+
+    USER_GWAY_VERSION="$("$GWAY" version)"
+    CANDIDATE_GWAY_VERSION="$(run_root "$SYSTEM_GWAY_CANDIDATE/bin/gway" version)"
+    if test "$USER_GWAY_VERSION" != "$CANDIDATE_GWAY_VERSION"; then
+        echo "Arthexis bootstrap: bootstrap/candidate Gway version mismatch" >&2
+        echo "  bootstrap: $USER_GWAY_VERSION" >&2
+        echo "  candidate: $CANDIDATE_GWAY_VERSION" >&2
+        exit 1
+    fi
+
+    if run_root test -e "$SYSTEM_GWAY_VENV"; then
+        run_root mv "$SYSTEM_GWAY_VENV" "$SYSTEM_GWAY_BACKUP"
+    fi
+    run_root mv "$SYSTEM_GWAY_CANDIDATE" "$SYSTEM_GWAY_VENV"
+    SYSTEM_GWAY_CANDIDATE=""
+    SYSTEM_GWAY_PROMOTED=1
+
+    run_root mkdir -p "$SYSTEM_GWAY_CONFIG" "$SYSTEM_GWAY_DATA" "$(dirname "$SYSTEM_GWAY_COMMAND")"
+
+    SYSTEM_WRAPPER_TMP="$(mktemp)"
+    cat >"$SYSTEM_WRAPPER_TMP" <<EOF
+#!/bin/sh
+# GWAY_SYSTEM_BOOTSTRAP_WRAPPER=1
+if test "\$(id -u)" -eq 0; then
+    export GWAY_CONFIG_HOME="\${GWAY_CONFIG_HOME:-$SYSTEM_GWAY_CONFIG}"
+    export GWAY_DATA_HOME="\${GWAY_DATA_HOME:-$SYSTEM_GWAY_DATA}"
+fi
+export GIT_TERMINAL_PROMPT=0
+exec "$SYSTEM_GWAY_VENV/bin/gway" "\$@"
+EOF
+    run_root install -m 755 "$SYSTEM_WRAPPER_TMP" "$SYSTEM_GWAY_COMMAND"
+    rm -f "$SYSTEM_WRAPPER_TMP"
+    SYSTEM_WRAPPER_TMP=""
+
+    SYSTEM_GWAY_VERSION="$($SYSTEM_GWAY_COMMAND version)"
+    ROOT_GWAY_VERSION="$(run_root "$SYSTEM_GWAY_COMMAND" version)"
+    if test "$USER_GWAY_VERSION" != "$SYSTEM_GWAY_VERSION" || test "$USER_GWAY_VERSION" != "$ROOT_GWAY_VERSION"; then
+        echo "Arthexis bootstrap: user/system Gway version mismatch after promotion" >&2
+        echo "  bootstrap: $USER_GWAY_VERSION" >&2
+        echo "  user:      $SYSTEM_GWAY_VERSION" >&2
+        echo "  root:      $ROOT_GWAY_VERSION" >&2
+        exit 1
+    fi
+
+    if run_root test -e "$SYSTEM_GWAY_BACKUP"; then
+        run_root rm -rf "$SYSTEM_GWAY_BACKUP"
+    fi
+    SYSTEM_GWAY_BACKUP=""
+    SYSTEM_GWAY_PROMOTED=0
+
+    "$UV" tool uninstall gway
+    GWAY_TEMP_TOOL=0
+    if test -e "$TOOL_BIN/gway"; then
+        echo "Arthexis bootstrap: temporary user Gway entrypoint survived cleanup: $TOOL_BIN/gway" >&2
+        exit 1
+    fi
+    GWAY="$SYSTEM_GWAY_COMMAND"
+    printf 'Gway appliance runtime: %s (%s)\n' "$SYSTEM_GWAY_COMMAND" "$SYSTEM_GWAY_VERSION"
+fi
 
 DATABASE_EXISTS=0
 if test -f "$ARTHEXIS_DATABASE_PATH"; then
