@@ -5,12 +5,14 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True)
 class ScopeValidation:
-    """Validation and mutation classification for one curated scope."""
+    """Validation and live-binding classification for one curated scope."""
 
     name: str
     valid: bool
     mutating: tuple[str, ...] = ()
     unknown: tuple[str, ...] = ()
+    registered: tuple[str, ...] = ()
+    missing: tuple[str, ...] = ()
 
     @property
     def mutation_capable(self):
@@ -18,24 +20,30 @@ class ScopeValidation:
 
 
 def validate_scope(gateway, scope):
-    """Classify mutation behavior from exact member-operation metadata.
+    """Classify live bindings and mutation behavior from exact members.
 
     Scope names carry no security semantics. A scope is provably non-mutating
     only when every member operation exists and explicitly declares itself
     non-mutating. Missing or unclassified operations are conservatively treated
     as mutation-capable, but they do not make the curated scope definition
-    invalid.
+    invalid. Missing bindings are reported separately so operators can audit
+    stale exact grants without conflating them with registered-but-unclassified
+    operations.
     """
     mutating = []
     unknown = []
+    registered = []
+    missing = []
     for operation in sorted(scope.operations):
         if operation == "__all__":
             unknown.append(operation)
             continue
         callable_ = gateway.ops.resolve(operation)
         if callable_ is None:
+            missing.append(operation)
             unknown.append(operation)
             continue
+        registered.append(operation)
         declared = getattr(callable_, "__gway_mutates__", None)
         if declared is None:
             declared = getattr(callable_, "mutates", None)
@@ -49,6 +57,8 @@ def validate_scope(gateway, scope):
         True,
         tuple(mutating),
         tuple(unknown),
+        tuple(registered),
+        tuple(missing),
     )
 
 
