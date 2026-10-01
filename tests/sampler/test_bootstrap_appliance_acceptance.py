@@ -1,4 +1,3 @@
-import json
 import os
 import subprocess
 
@@ -119,7 +118,6 @@ def _write_fake_curl(path):
         path,
         """#!/usr/bin/env python3
 import json
-import os
 from pathlib import Path
 import sys
 
@@ -252,7 +250,9 @@ def test_appliance_bootstrap_replaces_split_gway_install_with_one_certified_runt
     assert not list(system_venv.parent.glob("venv.candidate.*"))
 
     assert _run([str(system_command), "version"], env=env).stdout.strip() == "1.1.6"
-    assert _run([str(tmp_path / "sudo"), str(system_command), "version"], env=env).stdout.strip() == "1.1.6"
+    assert _run(
+        [str(tmp_path / "sudo"), str(system_command), "version"], env=env
+    ).stdout.strip() == "1.1.6"
 
     statuses = _run(
         [str(system_command), "service", "statuses", "--project", "arthexis"],
