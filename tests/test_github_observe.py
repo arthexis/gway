@@ -67,12 +67,16 @@ class ObserveController(Controller):
             }
         ]
 
+    def check_annotations(self, repository, check):
+        return [{"path": "tests/test_example.py", "message": "assertion failed"}]
+
     def run(self, repository, run):
         return {
             "id": int(run),
             "name": "Python compatibility",
             "status": "completed",
             "conclusion": "failure",
+            "head_sha": "head",
         }
 
     def jobs(self, repository, run):
@@ -152,6 +156,7 @@ def test_observe_ci_direct_job_uses_diagnostic_target_and_decodes_log():
     assert result["job"] == 20
     assert len(result["jobs"]) == 1
     assert result["jobs"][0]["log"]["content"] == "failure details\n"
+    assert result["check_runs"][0]["annotations"][0]["path"] == "tests/test_example.py"
     assert result["canonical_results"][0]["result"]["state"] == "failed"
 
 
