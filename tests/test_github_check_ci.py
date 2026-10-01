@@ -4,6 +4,7 @@ from types import SimpleNamespace
 import zipfile
 
 from gway.githubcheck import Controller
+from gway.tokens import tokenize
 
 
 class FakeClient:
@@ -85,6 +86,11 @@ def test_check_ci_falls_back_to_provider_state_without_artifact():
 
 
 def test_github_check_ci_is_registered_as_read_only_semantic_operation(gateway):
+    assert gateway.operation_routes.expand(
+        gateway,
+        tokenize("github check ci"),
+    ) is True
+
     operation = gateway.ops.resolve("github.check_ci")
     assert operation is not None
     assert operation.mutates is False
