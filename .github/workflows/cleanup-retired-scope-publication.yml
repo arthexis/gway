@@ -218,7 +218,56 @@ jobs:
           text = remote_tests.read_text(encoding="utf-8")
           start = text.index("def test_remote_runtime_registers_product_published_scopes(")
           end = text.index("def test_builtin_read_scope_union_covers_complete_builtin_survey(", start)
-          remote_tests.write_text(text[:start] + text[end:], encoding="utf-8")
+          text = text[:start] + text[end:]
+          old = '''    from gway.gateway import Gateway
+              from gway.security.scopes import ScopeRegistry
+
+              runtime = Gateway()
+              runtime.security_path = tmp_path / "security.sqlite"
+              metadata = RemoteOAuthMetadata.from_origin("https://remote.example.test")
+
+              RemoteApplication(metadata, runtime=runtime)
+
+              registry = ScopeRegistry(runtime.security_path)
+              logs = registry.require("logs-read")
+              operator = registry.require("operator-read")
+
+              assert operator.operations == frozenset(
+                  {
+                      "survey",
+                      "node",
+                      "products",
+                      "extensions",
+                      "builtins",
+                      "filter",
+                      "service.list",
+                      "service.status",
+                      "service.statuses",
+                      "wire.check",
+                      "sous.chef.list",
+                      "sous.chef.inspect",
+                  }
+              )
+          '''
+          new = '''    from gway.gateway import Gateway
+              from gway.security.defaults import CORE_SCOPE_DEFINITIONS
+              from gway.security.scopes import ScopeRegistry
+
+              runtime = Gateway()
+              runtime.security_path = tmp_path / "security.sqlite"
+              metadata = RemoteOAuthMetadata.from_origin("https://remote.example.test")
+
+              RemoteApplication(metadata, runtime=runtime)
+
+              registry = ScopeRegistry(runtime.security_path)
+              logs = registry.require("logs-read")
+              operator = registry.require("operator-read")
+
+              assert operator.operations == CORE_SCOPE_DEFINITIONS["operator-read"]["operations"]
+          '''
+          if text.count(old) != 1:
+              raise SystemExit("tests/remote/test_server.py: operator-read assertion changed")
+          remote_tests.write_text(text.replace(old, new, 1), encoding="utf-8")
 
       - name: Verify retired symbols are gone
         shell: bash
