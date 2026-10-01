@@ -25,7 +25,13 @@ class ScriptedDriveController(DriveController):
 
 
 def _status(name, disposition, **extra):
-    return {"repository": REPOSITORY, "pr": 10, "status": name, "disposition": disposition, **extra}
+    return {
+        "repository": REPOSITORY,
+        "pr": 10,
+        "status": name,
+        "disposition": disposition,
+        **extra,
+    }
 
 
 def test_terminal_status_returns_done_without_action():
@@ -100,7 +106,95 @@ def test_successful_action_progresses_to_next_fresh_status():
     assert controller.status_calls == 2
 
 
-def test_same_status_after_action_trips_no_progress_guard():
+def test_multiple_automatic_transitions_run_until_wait_boundary():
+    first = {"kind": "update-branch", "expected_head_sha": "one"}
+    second = {"kind": "enable-auto-merge", "expected_head_sha": "two"}
+    controller = ScriptedDriveController(
+        [
+            _status("branch-behind", "auto", action=first),
+            _status("merge-awaiting-authorization", "auto", action=second),
+            _status("merge-pending", "wait"),
+        ],
+        executions=[
+            {"kind": "update-branch", "result": "changed"},
+            {"kind": "ensure-auto-merge", "result": "changed"},
+        ],
+    )
+
+    result = controller.drive(REPOSITORY, 10)
+
+    assert result["outcome"] == "changed"
+    assert result["final_status"] == "merge-pending"
+    assert result["disposition"] == "wait"
+    assert [item["kind"] for item in result["actions"]] == [
+        "update-branch",
+        "ensure-auto-merge",
+    ]
+    assert controller.status_calls == 3
+
+
+def test_changed_then_escalated_preserves_escalation_boundary():
+    action = {"kind": "update-branch", "expected_head_sha": "head"}
+    diagnostic = {"kind": "github-ci", "run_id": 30, "job_id": 20}
+    controller = ScriptedDriveController(
+        [
+            _status("branch-behind", "auto", action=action),
+            _status("ci-failed", "escalate", diagnostic_target=diagnostic),
+        ],
+        executions=[{"kind": "update-branch", "result": "changed"}],
+    )
+
+    result = controller.drive(REPOSITORY, 10)
+
+    assert result["outcome"] == "changed"
+    assert result["disposition"] == "escalate"
+    assert result["diagnostic_target"] == diagnostic
+
+
+def test_stale_action_rechecks_fresh_state_without_claiming_change():
+    old = {"kind": "update-branch", "expected_head_sha": "old-head"}
+    controller = ScriptedDriveController(
+        [
+            _status("branch-behind", "auto", action=old),
+            _status("ci-pending", "wait"),
+        ],
+        executions=[
+            {
+                "kind": "update-branch",
+                "result": "stale",
+                "expected_head_sha": "old-head",
+                "actual_head_sha": "new-head",
+            }
+        ],
+    )
+
+    result = controller.drive(REPOSITORY, 10)
+
+    assert result["outcome"] == "waiting"
+    assert result["final_status"] == "ci-pending"
+    assert result["actions"][0]["result"] == "stale"
+
+
+def test_already_satisfied_action_does_not_claim_provider_change():
+    action = {"kind": "enable-auto-merge", "expected_head_sha": "head"}
+    controller = ScriptedDriveController(
+        [
+            _status("merge-awaiting-authorization", "auto", action=action),
+            _status("merge-pending", "wait"),
+        ],
+        executions=[
+            {"kind": "ensure-auto-merge", "result": "already", "expected_head_sha": "head"}
+        ],
+    )
+
+    result = controller.drive(REPOSITORY, 10)
+
+    assert result["outcome"] == "waiting"
+    assert result["disposition"] == "wait"
+    assert result["actions"][0]["result"] == "already"
+
+
+def test_same_status_after_changed_action_trips_no_progress_guard():
     status = _status(
         "branch-behind",
         "auto",
@@ -117,6 +211,30 @@ def test_same_status_after_action_trips_no_progress_guard():
     assert result["reason"] == "drive-no-progress"
 
 
+def test_same_status_after_stale_action_escalates_without_claiming_change():
+    status = _status(
+        "branch-behind",
+        "auto",
+        action={"kind": "update-branch", "expected_head_sha": "head"},
+    )
+    controller = ScriptedDriveController(
+        [status, status],
+        executions=[
+            {
+                "kind": "update-branch",
+                "result": "stale",
+                "expected_head_sha": "head",
+                "actual_head_sha": "other",
+            }
+        ],
+    )
+
+    result = controller.drive(REPOSITORY, 10)
+
+    assert result["outcome"] == "escalated"
+    assert result["reason"] == "drive-no-progress"
+
+
 def test_action_budget_stops_reconciliation_before_next_mutation():
     first = _status("first-auto", "auto", action={"kind": "one"})
     second = _status("second-auto", "auto", action={"kind": "two"})
@@ -127,9 +245,24 @@ def test_action_budget_stops_reconciliation_before_next_mutation():
 
     result = controller.drive(REPOSITORY, 10, max_actions=1)
 
+    assert result["outcome"] == "changed"
     assert result["reason"] == "drive-action-budget-exhausted"
     assert result["pending_action"] == {"kind": "two"}
     assert controller.action_calls == [{"kind": "one"}]
+
+
+def test_budget_after_non_mutating_attempt_escalates_without_claiming_change():
+    first = _status("first-auto", "auto", action={"kind": "one"})
+    second = _status("second-auto", "auto", action={"kind": "two"})
+    controller = ScriptedDriveController(
+        [first, second],
+        executions=[{"kind": "one", "result": "stale"}],
+    )
+
+    result = controller.drive(REPOSITORY, 10, max_actions=1)
+
+    assert result["outcome"] == "escalated"
+    assert result["reason"] == "drive-action-budget-exhausted"
 
 
 def test_drive_is_registered_as_write_capable_semantic_operation(gateway):
