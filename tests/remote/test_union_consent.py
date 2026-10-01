@@ -8,7 +8,9 @@ from gway.security.tokens import TokenRegistry
 
 
 def _operation(*, mutates=False):
-    operation = lambda: None
+    def operation():
+        return None
+
     operation.mutates = mutates
     return operation
 
