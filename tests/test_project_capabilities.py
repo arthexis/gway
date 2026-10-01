@@ -72,6 +72,7 @@ def test_retired_project_scope_declaration_has_no_authorization_effect(
 [project]
 name = "demo"
 
+# Retained here deliberately: legacy project scope declarations are inert.
 [tool.gway.scopes.demo-read]
 operations = ["demo.status"]
 environment = []
