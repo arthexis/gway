@@ -6,14 +6,24 @@ import pytest
 import gway.log as gway_log
 from gway import Gateway
 from gway.console import cli_main
+from gway.dispatch import resolve_operation
+from gway.tokens import tokenize
 
 
 @pytest.fixture
 def gateway(tmp_path, monkeypatch):
-    """Return a Gateway with per-test durable state and cache isolation."""
+    """Return a Gateway with per-test durable state and cache isolation.
+
+    The shared test fixture historically exposed the full maintained GitHub
+    surface. Production Gateway construction is now intentionally lazy, so
+    prime that capability through the normal resolver here. Dedicated sampler
+    architecture tests construct Gateway directly when they need to assert the
+    pre-discovery state.
+    """
     monkeypatch.setenv("GWAY_DATA_DIR", str(tmp_path / "gway-data"))
     monkeypatch.setenv("GWAY_CACHE_DIR", str(tmp_path / "gway-cache"))
     runtime = Gateway()
+    resolve_operation(runtime, tokenize("github status"))
     runtime.context.clear()
     runtime.results.clear()
     return runtime

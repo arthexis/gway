@@ -62,7 +62,7 @@ def test_python_310_workflow_delegates_regression_to_project_ci():
     assert "github.event_name != 'pull_request'" in regression
     assert 'contains(github.event.pull_request.labels.*.name, \'integration\')' in regression
     assert 'contains(github.event.pull_request.labels.*.name, \'workflow\')' in regression
-    assert "python -m gway ci" in regression
+    assert 'python -m gway ci -o "$RUNNER_TEMP/ci-result.json"' in regression
     assert "python -m gway test run architecture - check --is 0" in regression
     assert 'python -m gway test run --keyword "not architecture" - check --is 0' in regression
     assert "python -m pytest" not in regression
@@ -71,6 +71,23 @@ def test_python_310_workflow_delegates_regression_to_project_ci():
     assert "python -m pytest" in forward
     assert "push:" in workflow
     assert "branches: [main]" in workflow
+
+
+def test_python_310_workflow_publishes_canonical_ci_result_without_reinterpreting_it():
+    from pathlib import Path
+
+    workflow = Path(".github/workflows/python-compatibility.yml").read_text(encoding="utf-8")
+    regression, _ = workflow.split("  forward-compatibility:", 1)
+
+    assert "Publish structured CI result" in regression
+    assert "actions/upload-artifact@v4" in regression
+    assert "name: gway-ci-result" in regression
+    assert "path: ${{ runner.temp }}/ci-result.json" in regression
+    assert "if-no-files-found: ignore" in regression
+    assert "always()" in regression
+    assert "env.INTEGRATION_PR == 'true'" in regression
+    assert "> $RUNNER_TEMP/ci-result.json" not in regression
+    assert "github.sha" not in Path("docs/CI_RESULTS.md").read_text(encoding="utf-8")
 
 
 def test_registered_operation_still_shadows_project_bare_recipe(tmp_path, monkeypatch):

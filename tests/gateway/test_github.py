@@ -1,6 +1,18 @@
 import pytest
 
 from gway.githubops import ADMIN_OPERATIONS, WRITE_OPERATIONS
+from gway.tokens import tokenize
+
+
+@pytest.fixture(autouse=True)
+def discover_github_sampler(gateway):
+    """Exercise GitHub through the same lazy sampler route used by commands."""
+    if gateway.ops.resolve("github.status") is None:
+        assert gateway.operation_routes.expand(
+            gateway,
+            tokenize("github status"),
+        ) is True
+
 
 def test_github_operations_are_registered_as_source_read(gateway):
     expected = {

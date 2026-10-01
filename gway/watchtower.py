@@ -15,7 +15,12 @@ class Controller:
 
     @property
     def github(self):
-        return self.gateway._github_controller
+        controller = getattr(self.gateway, "_github_controller", None)
+        if controller is None:
+            from .sampler import load
+
+            controller = load("github").register(self.gateway)
+        return controller
 
     @staticmethod
     def _labels(pull):
