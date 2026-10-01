@@ -86,6 +86,7 @@ def django_orm(monkeypatch):
         _meta = SimpleNamespace(
             app_label="energy",
             model_name="charger",
+            app_config=None,
         )
 
         @classmethod
@@ -131,10 +132,16 @@ def django_mount(gateway, django_project, django_setup):
 
     def mount(*models, label="energy"):
         root, _ = django_project()
+        app_root = root / label
+        app_root.mkdir()
         app = SimpleNamespace(
             label=label,
+            name=label,
+            path=app_root,
             get_models=lambda: list(models),
         )
+        for model in models:
+            model._meta.app_config = app
         django_setup(app)
         django_ingestor.ingest_project(gateway, root)
         return root
