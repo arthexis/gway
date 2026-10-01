@@ -16,6 +16,7 @@ _segment = segment
 
 
 WRITE_OPERATIONS = frozenset({
+    "drive",
     "create_ruleset",
     "update_ruleset",
     "delete_ruleset",
