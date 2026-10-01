@@ -1,5 +1,7 @@
 """Canonical Gway-owned security scope definitions."""
 
+from .publication import normalize_publications
+
 
 CORE_SCOPE_DEFINITIONS = {
     "full-access": {
@@ -88,8 +90,8 @@ CORE_SCOPE_NAMES = frozenset(CORE_SCOPE_DEFINITIONS)
 
 
 def converge_scope_registry(registry, published=(), *, retire_missing=True):
-    """Converge Gway-owned and product-published scopes into one registry."""
-    published = dict(published)
+    """Converge Gway-owned and externally published scopes into one registry."""
+    published = normalize_publications(published)
     for name, definition in CORE_SCOPE_DEFINITIONS.items():
         registry.replace_owned(
             name,
@@ -101,19 +103,15 @@ def converge_scope_registry(registry, published=(), *, retire_missing=True):
         )
 
     active_product_names = set()
-    for name, definition in sorted(published.items()):
+    for name, publication in published.items():
         if name in CORE_SCOPE_NAMES:
             raise ValueError(f"Published security scope shadows Gway core scope: {name}")
-        source = str(definition.get("source") or "").strip()
-        if not source:
-            raise ValueError(f"Published security scope {name} has no publisher source")
-        owner = f"project:{source}"
         registry.replace_owned(
             name,
-            owner=owner,
-            operations=definition.get("operations", ()),
-            environment=definition.get("environment", ()),
-            semantic_terms=definition.get("semantic_terms", ()),
+            owner=publication.owner,
+            operations=publication.operations,
+            environment=publication.environment,
+            semantic_terms=publication.semantic_terms,
             allow_claim_unowned=True,
         )
         active_product_names.add(name)
@@ -125,5 +123,5 @@ def converge_scope_registry(registry, published=(), *, retire_missing=True):
         )
     return {
         **CORE_SCOPE_DEFINITIONS,
-        **published,
+        **{name: publication.as_definition() for name, publication in published.items()},
     }
