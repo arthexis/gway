@@ -4,6 +4,7 @@ from html import escape
 import secrets
 
 from ..security.oauth import OAuthRegistry
+from ..security.semantics import resolve as resolve_semantic
 from ..security.tokens import AuthenticationError, TokenRegistry
 from .session import RemoteSessionStore
 
@@ -33,6 +34,32 @@ def _scopes(value):
     return frozenset(str(item).strip() for item in values if str(item).strip())
 
 
+def _union_scopes(value):
+    if value is None:
+        return frozenset()
+    values = (
+        [item for item in value.split(";") if item.strip()]
+        if isinstance(value, str)
+        else value
+    )
+    result = set()
+    for expression in values:
+        raw = expression.replace(",", " ").split() if isinstance(expression, str) else expression
+        terms = tuple(
+            sorted(
+                {
+                    str(term).strip().lower()
+                    for term in raw
+                    if str(term).strip()
+                }
+            )
+        )
+        if not terms:
+            raise ValueError("union scope requires at least one semantic term")
+        result.add(terms)
+    return frozenset(result)
+
+
 class RemoteAccountApplication:
     """One-user browser linking and consent layer over G-Way security."""
 
@@ -52,15 +79,25 @@ class RemoteAccountApplication:
     def new_session(self):
         return self.sessions.create()
 
-    def stage_consent(self, session, client_id, scopes, *, resource=None):
+    def stage_consent(
+        self,
+        session,
+        client_id,
+        scopes=None,
+        *,
+        union_scopes=None,
+        resource=None,
+    ):
         client_id = str(client_id or "").strip()
         if not client_id:
             raise ValueError("OAuth client id is required")
-        scopes = _scopes(scopes)
-        if not scopes:
-            raise ValueError("At least one named G-Way scope is required")
+        exact = _scopes(scopes)
+        unions = _union_scopes(union_scopes)
+        if not exact and not unions:
+            raise ValueError("At least one exact or union G-Way scope is required")
         session.pending_client_id = client_id
-        session.pending_scopes = scopes
+        session.pending_scopes = exact
+        session.pending_union_scopes = unions
         session.pending_resource = None if resource is None else str(resource).strip()
         session.approved_grant_id = None
         return session
@@ -90,7 +127,6 @@ class RemoteAccountApplication:
         except AuthenticationError:
             raise PermissionError("Invalid bearer token") from None
 
-        # The random link identifier is safe metadata. The raw bearer is never stored.
         link_name = f"remote-{secrets.token_hex(12)}"
         self.oauth.link(link_name, identity.token.name)
         session.link_name = link_name
@@ -131,9 +167,7 @@ class RemoteAccountApplication:
                     "remaining_operations": max(
                         0, len(scope_operations) - OPERATION_PREVIEW_LIMIT
                     ),
-                    "environment_count": (
-                        None if all_environment else len(scope_environment)
-                    ),
+                    "environment_count": None if all_environment else len(scope_environment),
                     "all_environment": all_environment,
                     "environment": scope_environment,
                     "mutation_capable": mutation_capable,
@@ -150,14 +184,10 @@ class RemoteAccountApplication:
             "scopes": tuple(scope_summaries),
             "effective": {
                 "scope_count": len(names),
-                "operation_count": (
-                    None if effective_all_operations else len(effective_operations)
-                ),
+                "operation_count": None if effective_all_operations else len(effective_operations),
                 "all_operations": effective_all_operations,
                 "operations": effective_operations,
-                "environment_count": (
-                    None if effective_all_environment else len(effective_environment)
-                ),
+                "environment_count": None if effective_all_environment else len(effective_environment),
                 "all_environment": effective_all_environment,
                 "environment": effective_environment,
                 "mutation_capable": effective_all_operations or any(
@@ -167,40 +197,75 @@ class RemoteAccountApplication:
             },
         }
 
+    def union_summary(self, union_scopes):
+        leaves = self.oauth.scopes.all()
+        summaries = []
+        for union_terms in sorted(union_scopes):
+            resolved = resolve_semantic(leaves, union_terms)
+            operations = tuple(sorted(resolved.operations))
+            summaries.append(
+                {
+                    "terms": tuple(sorted(resolved.terms)),
+                    "exact_scopes": resolved.exact_scopes,
+                    "conjunction": resolved.conjunction,
+                    "matched_scopes": resolved.scopes,
+                    "operations": operations,
+                    "mutation_capable": any(
+                        self._operation_mutates(operation) for operation in operations
+                    ),
+                }
+            )
+        return tuple(summaries)
+
     def consent_details(self, session):
         if not session.link_name:
             raise PermissionError("G-Way connection required")
-        if not session.pending_client_id or not session.pending_scopes:
+        if not session.pending_client_id or (
+            not session.pending_scopes and not session.pending_union_scopes
+        ):
             raise ValueError("No pending consent request")
 
         link = self.oauth.get_link(session.link_name)
         if link is None or link.revoked_at is not None:
             raise PermissionError("G-Way connection is revoked")
         token = self.tokens.require(link.token_name)
-        bearer_scopes = frozenset(token.scopes)
-        missing_requested = session.pending_scopes - bearer_scopes
+
+        exact_scopes = frozenset(session.pending_scopes)
+        missing_requested = exact_scopes - token.scopes
         if missing_requested:
             raise PermissionError(
                 "Requested scopes are not available from the linked bearer: "
                 + ", ".join(sorted(missing_requested))
             )
-        if not bearer_scopes:
-            raise PermissionError("Linked bearer has no scopes")
 
-        operations = set()
-        environment = set()
-        for name in sorted(bearer_scopes):
-            scope = self.oauth.scopes.require(name)
-            operations.update(scope.operations)
-            environment.update(scope.environment)
+        union_scopes = frozenset(session.pending_union_scopes)
+        unavailable_unions = [
+            terms
+            for terms in union_scopes
+            if not self.oauth._union_is_within(terms, token.union_scopes)
+        ]
+        if unavailable_unions:
+            rendered = ", ".join(" + ".join(terms) for terms in sorted(unavailable_unions))
+            raise PermissionError(
+                "Requested union scopes are not available from the linked bearer: "
+                + rendered
+            )
+
+        exact_summary = self.permission_summary(exact_scopes)
+        union_summary = self.union_summary(union_scopes)
+        operations = set(exact_summary["effective"]["operations"])
+        for item in union_summary:
+            operations.update(item["operations"])
 
         return {
             "client_id": session.pending_client_id,
             "resource": session.pending_resource,
-            "scopes": bearer_scopes,
+            "scopes": exact_scopes,
+            "union_scopes": union_scopes,
             "operations": frozenset(operations),
-            "environment": frozenset(environment),
-            "permission_summary": self.permission_summary(bearer_scopes),
+            "environment": frozenset(exact_summary["effective"]["environment"]),
+            "permission_summary": exact_summary,
+            "union_summary": union_summary,
         }
 
     @staticmethod
@@ -215,9 +280,7 @@ class RemoteAccountApplication:
                     if item["all_environment"]
                     else f"{item['environment_count']} environment names"
                 )
-                + "</div>"
-                "<div><code>__all__</code></div>"
-                "</li>"
+                + "</div><div><code>__all__</code></div></li>"
             )
 
         preview = ", ".join(escape(operation) for operation in item["operations_preview"])
@@ -236,8 +299,7 @@ class RemoteAccountApplication:
         expand_html = (
             "<details>"
             f"<summary>See all {item['operation_count']} operations</summary>"
-            f"<div><code>{all_operations}</code></div>"
-            "</details>"
+            f"<div><code>{all_operations}</code></div></details>"
             if item["remaining_operations"]
             else ""
         )
@@ -256,11 +318,53 @@ class RemoteAccountApplication:
             + "</li>"
         )
 
+    @staticmethod
+    def _union_details(item):
+        terms = " + ".join(escape(term) for term in item["terms"])
+        if item["exact_scopes"]:
+            representation = "Exact semantic scope: " + ", ".join(
+                escape(name) for name in item["exact_scopes"]
+            )
+        elif item["conjunction"]:
+            representation = "Represented as: " + " AND ".join(
+                escape(name) for name in item["conjunction"]
+            )
+        else:
+            representation = "No named representation exists yet"
+        matches = (
+            ", ".join(escape(name) for name in item["matched_scopes"])
+            if item["matched_scopes"]
+            else "None currently"
+        )
+        return (
+            "<li>"
+            f"<strong>{terms}</strong>"
+            f"<div>{representation}</div>"
+            f"<div>Currently matches: {matches}</div>"
+            "<div class=\"muted\">Future scopes matching all of these terms may also be included.</div>"
+            "</li>"
+        )
+
     def consent_context(self, session):
         details = self.consent_details(session)
         summary = details["permission_summary"]
         scope_items = "".join(self._scope_details(item) for item in summary["scopes"])
+        if not scope_items:
+            scope_items = "<li>None</li>"
+        union_items = "".join(
+            self._union_details(item) for item in details["union_summary"]
+        )
+        if not union_items:
+            union_items = "<li>None</li>"
+
         effective = summary["effective"]
+        effective_operations = set(effective["operations"])
+        for item in details["union_summary"]:
+            effective_operations.update(item["operations"])
+        effective_all_operations = "__all__" in effective_operations
+        mutation_capable = effective_all_operations or any(
+            self._operation_mutates(operation) for operation in effective_operations
+        )
 
         if effective["all_environment"]:
             environment_items = "<li>All current and future environment variables</li>"
@@ -275,13 +379,11 @@ class RemoteAccountApplication:
 
         operations_summary = (
             "All current and future operations"
-            if effective["all_operations"]
-            else f"{effective['operation_count']} unique operations"
+            if effective_all_operations
+            else f"{len(effective_operations)} unique operations"
         )
         mutation_summary = (
-            "includes state-changing operations"
-            if effective["mutation_capable"]
-            else "read-only"
+            "includes state-changing operations" if mutation_capable else "read-only"
         )
         authority_notice = (
             f"{operations_summary}; {mutation_summary}; {environment_summary}."
@@ -296,9 +398,8 @@ class RemoteAccountApplication:
             "client_id": escape(details["client_id"]),
             "resource_html": resource_html,
             "authority_notice": escape(authority_notice),
-            "operations_summary": escape(f"{operations_summary}; {mutation_summary}"),
-            "environment_summary": escape(environment_summary),
             "scope_items_html": scope_items,
+            "union_items_html": union_items,
             "environment_items_html": environment_items,
         }
 
@@ -310,9 +411,9 @@ class RemoteAccountApplication:
             f'<p>Client: <code>{context["client_id"]}</code></p>'
             + context["resource_html"]
             + f'<p>{context["authority_notice"]}</p>'
-            + '<p>This consent screen is informational: authorization grants the '
-            'full effective scope set associated with the linked bearer.</p>'
-            + f'<h2>Bearer scopes</h2><ul>{context["scope_items_html"]}</ul>'
+            + '<p>Authorization grants only the exact and union authority shown below.</p>'
+            + f'<h2>Exact scopes</h2><ul>{context["scope_items_html"]}</ul>'
+            + f'<h2>Union scopes</h2><ul>{context["union_items_html"]}</ul>'
             + f'<h2>Environment</h2><ul>{context["environment_items_html"]}</ul>'
             + '<form method="post" action="/consent">'
             + f'<input type="hidden" name="csrf" value="{context["csrf"]}">'
@@ -335,6 +436,7 @@ class RemoteAccountApplication:
                 session.link_name,
                 details["client_id"],
                 scopes=details["scopes"],
+                union_scopes=details["union_scopes"],
                 resource=details["resource"],
             )
             session.approved_grant_id = grant.id
@@ -343,6 +445,7 @@ class RemoteAccountApplication:
 
         session.pending_client_id = None
         session.pending_scopes = frozenset()
+        session.pending_union_scopes = frozenset()
         session.pending_resource = None
         self.sessions.rotate_csrf(session)
         return grant
@@ -399,6 +502,7 @@ class RemoteAccountApplication:
         session.approved_grant_id = None
         session.pending_client_id = None
         session.pending_scopes = frozenset()
+        session.pending_union_scopes = frozenset()
         session.pending_resource = None
         session.pending_redirect_uri = None
         session.pending_state = None
