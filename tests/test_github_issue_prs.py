@@ -4,7 +4,6 @@ import pytest
 
 from gway.githubcheck import Controller
 from gway.tokens import tokenize
-import sampler.github.checks as github_checks
 
 
 class TimelineClient:
@@ -110,7 +109,11 @@ def test_check_ci_issue_uses_selector_and_parallel_fanout(monkeypatch):
         def map(self, function, values):
             return [function(value) for value in values]
 
-    monkeypatch.setattr(github_checks, "ThreadPoolExecutor", FakeExecutor)
+    monkeypatch.setitem(
+        TargetController.check_ci.__globals__,
+        "ThreadPoolExecutor",
+        FakeExecutor,
+    )
     controller = TargetController([1351, 1354])
 
     result = controller.check_ci("arthexis/gway", issue=1346)
@@ -126,7 +129,11 @@ def test_check_ci_serial_avoids_parallel_executor(monkeypatch):
         def __init__(self, *args, **kwargs):
             raise AssertionError("serial mode must not create an executor")
 
-    monkeypatch.setattr(github_checks, "ThreadPoolExecutor", UnexpectedExecutor)
+    monkeypatch.setitem(
+        TargetController.check_ci.__globals__,
+        "ThreadPoolExecutor",
+        UnexpectedExecutor,
+    )
     controller = TargetController([1351, 1354])
 
     result = controller.check_ci("arthexis/gway", issue=1346, serial=True)
