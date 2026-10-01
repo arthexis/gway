@@ -267,7 +267,16 @@ jobs:
           '''
           if text.count(old) != 1:
               raise SystemExit("tests/remote/test_server.py: operator-read assertion changed")
-          remote_tests.write_text(text.replace(old, new, 1), encoding="utf-8")
+          text = text.replace(old, new, 1)
+          old_overlap = '    assert logs.operations & operator.operations == frozenset({"survey"})\n'
+          new_overlap = '''    assert logs.operations & operator.operations == (
+              CORE_SCOPE_DEFINITIONS["logs-read"]["operations"]
+              & CORE_SCOPE_DEFINITIONS["operator-read"]["operations"]
+          )
+          '''
+          if text.count(old_overlap) != 1:
+              raise SystemExit("tests/remote/test_server.py: scope overlap assertion changed")
+          remote_tests.write_text(text.replace(old_overlap, new_overlap, 1), encoding="utf-8")
 
       - name: Verify retired symbols are gone
         shell: bash
