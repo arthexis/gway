@@ -191,17 +191,17 @@ fi
 "$GWAY" service install --name worker --environment "ARTHEXIS_DATA_DIR=$ARTHEXIS_DATA_DIR" -- arthexis worker
 "$GWAY" service install --name beat --environment "ARTHEXIS_DATA_DIR=$ARTHEXIS_DATA_DIR" -- arthexis beat
 
-# Satellite installation is complete only when its persistent Arthexis roles
-# have been started and remain active after a short settling window. Other role
-# startup behavior remains unchanged until it is considered separately.
-if test "[installer]" = "satellite"; then
+# Installers may opt into leaving all persistent Arthexis roles running. The
+# role-specific policy is supplied by the renderer so this shared template does
+# not need to know individual role names.
+if test "[installer_autostart|0]" = "1"; then
     for service in web worker beat; do
         "$GWAY" service start --name "$service" -- arthexis "$service"
     done
     sleep "${ARTHEXIS_BOOTSTRAP_START_SETTLE:-2}"
     for service in web worker beat; do
         if ! "$GWAY" service status --name "$service" -- arthexis "$service" | grep -q '^Running: yes$'; then
-            echo "Arthexis bootstrap: satellite service '$service' did not remain running." >&2
+            echo "Arthexis bootstrap: required service '$service' did not remain running." >&2
             echo "Inspect it with: gway service status --name $service -- arthexis $service" >&2
             exit 1
         fi
