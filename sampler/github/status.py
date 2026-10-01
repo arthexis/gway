@@ -9,12 +9,14 @@ class Controller(RolloutController):
     """Compose compact checks into one read-only lifecycle decision."""
 
     def status(self, repository, *pulls, issue=None, serial=False):
-        """Return one normalized status/disposition per pull request.
+        """Return repository status or one normalized lifecycle status per PR.
 
-        Status describes the current lifecycle fact. Disposition is restricted to
-        ``auto``, ``wait``, ``escalate``, or ``done`` so the future driver can
-        react without rediscovering provider state.
+        With no PR/issue target this preserves the historical ``github status``
+        repository summary. Supplying PR targets or ``--issue`` selects the Drive
+        Phase 1 lifecycle classifier.
         """
+        if not pulls and issue is None:
+            return super().status(repository)
         return self._run_rollout(
             self._status_pull,
             repository,
