@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       dry_run:
-        description: Preview branch pruning without deleting anything
+        description: Preview maintenance without deleting anything
         required: true
         type: boolean
         default: true
@@ -15,6 +15,7 @@ on:
         default: ''
 
 permissions:
+  actions: write
   contents: write
   pull-requests: read
 
@@ -52,11 +53,17 @@ jobs:
           while IFS= read -r branch; do
             [[ -n "$branch" ]] && keep["$branch"]=1
           done < <(
-            gh pr list               --repo "$REPOSITORY"               --state open               --limit 1000               --json headRefName,baseRefName               --jq '.[] | .headRefName, .baseRefName'
+            gh pr list \
+              --repo "$REPOSITORY" \
+              --state open \
+              --limit 1000 \
+              --json headRefName,baseRefName \
+              --jq '.[] | .headRefName, .baseRefName'
           )
 
           mapfile -t branches < <(
-            gh api --paginate "repos/$REPOSITORY/branches?per_page=100"               --jq '.[] | [.name, .commit.sha, .protected] | @tsv'
+            gh api --paginate "repos/$REPOSITORY/branches?per_page=100" \
+              --jq '.[] | [.name, .commit.sha, .protected] | @tsv'
           )
 
           candidates=()
@@ -87,7 +94,13 @@ jobs:
             fi
 
             merged_head_sha="$(
-              gh pr list                 --repo "$REPOSITORY"                 --state merged                 --head "$branch"                 --limit 100                 --json headRefOid,mergedAt                 --jq 'sort_by(.mergedAt) | last | .headRefOid // empty'
+              gh pr list \
+                --repo "$REPOSITORY" \
+                --state merged \
+                --head "$branch" \
+                --limit 100 \
+                --json headRefOid,mergedAt \
+                --jq 'sort_by(.mergedAt) | last | .headRefOid // empty'
             )"
 
             if [[ -n "$merged_head_sha" && "$merged_head_sha" == "$sha" ]]; then
@@ -127,5 +140,73 @@ jobs:
 
           for branch in "${candidates[@]}"; do
             echo "Deleting $branch"
-            gh api               --method DELETE               "repos/$REPOSITORY/git/refs/heads/$branch"
+            gh api \
+              --method DELETE \
+              "repos/$REPOSITORY/git/refs/heads/$branch"
           done
+
+  purge-retired-workflows:
+    name: Purge retired workflow history
+    runs-on: ubuntu-latest
+    steps:
+      - name: Find and purge retired workflow runs
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          # Keep this list deliberately explicit. A workflow belongs here only
+          # after its replacement is established and its source file is retired.
+          retired_workflows=(
+            "watchtower-deploy-trigger.yml"
+          )
+
+          total_runs=0
+          {
+            echo
+            echo "### Retired workflow history"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          for workflow in "${retired_workflows[@]}"; do
+            workflow_path=".github/workflows/$workflow"
+            workflow_id="$(
+              gh api --paginate "repos/$REPOSITORY/actions/workflows?per_page=100" \
+                --jq ".workflows[] | select(.path == \"$workflow_path\") | .id" \
+                | head -n 1
+            )"
+
+            if [[ -z "$workflow_id" ]]; then
+              echo "$workflow: not registered; nothing to purge."
+              echo "- \`$workflow\`: no registered workflow history found" >> "$GITHUB_STEP_SUMMARY"
+              continue
+            fi
+
+            run_ids_output="$(
+              gh api --paginate \
+                "repos/$REPOSITORY/actions/workflows/$workflow_id/runs?per_page=100" \
+                --jq '.workflow_runs[].id'
+            )"
+            run_ids=()
+            if [[ -n "$run_ids_output" ]]; then
+              mapfile -t run_ids <<< "$run_ids_output"
+            fi
+            run_count="${#run_ids[@]}"
+            total_runs=$((total_runs + run_count))
+
+            echo "$workflow: $run_count historical run(s)."
+            if [[ "$DRY_RUN" == "true" ]]; then
+              echo "- \`$workflow\`: would purge $run_count historical run(s)" >> "$GITHUB_STEP_SUMMARY"
+              continue
+            fi
+
+            for run_id in "${run_ids[@]}"; do
+              echo "Deleting $workflow run $run_id"
+              gh api --method DELETE "repos/$REPOSITORY/actions/runs/$run_id"
+            done
+            echo "- \`$workflow\`: purged $run_count historical run(s)" >> "$GITHUB_STEP_SUMMARY"
+          done
+
+          echo "Retired workflow runs found: $total_runs"
