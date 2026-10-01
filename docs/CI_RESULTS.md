@@ -82,3 +82,28 @@ human-oriented terminal rendering.
 
 Recipe validation is performed before tests. A recipe-validation failure returns a
 structured `phase: validation` result and does not start the test suite.
+
+## GitHub Actions publication
+
+The maintained Python 3.10 integration CI path requests a sidecar directly from
+Gway:
+
+```console
+python -m gway ci -o "$RUNNER_TEMP/ci-result.json"
+```
+
+GitHub Actions then uploads that file under the stable artifact name
+`gway-ci-result`. Publication uses `always()` so an ordinary failing CI run can
+still expose its structured result. A missing file is tolerated during publication:
+that absence means the CI command did not produce a canonical result, for example
+because the process was terminated or failed unexpectedly before result emission.
+The original job conclusion remains authoritative for process success or failure.
+
+The workflow does not parse, rewrite, or enrich the result with GitHub-specific
+fields. Commit, workflow, run, and job identity belong to the provider layer and can
+be associated with the artifact from GitHub metadata later. This keeps the local
+CI result provider-independent.
+
+Workflow-only and narrower non-integration test paths do not publish
+`gway-ci-result` yet because they do not execute the canonical maintained `gway ci`
+operation.
