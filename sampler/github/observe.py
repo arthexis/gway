@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import json
+import zipfile
+
 from .checks import Controller as CheckController
 
 
@@ -189,7 +192,12 @@ class Controller(CheckController):
             entry = {"artifact": artifact}
             try:
                 entry["result"] = self.artifact_json(repository, artifact["id"])
-            except (ValueError, TypeError) as exc:
+            except (
+                ValueError,
+                TypeError,
+                json.JSONDecodeError,
+                zipfile.BadZipFile,
+            ) as exc:
                 entry["error"] = str(exc)
             canonical.append(entry)
 
