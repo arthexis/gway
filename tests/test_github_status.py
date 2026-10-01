@@ -156,15 +156,24 @@ def test_status_issue_targeting_includes_merged_linked_prs():
 def test_repository_status_without_pr_target_remains_backward_compatible():
     class RepositoryStatusController(StatusController):
         def repository(self, repository):
-            return {"default_branch": "main", "html_url": "https://example.test/repo"}
-
-        def branch(self, repository, branch):
-            return {"name": branch, "commit": {"sha": "main-sha"}}
+            return {
+                "full_name": repository,
+                "default_branch": "main",
+                "private": False,
+                "archived": False,
+                "disabled": False,
+            }
 
     result = RepositoryStatusController().status("arthexis/gway")
 
-    assert result["default_branch"] == "main"
-    assert result["head_sha"] == "main-sha"
+    assert result == {
+        "repository": "arthexis/gway",
+        "default_branch": "main",
+        "private": False,
+        "archived": False,
+        "disabled": False,
+        "pushed_at": None,
+    }
 
 
 def test_status_is_a_read_only_semantic_operation(gateway):
