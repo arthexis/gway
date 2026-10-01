@@ -30,6 +30,12 @@ if args and args[0] == "install":
     if home.exists():
         shutil.rmtree(home)
     shutil.copytree(source, home)
+    runtime_bin = home / ".venv" / "bin"
+    runtime_bin.mkdir(parents=True, exist_ok=True)
+    for executable in ("serve", "celery"):
+        entrypoint = runtime_bin / executable
+        entrypoint.write_text("#!/bin/sh\\nexit 0\\n", encoding="utf-8")
+        entrypoint.chmod(0o755)
     raise SystemExit(0)
 
 if args[:2] == ["arthexis", "migrate"]:
@@ -58,6 +64,19 @@ raise SystemExit(f"unexpected fake gway invocation: {args!r}")
     path.chmod(0o755)
 
 
+def _write_fake_systemctl(path):
+    path.write_text(
+        """#!/bin/sh
+case "$*" in
+    *" --user is-active --quiet "*|"--user is-active --quiet "*) exit 0 ;;
+    *) exit 0 ;;
+esac
+""",
+        encoding="utf-8",
+    )
+    path.chmod(0o755)
+
+
 def _run_bootstrap(script, env, *arguments):
     return subprocess.run(
         ["sh", str(script), *arguments],
@@ -75,21 +94,25 @@ def test_repeat_bootstrap_preserves_and_backs_up_existing_database(
 ):
     bootstrap = tmp_path / "arthexis-bootstrap.sh"
     fake_gway = tmp_path / "gway"
+    fake_systemctl = tmp_path / "systemctl"
     candidate = tmp_path / "candidate"
     home = tmp_path / "home" / ".local" / "opt" / "arthexis"
     candidate.mkdir()
     (candidate / "revision.txt").write_text("revision-one\n", encoding="utf-8")
     _render_bootstrap(sampler_path, bootstrap)
     _write_fake_gway(fake_gway)
+    _write_fake_systemctl(fake_systemctl)
 
     env = os.environ.copy()
     env.update(
         {
             "HOME": str(tmp_path / "home"),
+            "PATH": f"{tmp_path}{os.pathsep}{env['PATH']}",
             "GWAY_BOOTSTRAP_GWAY": str(fake_gway),
             "ARTHEXIS_BOOTSTRAP_SOURCE": str(candidate),
             "ARTHEXIS_BOOTSTRAP_HOME": str(home),
             "ARTHEXIS_BOOTSTRAP_SHA": "1" * 40,
+            "ARTHEXIS_BOOTSTRAP_SERVICE_SETTLE_SECONDS": "0",
         }
     )
 
