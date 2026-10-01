@@ -1,5 +1,7 @@
 from types import SimpleNamespace
 
+import pytest
+
 import gway.security.django_publication as publication
 from gway.ingestion.base import IngestedObject
 from gway.ingestion.django import DjangoProject
@@ -9,164 +11,167 @@ from gway.security.django_publication import (
 )
 
 
-def _gateway(tmp_path, product="demo", app_label="widgets", app_name=None):
-    root = tmp_path / product
-    root.mkdir()
-    app_root = root / app_label
-    app_root.mkdir()
-    app = SimpleNamespace(
-        label=app_label,
-        name=app_name or f"{product}.{app_label}",
-        path=app_root,
-    )
-    mount = DjangoProject(
-        root=root,
-        settings=None,
-        name=product,
-        registry=SimpleNamespace(),
-        apps=(app,),
-    )
-    ingested = {1: IngestedObject(value=mount)}
-    return SimpleNamespace(_ingested=ingested, _published_scopes={}, ops=None), mount, app
+class DjangoScopeHarness:
+    """Build minimal owned Django surfaces for scope-publication contracts."""
 
-
-def _operation(app, name, *, mutates):
-    meta = SimpleNamespace(app_config=app)
-    model = type("Model", (), {"_meta": meta})
-
-    def invoke():
-        return None
-
-    invoke.__gway_source__ = model
-    invoke.__gway_source_kind__ = "django-model"
-    invoke.mutates = mutates
-    return SimpleNamespace(name=name, callable=invoke)
-
-
-def _command(mount, name, *, mutates):
-    def invoke():
-        return None
-
-    invoke.__gway_source__ = mount
-    invoke.__gway_source_kind__ = "django-command"
-    invoke.__gway_metadata__ = {
-        "project": mount.name,
-        "command": name,
-        "settings": mount.settings,
-    }
-    invoke.mutates = mutates
-    return SimpleNamespace(name=f"{mount.name}.{name}", callable=invoke)
-
-
-def test_django_scopes_are_derived_from_product_app_and_mutation_contract(tmp_path):
-    gateway, _, app = _gateway(tmp_path)
-    gateway.ops = SimpleNamespace(
-        records=lambda: (
-            _operation(app, "widgets.list", mutates=False),
-            _operation(app, "widgets.create", mutates=True),
+    def __init__(self, tmp_path, *, product="demo", app_label="widgets"):
+        root = tmp_path / product
+        root.mkdir()
+        self.app = self._app(root, product, app_label)
+        self.mount = DjangoProject(
+            root=root,
+            settings=None,
+            name=product,
+            registry=SimpleNamespace(),
+            apps=(self.app,),
         )
+        self.gateway = SimpleNamespace(
+            _ingested={1: IngestedObject(value=self.mount)},
+            _published_scopes={},
+            ops=SimpleNamespace(records=lambda: ()),
+        )
+
+    @staticmethod
+    def _app(root, product, label):
+        path = root / label
+        path.mkdir(parents=True)
+        return SimpleNamespace(
+            label=label,
+            name=f"{product}.{label}",
+            path=path,
+        )
+
+    def external_app(self, root, *, label="auth", name="django.contrib.auth"):
+        path = root / label
+        path.mkdir(parents=True)
+        app = SimpleNamespace(label=label, name=name, path=path)
+        self.mount.apps = (*self.mount.apps, app)
+        return app
+
+    @staticmethod
+    def operation(app, name, *, mutates):
+        meta = SimpleNamespace(app_config=app)
+        model = type("Model", (), {"_meta": meta})
+
+        def invoke():
+            return None
+
+        invoke.__gway_source__ = model
+        invoke.__gway_source_kind__ = "django-model"
+        invoke.mutates = mutates
+        return SimpleNamespace(name=name, callable=invoke)
+
+    def command(self, name, *, mutates):
+        def invoke():
+            return None
+
+        invoke.__gway_source__ = self.mount
+        invoke.__gway_source_kind__ = "django-command"
+        invoke.__gway_metadata__ = {
+            "project": self.mount.name,
+            "command": name,
+            "settings": self.mount.settings,
+        }
+        invoke.mutates = mutates
+        return SimpleNamespace(name=f"{self.mount.name}.{name}", callable=invoke)
+
+    def records(self, *records):
+        self.gateway.ops = SimpleNamespace(records=lambda: records)
+        return self
+
+    def scopes(self):
+        return {
+            scope.name: scope for scope in derive_django_publications(self.gateway)
+        }
+
+
+@pytest.fixture
+def django_scope(tmp_path):
+    return DjangoScopeHarness(tmp_path)
+
+
+@pytest.mark.parametrize("app_label", ["widgets", "gadgets"])
+def test_scope_identity_is_derived_from_product_and_app(tmp_path, app_label):
+    harness = DjangoScopeHarness(tmp_path, app_label=app_label)
+    harness.records(
+        harness.operation(harness.app, f"{app_label}.list", mutates=False),
     )
 
-    scopes = {scope.name: scope for scope in derive_django_publications(gateway)}
+    scope = harness.scopes()[f"demo-{app_label}-read"]
+
+    assert scope.semantic_terms == frozenset({"demo", app_label, "read"})
+    assert scope.source == f"django:demo:{app_label}"
+
+
+def test_mutation_contract_partitions_operations_into_read_and_write(django_scope):
+    django_scope.records(
+        django_scope.operation(django_scope.app, "widgets.list", mutates=False),
+        django_scope.operation(django_scope.app, "widgets.create", mutates=True),
+    )
+
+    scopes = django_scope.scopes()
 
     assert set(scopes) == {"demo-widgets-read", "demo-widgets-write"}
-    assert scopes["demo-widgets-read"].semantic_terms == frozenset(
-        {"demo", "widgets", "read"}
-    )
     assert scopes["demo-widgets-read"].operations == frozenset({"widgets.list"})
     assert scopes["demo-widgets-write"].operations == frozenset({"widgets.create"})
-    assert scopes["demo-widgets-read"].source == "django:demo:widgets"
 
 
-def test_new_app_name_changes_scope_without_gway_configuration(tmp_path):
-    gateway, _, app = _gateway(tmp_path, app_label="gadgets")
-    gateway.ops = SimpleNamespace(
-        records=lambda: (_operation(app, "gadgets.list", mutates=False),)
+def test_app_outside_project_root_does_not_publish_authority(django_scope, tmp_path):
+    framework_app = django_scope.external_app(
+        tmp_path / "site-packages" / "django" / "contrib"
+    )
+    django_scope.records(
+        django_scope.operation(framework_app, "auth.list", mutates=False),
     )
 
-    scopes = derive_django_publications(gateway)
-
-    assert [scope.name for scope in scopes] == ["demo-gadgets-read"]
-    assert scopes[0].semantic_terms == frozenset({"demo", "gadgets", "read"})
+    assert django_scope.scopes() == {}
 
 
-def test_app_outside_project_root_does_not_publish_authority(tmp_path):
-    gateway, mount, _ = _gateway(tmp_path)
-    framework_root = tmp_path / "site-packages" / "django" / "contrib" / "auth"
-    framework_root.mkdir(parents=True)
-    framework_app = SimpleNamespace(
-        label="auth",
-        name="django.contrib.auth",
-        path=framework_root,
-    )
-    mount.apps = (*mount.apps, framework_app)
-    gateway.ops = SimpleNamespace(
-        records=lambda: (_operation(framework_app, "auth.list", mutates=False),)
-    )
-
-    assert derive_django_publications(gateway) == ()
-
-
-def test_management_command_joins_owned_app_scope_by_django_registry(tmp_path, monkeypatch):
-    gateway, mount, app = _gateway(tmp_path)
-    gateway.ops = SimpleNamespace(
-        records=lambda: (
-            _operation(app, "widgets.list", mutates=False),
-            _command(mount, "sync_widgets", mutates=True),
-        )
-    )
+@pytest.mark.parametrize(
+    ("command", "mutates", "leaf"),
+    [
+        ("inspect_widgets", False, "demo-widgets-read"),
+        ("sync_widgets", True, "demo-widgets-write"),
+    ],
+)
+def test_management_command_uses_owned_app_and_mutation_contract(
+    django_scope,
+    monkeypatch,
+    command,
+    mutates,
+    leaf,
+):
+    django_scope.records(django_scope.command(command, mutates=mutates))
     monkeypatch.setattr(
         publication,
         "_command_sources",
-        lambda: {"sync_widgets": app.name},
+        lambda: {command: django_scope.app.name},
     )
 
-    scopes = {scope.name: scope for scope in derive_django_publications(gateway)}
+    scopes = django_scope.scopes()
 
-    assert scopes["demo-widgets-read"].operations == frozenset({"widgets.list"})
-    assert scopes["demo-widgets-write"].operations == frozenset(
-        {"demo.sync_widgets"}
-    )
-
-
-def test_management_command_read_contract_stays_read_only(tmp_path, monkeypatch):
-    gateway, mount, app = _gateway(tmp_path)
-    gateway.ops = SimpleNamespace(
-        records=lambda: (_command(mount, "inspect_widgets", mutates=False),)
-    )
-    monkeypatch.setattr(
-        publication,
-        "_command_sources",
-        lambda: {"inspect_widgets": app.name},
-    )
-
-    scopes = derive_django_publications(gateway)
-
-    assert [scope.name for scope in scopes] == ["demo-widgets-read"]
-    assert scopes[0].operations == frozenset({"demo.inspect_widgets"})
+    assert list(scopes) == [leaf]
+    assert scopes[leaf].operations == frozenset({f"demo.{command}"})
 
 
 def test_management_command_without_owned_app_provenance_publishes_nothing(
-    tmp_path, monkeypatch
+    django_scope,
+    monkeypatch,
 ):
-    gateway, mount, _ = _gateway(tmp_path)
-    gateway.ops = SimpleNamespace(
-        records=lambda: (_command(mount, "migrate", mutates=True),)
-    )
+    django_scope.records(django_scope.command("migrate", mutates=True))
     monkeypatch.setattr(
         publication,
         "_command_sources",
         lambda: {"migrate": "django.core"},
     )
 
-    assert derive_django_publications(gateway) == ()
+    assert django_scope.scopes() == {}
 
 
-def test_collect_replaces_old_derived_scopes_but_preserves_manual_publications(
-    tmp_path,
+def test_collect_retires_stale_django_scopes_and_preserves_manual_publications(
+    django_scope,
 ):
-    gateway, _, app = _gateway(tmp_path)
-    gateway._published_scopes = {
+    django_scope.gateway._published_scopes = {
         "manual-read": {
             "source": "demo",
             "operations": frozenset({"manual.list"}),
@@ -178,11 +183,11 @@ def test_collect_replaces_old_derived_scopes_but_preserves_manual_publications(
             "semantic_terms": frozenset({"demo", "old", "read"}),
         },
     }
-    gateway.ops = SimpleNamespace(
-        records=lambda: (_operation(app, "widgets.list", mutates=False),)
+    django_scope.records(
+        django_scope.operation(django_scope.app, "widgets.list", mutates=False),
     )
 
-    published = collect_django_publications(gateway)
+    published = collect_django_publications(django_scope.gateway)
 
     assert set(published) == {"manual-read", "demo-widgets-read"}
     assert published["demo-widgets-read"]["semantic_terms"] == frozenset(
@@ -190,8 +195,10 @@ def test_collect_replaces_old_derived_scopes_but_preserves_manual_publications(
     )
 
 
-def test_installed_app_without_operations_creates_no_scope(tmp_path):
-    gateway, _, _ = _gateway(tmp_path)
-    gateway.ops = SimpleNamespace(records=lambda: ())
+@pytest.mark.parametrize("has_registry", [False, True])
+def test_no_discovered_operations_publish_no_authority(tmp_path, has_registry):
+    harness = DjangoScopeHarness(tmp_path)
+    if not has_registry:
+        del harness.gateway.ops
 
-    assert derive_django_publications(gateway) == ()
+    assert derive_django_publications(harness.gateway) == ()
