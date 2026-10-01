@@ -6,17 +6,13 @@ from gway.security.django_publication import (
     derive_django_publications,
 )
 
-from .django_scope_harness import DjangoScopeHarness, UNSET
-
-
-@pytest.fixture
-def django_scope(tmp_path):
-    return DjangoScopeHarness(tmp_path)
-
 
 @pytest.mark.parametrize("app_label", ["widgets", "gadgets"])
-def test_scope_identity_is_derived_from_product_and_app(tmp_path, app_label):
-    harness = DjangoScopeHarness(tmp_path, app_label=app_label)
+def test_scope_identity_is_derived_from_product_and_app(
+    django_scope_factory,
+    app_label,
+):
+    harness = django_scope_factory(app_label=app_label)
     harness.records(
         harness.operation(harness.app, f"{app_label}.list", mutates=False),
     )
@@ -32,16 +28,22 @@ def test_scope_identity_is_derived_from_product_and_app(tmp_path, app_label):
     [
         (False, "demo-widgets-read"),
         (True, "demo-widgets-write"),
-        (UNSET, "demo-widgets-write"),
+        ("unset", "demo-widgets-write"),
     ],
 )
 def test_mutation_contract_selects_authority_leaf(
     django_scope,
+    django_scope_factory,
     mutates,
     expected_leaf,
 ):
+    contract = django_scope_factory.UNSET if mutates == "unset" else mutates
     django_scope.records(
-        django_scope.operation(django_scope.app, "widgets.operation", mutates=mutates),
+        django_scope.operation(
+            django_scope.app,
+            "widgets.operation",
+            mutates=contract,
+        ),
     )
 
     scopes = django_scope.scopes()
@@ -92,17 +94,19 @@ def test_app_outside_project_root_does_not_publish_authority(django_scope, tmp_p
     [
         ("inspect_widgets", False, "demo-widgets-read"),
         ("sync_widgets", True, "demo-widgets-write"),
-        ("unknown_widgets", UNSET, "demo-widgets-write"),
+        ("unknown_widgets", "unset", "demo-widgets-write"),
     ],
 )
 def test_management_command_uses_owned_app_and_mutation_contract(
     django_scope,
+    django_scope_factory,
     monkeypatch,
     command,
     mutates,
     leaf,
 ):
-    django_scope.records(django_scope.command(command, mutates=mutates))
+    contract = django_scope_factory.UNSET if mutates == "unset" else mutates
+    django_scope.records(django_scope.command(command, mutates=contract))
     monkeypatch.setattr(
         publication,
         "_command_sources",
@@ -157,8 +161,11 @@ def test_collect_retires_stale_django_scopes_and_preserves_manual_publications(
 
 
 @pytest.mark.parametrize("has_registry", [False, True])
-def test_no_discovered_operations_publish_no_authority(tmp_path, has_registry):
-    harness = DjangoScopeHarness(tmp_path)
+def test_no_discovered_operations_publish_no_authority(
+    django_scope_factory,
+    has_registry,
+):
+    harness = django_scope_factory()
     if not has_registry:
         del harness.gateway.ops
 
