@@ -26,7 +26,7 @@ def test_exact_operation_still_shadows_sampler_recipe():
 
 def test_project_root_recipe_resolves_as_bare_command(tmp_path, monkeypatch):
     recipe = tmp_path / "ci.rx"
-    recipe.write_text("echo project-ci\\n", encoding="utf-8")
+    recipe.write_text("echo project-ci\n", encoding="utf-8")
     monkeypatch.chdir(tmp_path)
     gateway = Gateway()
 
@@ -40,13 +40,14 @@ def test_project_root_recipe_resolves_as_bare_command(tmp_path, monkeypatch):
     assert remaining == []
 
 
-def test_gway_ci_recipe_uses_generic_recipe_and_test_contracts():
+def test_gway_ci_recipe_delegates_to_structured_report_contract():
     from pathlib import Path
 
     recipe = Path("sampler/ci/__main__.rx").read_text(encoding="utf-8")
+    companion = Path("sampler/ci/__main__.py").read_text(encoding="utf-8")
 
-    assert "recipe check sampler" in recipe
-    assert "test run - check --is 0" in recipe
+    assert "ci report" in recipe
+    assert "def report(" in companion
     assert "github" not in recipe.lower()
 
 

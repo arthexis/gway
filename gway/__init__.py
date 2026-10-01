@@ -6,10 +6,21 @@ from .install import Installation, InstallRequest, InstallState, Stash, Uninstal
 from .launchable import Launchable, Launchables
 from .operations import Operations, Subjects
 from .mutation import MutationError
-from .console import cli_main, process
+from .console import cli_main as _console_cli_main, process
+from .outcome import current_exit_code, reset_exit_code
 from .recipe import load_recipe
 from .sigil import Sigil, Resolver, Spool, __
 from .structs import Results
+
+
+def cli_main():
+    """Run the CLI and honor structured results that request a non-zero status."""
+    reset_exit_code()
+    status = _console_cli_main()
+    if status:
+        return status
+    return current_exit_code()
+
 
 __all__ = [
     "Cache",
