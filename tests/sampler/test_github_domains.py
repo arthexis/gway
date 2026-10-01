@@ -18,6 +18,7 @@ def test_public_surface_is_owned_by_expected_domain_layers():
         "observe_ci": "sampler.github.observe",
         "check_rollout": "sampler.github.rollout",
         "status": "sampler.github.status",
+        "drive": "sampler.github.drive",
         "rulesets": "sampler.github.admin_rulesets",
         "branch_protection": "sampler.github.admin_protection",
         "collaborators": "sampler.github.admin_access",
@@ -58,6 +59,7 @@ def test_composite_controller_has_no_legacy_backed_public_operations():
 
 def test_non_admin_mutations_are_owned_by_domain_modules():
     expected = {
+        "drive": "sampler.github.drive",
         "set_secret": "sampler.github.actions",
         "create_pull": "sampler.github.pulls",
         "comment_issue": "sampler.github.issues",
