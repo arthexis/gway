@@ -313,13 +313,12 @@ class Gateway(Resolver):
         self._registering_builtins = False
 
     def converge_security_scopes(self, *, retire_missing=True):
-        """Converge discovered scope policy into durable security state on demand."""
+        """Converge bundled Gway scope policy into durable security state."""
         from .security.defaults import converge_scope_registry
         from .security.scopes import ScopeRegistry
 
         return converge_scope_registry(
             ScopeRegistry(self.security_path),
-            getattr(self, "_published_scopes", {}),
             retire_missing=retire_missing,
         )
 

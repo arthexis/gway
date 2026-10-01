@@ -7,12 +7,10 @@ try:
 except ModuleNotFoundError:
     import tomli as _toml
 
-from . import semantics as scope_semantics
 from .scopes import Scope, ScopeRegistry
 from .validation import (
     require_valid_scope,
     validate_definitions,
-    validate_published,
     validate_scope,
 )
 
@@ -21,7 +19,7 @@ __all__ = ()
 
 
 class Controller:
-    """Manage named scopes in the active Gateway security registry."""
+    """Manage named curated scopes in the active Gateway security registry."""
 
     def __init__(self, gateway):
         self.gateway = gateway
@@ -31,7 +29,7 @@ class Controller:
         return self.list(mutate=mutate)
 
     def _registry(self, *, converge=False):
-        """Return the scope registry, converging published scopes when requested."""
+        """Return the scope registry, converging bundled scopes when requested."""
         if converge:
             self.gateway.converge_security_scopes()
         return ScopeRegistry(self.gateway.security_path)
@@ -48,6 +46,23 @@ class Controller:
     def show(self, name, *, mutate=True):
         """Return one named security scope."""
         return self._registry(converge=mutate).require(name, readonly=not mutate)
+
+    def inspect(self, name, *, mutate=True):
+        """Return persisted grants plus live operation-binding health."""
+        registry = self._registry(converge=mutate)
+        scope = registry.require(name, readonly=not mutate)
+        validation = validate_scope(self.gateway, scope)
+        return {
+            "name": scope.name,
+            "owner": scope.owner,
+            "operations": sorted(scope.operations),
+            "environment": sorted(scope.environment),
+            "registered": list(validation.registered),
+            "missing": list(validation.missing),
+            "mutating": list(validation.mutating),
+            "unknown": list(validation.unknown),
+            "mutation_capable": validation.mutation_capable,
+        }
 
     def list(self, *, mutate=True):
         """Return all named security scopes."""
@@ -74,13 +89,11 @@ class Controller:
         }
 
     def converge(self, *, retire_missing=True):
-        """Validate and atomically converge all currently published scopes."""
+        """Atomically converge bundled Gway scopes without product publication."""
         from .defaults import converge_scope_registry
 
-        validate_published(self.gateway)
         return converge_scope_registry(
             self.registry,
-            getattr(self.gateway, "_published_scopes", {}),
             retire_missing=retire_missing,
             report=True,
         )
@@ -101,32 +114,19 @@ class Controller:
             return tuple(item.strip() for item in environment.split(",") if item.strip())
         return tuple(environment)
 
-    @staticmethod
-    def _semantic_values(semantic=None, semantic_terms=None):
-        values = semantic_terms if semantic_terms is not None else semantic
-        if values is None:
-            return ()
-        if isinstance(values, str):
-            return tuple(item.strip() for item in values.split(",") if item.strip())
-        return tuple(values)
-
-    def set(self, name, *operations, environment=None, semantic=None, semantic_terms=None):
-        """Replace one scope using operation grants and optional metadata."""
+    def set(self, name, *operations, environment=None):
+        """Replace one scope using explicitly curated operation grants."""
         environment_values = self._environment_values(environment)
-        semantic_values = self._semantic_values(semantic, semantic_terms)
         candidate = Scope(
             str(name),
             frozenset(operations),
             frozenset(environment_values),
-            None,
-            frozenset(str(value).strip().lower() for value in semantic_values),
         )
         require_valid_scope(self.gateway, candidate)
         return self.registry.replace(
             name,
             operations=operations,
             environment=environment_values,
-            semantic_terms=semantic_values,
         )
 
     def add(self, name, *operations, environment=None):
@@ -137,7 +137,6 @@ class Controller:
             existing.operations | frozenset(operations),
             existing.environment | frozenset(self._environment_values(environment)),
             existing.owner,
-            existing.semantic_terms,
         )
         require_valid_scope(self.gateway, candidate)
         return self.registry.update_grants(
@@ -154,41 +153,13 @@ class Controller:
             remove_environment=self._environment_values(environment),
         )
 
-    def contains(self, name, *terms, mutate=True):
-        """Return whether a semantic scope contains all requested terms."""
+    def resolve(self, *names, mutate=True):
+        """Resolve one or more exact named scopes into effective authority."""
         registry = self._registry(converge=mutate)
-        scope = registry.require(name, readonly=not mutate)
-        return scope_semantics.contains(scope, terms)
-
-    def match(self, *terms, mutate=True):
-        """Return semantic leaf scopes matching all requested terms."""
-        registry = self._registry(converge=mutate)
-        return scope_semantics.match(
-            registry.all(readonly=not mutate),
-            terms,
-        )
-
-    def union(self, *names, mutate=True):
-        """Return the least broad semantic authority containing named scopes."""
-        registry = self._registry(converge=mutate)
-        scopes = tuple(
-            registry.require(name, readonly=not mutate)
-            for name in names
-        )
-        return scope_semantics.union(scopes)
-
-    def resolve(self, *values, semantic=False, mutate=True):
-        """Resolve exact named scopes, or semantic terms when explicitly requested."""
-        registry = self._registry(converge=mutate)
-        if semantic:
-            return scope_semantics.resolve(
-                registry.all(readonly=not mutate),
-                values,
-            )
-        return registry.resolve(values, readonly=not mutate)
+        return registry.resolve(names, readonly=not mutate)
 
     def validate(self, name, *, mutate=True):
-        """Validate semantic safety of one existing scope."""
+        """Validate one existing curated scope."""
         registry = self._registry(converge=mutate)
         scope = registry.require(name, readonly=not mutate)
         return validate_scope(self.gateway, scope)
@@ -223,7 +194,7 @@ class Controller:
         return '"' + value.replace("\\", "\\\\").replace('"', '\\"') + '"'
 
     def export(self, to=None):
-        """Export all scopes as stable TOML, optionally writing to a file."""
+        """Export all curated scopes as stable TOML, optionally writing to a file."""
         lines = []
         for scope in self.registry.all():
             lines.append(f"[scopes.{self._toml_string(scope.name)}]")
@@ -233,13 +204,8 @@ class Controller:
             environment = ", ".join(
                 self._toml_string(value) for value in sorted(scope.environment)
             )
-            semantic_terms = ", ".join(
-                self._toml_string(value) for value in sorted(scope.semantic_terms)
-            )
             lines.append(f"operations = [{operations}]")
             lines.append(f"environment = [{environment}]")
-            if scope.semantic_terms:
-                lines.append(f"semantic_terms = [{semantic_terms}]")
             lines.append("")
         rendered = "\n".join(lines)
         if to is None:

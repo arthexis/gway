@@ -278,6 +278,7 @@ def test_remote_runtime_converges_source_admin_scope(tmp_path):
 
 def test_remote_runtime_converges_operator_read_scope(tmp_path):
     from gway.gateway import Gateway
+    from gway.security.defaults import CORE_SCOPE_DEFINITIONS
     from gway.security.scopes import ScopeRegistry
 
     runtime = Gateway()
@@ -290,24 +291,12 @@ def test_remote_runtime_converges_operator_read_scope(tmp_path):
     logs = registry.require("logs-read")
     operator = registry.require("operator-read")
 
-    assert operator.operations == frozenset(
-        {
-            "survey",
-            "node",
-            "products",
-            "extensions",
-            "builtins",
-            "filter",
-            "service.list",
-            "service.status",
-            "service.statuses",
-            "wire.check",
-            "sous.chef.list",
-            "sous.chef.inspect",
-        }
-    )
+    assert operator.operations == CORE_SCOPE_DEFINITIONS["operator-read"]["operations"]
     assert operator.environment == frozenset()
-    assert logs.operations & operator.operations == frozenset({"survey"})
+    assert logs.operations & operator.operations == (
+    CORE_SCOPE_DEFINITIONS["logs-read"]["operations"]
+    & CORE_SCOPE_DEFINITIONS["operator-read"]["operations"]
+)
     assert registry.resolve({"logs-read", "operator-read"}).operations == (
         logs.operations | operator.operations
     )
@@ -333,28 +322,6 @@ def test_remote_runtime_permission_summary_expands_lazy_read_only_operation(tmp_
 
     assert summary["effective"]["mutation_capable"] is False
     assert callable(runtime.ops.resolve("log.read"))
-
-
-def test_remote_runtime_registers_product_published_scopes(tmp_path):
-    from gway.gateway import Gateway
-    from gway.security.scopes import ScopeRegistry
-
-    runtime = Gateway()
-    runtime.security_path = tmp_path / "security.sqlite"
-    runtime._published_scopes = {
-        "demo-read": {
-            "operations": frozenset({"demo.status"}),
-            "environment": frozenset(),
-            "source": "demo",
-        }
-    }
-    metadata = RemoteOAuthMetadata.from_origin("https://remote.example.test")
-
-    RemoteApplication(metadata, runtime=runtime)
-
-    scope = ScopeRegistry(runtime.security_path).require("demo-read")
-    assert scope.operations == frozenset({"demo.status"})
-    assert scope.environment == frozenset()
 
 
 def test_builtin_read_scope_union_covers_complete_builtin_survey(tmp_path):

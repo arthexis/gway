@@ -93,13 +93,7 @@ class OAuthClientResolver:
 
     @classmethod
     def _fetch_cimd(cls, client_id):
-        """Fetch CIMD with deliberately strict, non-generic HTTP semantics.
-
-        This path intentionally does not use the shared HTTPX transport. CIMD is
-        an SSRF-sensitive server-side fetch: it requires HTTPS, pre-validates
-        every resolved address as public, refuses redirects, and caps the body at
-        64 KiB. A future migration must preserve or strengthen all invariants.
-        """
+        """Fetch CIMD with deliberately strict, non-generic HTTP semantics."""
         parsed = cls._client_url(client_id)
         cls._require_public_host(parsed.hostname, parsed.port)
         opener = build_opener(_NoRedirect)
@@ -273,25 +267,14 @@ class RemoteOAuthProtocol:
             )
 
         scope = str(params.get("scope") or "").strip()
-        union_scope = str(params.get("union_scope") or "").strip()
-        if not scope and not union_scope:
+        if not scope:
             scope = self.default_scope
-        if (
-            not scope
-            and not union_scope
-            and len(self.metadata.scopes_supported) == 1
-        ):
-            scope = self.metadata.scopes_supported[0]
-        if not scope and not union_scope:
-            raise OAuthProtocolError(
-                "invalid_request",
-                "scope or union_scope is required",
-            )
+        # A missing scope is intentionally allowed. The bearer linked in the
+        # next browser step supplies its curated scope bundle as the default.
         self.account.stage_consent(
             session,
             client_id,
             scope,
-            union_scopes=union_scope,
             resource=resource,
         )
         session.pending_redirect_uri = redirect_uri
@@ -442,7 +425,7 @@ class RemoteOAuthProtocol:
                     refresh_lifetime_seconds=self.refresh_lifetime_seconds,
                 )
             elif grant_type == "refresh_token":
-                if params.get("scope") is not None or params.get("union_scope") is not None:
+                if params.get("scope") is not None:
                     raise OAuthProtocolError(
                         "invalid_scope",
                         "Refresh cannot change the granted G-Way scopes",
@@ -465,9 +448,6 @@ class RemoteOAuthProtocol:
             "expires_in": self.access_lifetime_seconds,
             "refresh_token": issued.refresh_token,
             "scope": " ".join(sorted(issued.grant.scopes)),
-            "union_scopes": [
-                list(terms) for terms in sorted(issued.grant.union_scopes)
-            ],
             "resource": issued.grant.resource,
         }
 

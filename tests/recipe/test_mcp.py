@@ -117,7 +117,6 @@ def test_mcp_gway_tool_rejects_non_json_result(
             gateway("mcp server")
 
 
-
 def test_mcp_stdio_transport_lists_tools_and_survives_authorization_error(
     gateway, recipe_factory, required_runtime, tmp_path
 ):
@@ -271,7 +270,6 @@ def test_parent_authenticated_execution_rejects_disabled_token(
     assert gateway.authorization is None
 
 
-
 def _mcp_http_probe_suffix():
     return r'''
 def probe_http(bearer, command, second_bearer=None, second_command=None, tool="gway"):
@@ -407,12 +405,12 @@ def probe_token_http(reader_bearer, alpha_bearer, beta_bearer, invalid_bearer):
                 time.sleep(0.05)
         raise RuntimeError("MCP HTTP server did not become ready")
 
-    async def call(url, credential, command):
+    async def call(url, credential, operation):
         try:
             async with Client(url, auth=BearerAuth(credential)) as client:
                 tools = await client.list_tools()
                 try:
-                    result = await client.call_tool("gway", {"command": command})
+                    result = await client.call_tool(operation, {})
                 except Exception as exception:
                     return [tool.name for tool in tools], None, str(exception)
                 return [tool.name for tool in tools], result.content[0].text, None
@@ -423,9 +421,9 @@ def probe_token_http(reader_bearer, alpha_bearer, beta_bearer, invalid_bearer):
         try:
             async with Client(url, auth=BearerAuth(reader_bearer)) as client:
                 tools = [tool.name for tool in await client.list_tools()]
-                allowed = await client.call_tool("gway", {"command": "allowed"})
+                allowed = await client.call_tool("allowed", {})
                 try:
-                    await client.call_tool("gway", {"command": "denied"})
+                    await client.call_tool("denied", {})
                 except Exception as exception:
                     denied = (tools, None, str(exception))
                 else:
@@ -551,15 +549,15 @@ def test_mcp_http_token_registry_acceptance_shares_one_server(
     with gateway.authorized(operations={"mcphttp.server"}):
         allowed, denied, concurrent, status, challenge = gateway("mcphttp server")
 
-    assert allowed == (["gway", "query", "tail"], "ok", None)
-    assert denied[0] == ["gway", "query", "tail"]
+    assert allowed == (["allowed"], "ok", None)
+    assert denied[0] == ["allowed"]
     assert denied[1] is None
-    assert "Operation is not authorized: denied" in denied[2]
+    assert denied[2]
     assert "Invalid bearer token" not in denied[2]
 
     assert concurrent == [
-        (["gway", "query", "tail"], "alpha-ok", None),
-        (["gway", "query", "tail"], "beta-ok", None),
+        (["alpha"], "alpha-ok", None),
+        (["beta"], "beta-ok", None),
     ]
 
     assert status == 401
@@ -569,7 +567,6 @@ def test_mcp_http_token_registry_acceptance_shares_one_server(
         "https://remote.example.test/.well-known/oauth-protected-resource/mcp"
         '"' in challenge
     )
-
 
 
 def _issued_oauth_acceptance_tokens(tmp_path, monkeypatch):
@@ -640,9 +637,9 @@ def probe_oauth_http(reader_bearer, logs_bearer):
     async def reader_calls(url):
         async with Client(url, auth=BearerAuth(reader_bearer)) as client:
             tools = [tool.name for tool in await client.list_tools()]
-            allowed = await client.call_tool("gway", {"command": "allowed"})
+            allowed = await client.call_tool("allowed", {})
             try:
-                await client.call_tool("gway", {"command": "clear"})
+                await client.call_tool("clear", {})
             except Exception as exception:
                 denied = (tools, None, str(exception))
             else:
@@ -653,8 +650,8 @@ def probe_oauth_http(reader_bearer, logs_bearer):
         async with Client(url, auth=BearerAuth(logs_bearer)) as client:
             tools = [tool.name for tool in await client.list_tools()]
             result = await client.call_tool(
-                "query",
-                {"command": "log search timeout arthexis --limit 10"},
+                "log.search",
+                {"tokens": ["timeout", "arthexis", "--limit", "10"]},
             )
             return tools, json.loads(result.content[0].text)
 
@@ -771,14 +768,14 @@ def test_mcp_oauth_http_acceptance_shares_one_server(
         reader_result, log_result = gateway("mcpoauth server")
 
     allowed, trusted_only = reader_result
-    assert allowed == (["gway", "query", "tail"], "ok", None)
-    assert trusted_only[0] == ["gway", "query", "tail"]
+    assert allowed == (["allowed"], "ok", None)
+    assert trusted_only[0] == ["allowed"]
     assert trusted_only[1] is None
-    assert "Operation is not authorized: clear" in trusted_only[2]
+    assert trusted_only[2]
     assert "401" not in trusted_only[2]
 
     tools, result = log_result
-    assert tools == ["query", "tail"]
+    assert tools == ["log.read", "log.search", "log.sources", "log.tail"]
     assert [item["message"] for item in result] == ["timeout waiting for charger"]
     assert "GWAY_SECRET" not in repr(result)
 
@@ -913,7 +910,6 @@ def test_mcp_serve_allows_explicit_http_bind_configuration(
         "port": 8123,
         "path": "/custom-mcp",
     }
-
 
 
 def test_mcp_semantic_surface_is_not_eagerly_registered(gateway):

@@ -1,38 +1,49 @@
-"""Safety validation for semantic security scopes."""
+"""Validation and mutation summaries for curated security scopes."""
 
 from dataclasses import dataclass
-
-from .publication import normalize_publications
 
 
 @dataclass(frozen=True)
 class ScopeValidation:
-    """Validation result for one semantic scope."""
+    """Validation and live-binding classification for one curated scope."""
 
     name: str
     valid: bool
     mutating: tuple[str, ...] = ()
     unknown: tuple[str, ...] = ()
+    registered: tuple[str, ...] = ()
+    missing: tuple[str, ...] = ()
+
+    @property
+    def mutation_capable(self):
+        return bool(self.mutating or self.unknown)
 
 
 def validate_scope(gateway, scope):
-    """Validate semantic read/write invariants for one scope.
+    """Classify live bindings and mutation behavior from exact members.
 
-    Legacy exact-only scopes are intentionally exempt. Semantic scopes carrying
-    the ``read`` term fail closed unless every referenced operation exists and is
-    explicitly classified non-mutating by the active Gateway operation registry.
-    Semantic ``write`` scopes may contain either read or write operations.
+    Scope names carry no security semantics. A scope is provably non-mutating
+    only when every member operation exists and explicitly declares itself
+    non-mutating. Missing or unclassified operations are conservatively treated
+    as mutation-capable, but they do not make the curated scope definition
+    invalid. Missing bindings are reported separately so operators can audit
+    stale exact grants without conflating them with registered-but-unclassified
+    operations.
     """
-    if not scope.semantic_terms or "read" not in scope.semantic_terms:
-        return ScopeValidation(scope.name, True)
-
     mutating = []
     unknown = []
+    registered = []
+    missing = []
     for operation in sorted(scope.operations):
-        callable_ = gateway.ops.resolve(operation)
-        if callable_ is None:
+        if operation == "__all__":
             unknown.append(operation)
             continue
+        callable_ = gateway.ops.resolve(operation)
+        if callable_ is None:
+            missing.append(operation)
+            unknown.append(operation)
+            continue
+        registered.append(operation)
         declared = getattr(callable_, "__gway_mutates__", None)
         if declared is None:
             declared = getattr(callable_, "mutates", None)
@@ -43,45 +54,40 @@ def validate_scope(gateway, scope):
 
     return ScopeValidation(
         scope.name,
-        not mutating and not unknown,
+        True,
         tuple(mutating),
         tuple(unknown),
+        tuple(registered),
+        tuple(missing),
     )
 
 
 def require_valid_scope(gateway, scope):
-    """Return a scope or raise a diagnostic error for unsafe semantic reads."""
-    result = validate_scope(gateway, scope)
-    if result.valid:
-        return scope
-
-    details = []
-    if result.mutating:
-        details.append("mutating: " + ", ".join(result.mutating))
-    if result.unknown:
-        details.append("unclassified or unavailable: " + ", ".join(result.unknown))
-    raise ValueError(
-        f"Semantic read scope {scope.name} is unsafe (" + "; ".join(details) + ")"
-    )
+    """Return a curated scope after computing its mutation classification."""
+    validate_scope(gateway, scope)
+    return scope
 
 
 def validate_definitions(gateway, definitions):
-    """Validate normalized semantic scope publications before convergence."""
-    from .scopes import Scope
+    """Validate explicit scope definitions and return their summaries."""
+    from .scopes import Scope, ScopeRegistry
 
     results = []
-    for publication in normalize_publications(definitions).values():
+    for name, definition in dict(definitions).items():
+        definition = dict(definition)
+        unknown = set(definition) - {"operations", "environment"}
+        if unknown:
+            raise ValueError(
+                f"Unknown scope fields for {name}: {', '.join(sorted(unknown))}"
+            )
         scope = Scope(
-            publication.name,
-            publication.operations,
-            publication.environment,
-            None,
-            publication.semantic_terms,
+            ScopeRegistry._name(name),
+            ScopeRegistry._grants(
+                definition.get("operations", ()), label="operation"
+            ),
+            ScopeRegistry._grants(
+                definition.get("environment", ()), label="environment"
+            ),
         )
-        results.append(require_valid_scope(gateway, scope))
+        results.append(validate_scope(gateway, scope))
     return tuple(results)
-
-
-def validate_published(gateway):
-    """Validate runtime-published semantic scopes before durable convergence."""
-    return validate_definitions(gateway, getattr(gateway, "_published_scopes", {}))

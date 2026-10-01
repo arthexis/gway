@@ -36,7 +36,9 @@ def authenticate_bearer(
     """Authenticate one supported bearer against the shared security registry.
 
     Native G-Way tokens are accepted directly. OAuth access tokens additionally
-    require an exact protected-resource match.
+    require an exact protected-resource match. Transport authority is taken from
+    the credential registry's current exact-scope calculation so OAuth authority
+    immediately reflects any narrowing of its linked parent bearer.
     """
     value = str(bearer or "").strip()
     if not value:

@@ -1,6 +1,74 @@
-"""Canonical Gway-owned security scope definitions."""
+"""Canonical Gway-owned curated security scope definitions."""
 
-from .publication import normalize_publications
+
+_OPERATOR_READ_OPERATIONS = frozenset(
+    {
+        "survey",
+        "help",
+        "guide",
+        "version",
+        "log.sources",
+        "log.read",
+        "log.tail",
+        "log.search",
+        "security.whoami",
+        "security.scope.current",
+        "node",
+        "products",
+        "extensions",
+        "builtins",
+        "filter",
+        "service.list",
+        "service.status",
+        "service.statuses",
+        "wire.check",
+        "sous.chef.list",
+        "sous.chef.inspect",
+    }
+)
+
+_OPERATOR_WRITE_OPERATIONS = frozenset(
+    {
+        "github.drive",
+        "github.create_ruleset",
+        "github.update_ruleset",
+        "github.delete_ruleset",
+        "github.update_branch_protection",
+        "github.delete_branch_protection",
+        "github.set_actions_permissions",
+        "github.set_actions_workflow_permissions",
+        "github.set_variable",
+        "github.delete_variable",
+        "github.set_secret",
+        "github.delete_secret",
+        "github.create_issue",
+        "github.update_issue",
+        "github.close_issue",
+        "github.reopen_issue",
+        "github.comment_issue",
+        "github.create_pull",
+        "github.update_pull",
+        "github.close_pull",
+        "github.reopen_pull",
+        "github.reply_review_comment",
+        "github.add_labels",
+        "github.remove_label",
+        "github.ready_pull",
+        "github.draft_pull",
+        "github.merge_pull",
+        "github.dispatch_workflow",
+        "github.dispatch_repository",
+        "github.create_release",
+        "github.update_release",
+        "github.create_ref",
+        "github.create_branch",
+        "github.delete_ref",
+        "github.delete_branch",
+        "github.create_file",
+        "github.update_file",
+        "github.delete_file",
+    }
+)
 
 
 CORE_SCOPE_DEFINITIONS = {
@@ -24,7 +92,6 @@ CORE_SCOPE_DEFINITIONS = {
             }
         ),
         "environment": frozenset(),
-        "semantic_terms": frozenset({"logs", "read"}),
     },
     "source-read": {
         "operations": frozenset(
@@ -38,7 +105,6 @@ CORE_SCOPE_DEFINITIONS = {
             }
         ),
         "environment": frozenset(),
-        "semantic_terms": frozenset({"source", "read"}),
     },
     "source-admin": {
         "operations": frozenset(
@@ -62,27 +128,14 @@ CORE_SCOPE_DEFINITIONS = {
             }
         ),
         "environment": frozenset(),
-        "semantic_terms": frozenset({"source", "admin"}),
     },
     "operator-read": {
-        "operations": frozenset(
-            {
-                "survey",
-                "node",
-                "products",
-                "extensions",
-                "builtins",
-                "filter",
-                "service.list",
-                "service.status",
-                "service.statuses",
-                "wire.check",
-                "sous.chef.list",
-                "sous.chef.inspect",
-            }
-        ),
+        "operations": _OPERATOR_READ_OPERATIONS,
         "environment": frozenset(),
-        "semantic_terms": frozenset({"operator", "read"}),
+    },
+    "operator-write": {
+        "operations": _OPERATOR_WRITE_OPERATIONS,
+        "environment": frozenset(),
     },
 }
 
@@ -90,18 +143,21 @@ CORE_SCOPE_NAMES = frozenset(CORE_SCOPE_DEFINITIONS)
 
 
 def _definition_signature(scope):
-    return (
-        scope.owner,
-        scope.operations,
-        scope.environment,
-        scope.semantic_terms,
-    )
+    return (scope.owner, scope.operations, scope.environment)
 
 
 def _replace_owned(connection, registry, name, definition, *, owner):
-    """Replace one owned scope using an existing convergence transaction."""
+    """Replace one publisher-owned scope inside the convergence transaction.
+
+    Existing user-managed scopes are never silently claimed. A legacy unowned
+    scope may be adopted only when its exact grants already match the bundled
+    definition, so migration cannot change authority merely by assigning owner
+    provenance.
+    """
+    operations = registry._grants(definition.get("operations", ()), label="operation")
+    environment = registry._grants(definition.get("environment", ()), label="environment")
     row = connection.execute(
-        "SELECT id, owner FROM scopes WHERE name = ?",
+        "SELECT id, name, owner FROM scopes WHERE name = ?",
         (name,),
     ).fetchone()
     if row is None:
@@ -110,10 +166,15 @@ def _replace_owned(connection, registry, name, definition, *, owner):
             (name, owner),
         )
         row = connection.execute(
-            "SELECT id, owner FROM scopes WHERE name = ?",
+            "SELECT id, name, owner FROM scopes WHERE name = ?",
             (name,),
         ).fetchone()
     elif row["owner"] is None:
+        current = registry._row_scope(connection, row)
+        if current.operations != operations or current.environment != environment:
+            raise ValueError(
+                f"Security scope {name} is user-managed and differs from bundled {owner} policy"
+            )
         connection.execute(
             "UPDATE scopes SET owner = ? WHERE id = ?",
             (owner, row["id"]),
@@ -124,12 +185,8 @@ def _replace_owned(connection, registry, name, definition, *, owner):
         )
 
     scope_id = row["id"]
-    operations = registry._grants(definition.get("operations", ()), label="operation")
-    environment = registry._grants(definition.get("environment", ()), label="environment")
-    semantic_terms = registry._semantic_terms(definition.get("semantic_terms", ()))
     connection.execute("DELETE FROM scope_operations WHERE scope_id = ?", (scope_id,))
     connection.execute("DELETE FROM scope_environment WHERE scope_id = ?", (scope_id,))
-    connection.execute("DELETE FROM scope_semantic_terms WHERE scope_id = ?", (scope_id,))
     connection.executemany(
         "INSERT INTO scope_operations (scope_id, operation) VALUES (?, ?)",
         ((scope_id, operation) for operation in sorted(operations)),
@@ -138,37 +195,24 @@ def _replace_owned(connection, registry, name, definition, *, owner):
         "INSERT INTO scope_environment (scope_id, variable_name) VALUES (?, ?)",
         ((scope_id, variable) for variable in sorted(environment)),
     )
-    connection.executemany(
-        "INSERT INTO scope_semantic_terms (scope_id, term) VALUES (?, ?)",
-        ((scope_id, term) for term in sorted(semantic_terms)),
-    )
 
 
 def converge_scope_registry(
     registry,
-    published=(),
     *,
     retire_missing=True,
     report=False,
 ):
-    """Atomically converge Gway-owned and externally published scopes."""
-    published = normalize_publications(published)
-    for name, publication in published.items():
-        if name in CORE_SCOPE_NAMES:
-            raise ValueError(f"Published security scope shadows Gway core scope: {name}")
-        publication.owner  # validate provenance before opening the transaction
+    """Atomically converge only Gway-owned bundled scopes.
 
+    Operation ingestion never manufactures authorization scopes. Existing
+    generated project scopes are retired during writable convergence; user-managed
+    scopes remain untouched.
+    """
     desired = {
         name: ("gway", definition)
         for name, definition in CORE_SCOPE_DEFINITIONS.items()
     }
-    desired.update(
-        {
-            name: (publication.owner, publication.as_definition())
-            for name, publication in published.items()
-        }
-    )
-    active_product_names = set(published)
 
     with registry.state.connect() as connection:
         before_rows = connection.execute(
@@ -188,11 +232,8 @@ def converge_scope_registry(
                 "SELECT name FROM scopes WHERE owner LIKE 'project:%'"
             ).fetchall()
             for row in rows:
-                name = row["name"]
-                if name in active_product_names:
-                    continue
-                connection.execute("DELETE FROM scopes WHERE name = ?", (name,))
-                retired.append(name)
+                connection.execute("DELETE FROM scopes WHERE name = ?", (row["name"],))
+                retired.append(row["name"])
 
         after_rows = connection.execute(
             "SELECT id, name, owner FROM scopes ORDER BY name"
@@ -202,12 +243,8 @@ def converge_scope_registry(
             for row in after_rows
         }
 
-    result = {
-        **CORE_SCOPE_DEFINITIONS,
-        **{name: publication.as_definition() for name, publication in published.items()},
-    }
     if not report:
-        return result
+        return dict(CORE_SCOPE_DEFINITIONS)
 
     added = sorted(name for name in desired if name not in before and name in after)
     updated = sorted(

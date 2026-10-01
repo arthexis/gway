@@ -5,6 +5,7 @@ import pytest
 
 import gway.ingestion.django as django_ingestor
 from gway.ingestion.base import find_ingested
+from gway.security.scopes import ScopeRegistry
 
 
 def _model(name):
@@ -65,6 +66,26 @@ def test_project_mount_discovers_settings_from_manage_and_indexes_apps_models(
     assert find_ingested(gateway, ("charger",)).value is charger
     assert find_ingested(gateway, ("sales", "customer")).value is customer
     assert find_ingested(gateway, ("customer",)).value is customer
+
+
+def test_django_ingestion_registers_operations_without_publishing_security_scopes(
+    gateway,
+    tmp_path,
+    django_project,
+    django_setup,
+    django_management,
+):
+    root, _ = django_project()
+    gateway.security_path = tmp_path / "security.sqlite"
+    django_setup(_app("energy", [_model("charger")]))
+    django_management()
+
+    django_ingestor.ingest_project(gateway, root, name="arthexis")
+    gateway("migrate arthexis")
+
+    assert find_ingested(gateway, ("energy", "charger")) is not None
+    assert gateway.ops.resolve("arthexis.migrate") is not None
+    assert ScopeRegistry(gateway.security_path).all() == []
 
 
 def test_duplicate_model_names_do_not_get_ambiguous_short_branch(

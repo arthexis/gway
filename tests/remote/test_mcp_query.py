@@ -124,7 +124,6 @@ def test_mcp_query_projection_is_read_only_in_active_pr_suite():
     ]
 
 
-
 def test_mcp_tools_expose_real_gateway_multi_statement_results(gateway):
     server = _server_module()
 
@@ -245,53 +244,103 @@ def test_mcp_execution_envelope_classifies_json_result_shapes():
     assert server._envelope(None)["result_type"] == "null"
 
 
+class ProjectedParent:
+    def __init__(self, *, live=(), authorized=(), mutation_capable=False):
+        self.live = set(live)
+        self.authorized = set(authorized)
+        self.mutation_capable = mutation_capable
+        self.calls = []
 
-def test_mcp_tool_projection_hides_gway_for_read_only_authority():
+    def list_operations(self):
+        return sorted(self.live)
+
+    def authenticate_bearer(self, bearer, resource=None):
+        return {
+            "kind": "gway",
+            "principal": "client",
+            "client_id": "gway:client",
+            "scopes": ["operator"],
+            "mutation_capable": self.mutation_capable,
+        }
+
+    def execute_authenticated(self, bearer, command, resource=None, mutate=None):
+        if command == "security scope current":
+            return {
+                "constrained": True,
+                "operations": sorted(self.authorized),
+                "environment": [],
+            }
+        self.calls.append((bearer, command, resource, mutate))
+        return {"command": command}
+
+
+def test_mcp_http_projection_is_live_registry_intersection():
     server = _server_module()
-
-    class Tool:
-        def __init__(self, name):
-            self.name = name
-
-    tools = [Tool("gway"), Tool("query"), Tool("tail")]
-
-    projected = server._project_tools(
-        tools,
-        {"mutation_capable": False},
+    parent = ProjectedParent(
+        live={"log.read", "github.drive", "help"},
+        authorized={"log.read", "missing.operation"},
     )
 
-    assert [tool.name for tool in projected] == ["query", "tail"]
+    tools = server._authorized_operation_tools(parent, "bearer", "resource")
+
+    assert [tool.name for tool in tools] == ["log.read"]
+    assert tools[0].annotations.read_only_hint is True
+    assert tools[0].annotations.destructive_hint is False
 
 
-def test_mcp_tool_projection_keeps_gway_for_mutation_capable_authority():
+def test_mcp_http_projection_changes_with_bearer_scope_membership():
     server = _server_module()
-
-    class Tool:
-        def __init__(self, name):
-            self.name = name
-
-    tools = [Tool("gway"), Tool("query"), Tool("tail")]
-
-    projected = server._project_tools(
-        tools,
-        {"mutation_capable": True},
+    parent = ProjectedParent(
+        live={"log.read", "github.drive"},
+        authorized={"log.read"},
     )
 
-    assert [tool.name for tool in projected] == ["gway", "query", "tail"]
+    before = server._authorized_operation_tools(parent, "bearer", "resource")
+    parent.authorized.add("github.drive")
+    parent.mutation_capable = True
+    after = server._authorized_operation_tools(parent, "bearer", "resource")
+
+    assert [tool.name for tool in before] == ["log.read"]
+    assert [tool.name for tool in after] == ["github.drive", "log.read"]
+    assert all(tool.annotations.read_only_hint is False for tool in after)
 
 
-def test_mcp_tool_projection_is_conservative_without_capability_metadata():
+def test_mcp_http_full_access_expands_against_live_registry_only():
     server = _server_module()
+    parent = ProjectedParent(
+        live={"alpha", "beta"},
+        authorized={"__all__", "stale.operation"},
+        mutation_capable=True,
+    )
 
-    class Tool:
-        def __init__(self, name):
-            self.name = name
+    tools = server._authorized_operation_tools(parent, "bearer", "resource")
 
-    tools = [Tool("gway"), Tool("query"), Tool("tail")]
+    assert [tool.name for tool in tools] == ["alpha", "beta"]
 
-    projected = server._project_tools(tools, {})
 
-    assert [tool.name for tool in projected] == ["gway", "query", "tail"]
+def test_mcp_projected_operation_quotes_tokens_before_authenticated_dispatch():
+    server = _server_module()
+    parent = ProjectedParent(
+        live={"log.read"},
+        authorized={"log.read"},
+    )
+    tool = server._authorized_operation_tools(parent, "secret", "resource")[0]
+
+    result = asyncio.run(
+        tool.run({"tokens": ["source name", "x;y", "--limit", "10"]})
+    )
+
+    assert parent.calls == [
+        (
+            "secret",
+            "log.read 'source name' 'x;y' --limit 10",
+            "resource",
+            None,
+        )
+    ]
+    assert result.structured_content["result"] == {
+        "command": "log.read 'source name' 'x;y' --limit 10"
+    }
 
 
 def test_mcp_query_returns_survey_as_structured_mapping(gateway, tmp_path, monkeypatch):

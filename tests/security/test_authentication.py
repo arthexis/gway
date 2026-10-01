@@ -78,7 +78,6 @@ def test_unsupported_bearers_fail_uniformly(tmp_path, bearer):
         authenticate_bearer(bearer, path=tmp_path / "security.sqlite")
 
 
-
 def test_bearer_authentication_does_not_modify_security_database(tmp_path):
     scopes, tokens, oauth = _registries(tmp_path)
     scopes.replace("reader", operations={"log.read"})

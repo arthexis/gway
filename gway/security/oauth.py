@@ -1,4 +1,4 @@
-"""Persistent OAuth security state layered over G-Way scopes."""
+"""Persistent OAuth security state layered over curated G-Way scopes."""
 
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
@@ -8,8 +8,7 @@ import json
 import secrets
 
 from ..cache import default_root
-from .scopes import EffectiveScope, ScopeRegistry
-from .semantics import resolve as resolve_semantic
+from .scopes import ScopeRegistry
 from .state import SecurityState
 from .tokens import TokenRegistry
 from .usage import CredentialUsage
@@ -53,7 +52,6 @@ class OAuthGrant:
     scopes: frozenset[str]
     created_at: str
     revoked_at: str | None = None
-    union_scopes: frozenset[tuple[str, ...]] = frozenset()
 
 
 @dataclass(frozen=True)
@@ -76,7 +74,7 @@ class IssuedOAuthTokens:
 @dataclass(frozen=True)
 class AuthenticatedOAuthToken:
     grant: OAuthGrant
-    authority: EffectiveScope
+    authority: object
 
 
 @dataclass(frozen=True)
@@ -157,24 +155,6 @@ class OAuthRegistry:
         digest = hashlib.sha256(verifier.encode("ascii")).digest()
         return base64.urlsafe_b64encode(digest).rstrip(b"=").decode("ascii")
 
-    @staticmethod
-    def _union_terms(values):
-        if values is None:
-            return frozenset()
-        result = set()
-        for value in values:
-            raw = value.replace(",", " ").split() if isinstance(value, str) else value
-            terms = tuple(sorted({str(term).strip().lower() for term in raw if str(term).strip()}))
-            if not terms:
-                raise ValueError("union scope requires at least one term")
-            result.add(terms)
-        return frozenset(result)
-
-    @staticmethod
-    def _union_is_within(requested, available):
-        requested = set(requested)
-        return any(set(bound) <= requested for bound in available)
-
     def create_client(
         self,
         client_id,
@@ -185,13 +165,20 @@ class OAuthRegistry:
         token_endpoint_auth_method=None,
     ):
         client_id = self._text(client_id, "OAuth client id")
-        redirects = frozenset(self._text(uri, "OAuth redirect URI") for uri in redirect_uris)
+        redirects = frozenset(
+            self._text(uri, "OAuth redirect URI") for uri in redirect_uris
+        )
         if token_endpoint_auth_method is None:
             token_endpoint_auth_method = "client_secret_post" if confidential else "none"
-        token_endpoint_auth_method = self._text(token_endpoint_auth_method, "OAuth token endpoint auth method")
+        token_endpoint_auth_method = self._text(
+            token_endpoint_auth_method, "OAuth token endpoint auth method"
+        )
         allowed_methods = {"none", "client_secret_post", "client_secret_basic"}
         if token_endpoint_auth_method not in allowed_methods:
-            raise ValueError("Unsupported OAuth token endpoint auth method: " + token_endpoint_auth_method)
+            raise ValueError(
+                "Unsupported OAuth token endpoint auth method: "
+                + token_endpoint_auth_method
+            )
         if confidential and token_endpoint_auth_method == "none":
             raise ValueError("Confidential OAuth clients require client authentication")
         if not confidential and token_endpoint_auth_method != "none":
@@ -222,7 +209,9 @@ class OAuthRegistry:
                     ),
                 )
             except Exception:
-                if connection.execute("SELECT 1 FROM oauth_clients WHERE client_id = ?", (client_id,)).fetchone():
+                if connection.execute(
+                    "SELECT 1 FROM oauth_clients WHERE client_id = ?", (client_id,)
+                ).fetchone():
                     raise ValueError(f"OAuth client already exists: {client_id}") from None
                 raise
         client = self.get_client(client_id)
@@ -252,14 +241,24 @@ class OAuthRegistry:
             row["created_at"],
         )
 
-    def authenticate_client(self, client_id, *, client_secret=None, token_endpoint_auth_method=None):
+    def authenticate_client(
+        self,
+        client_id,
+        *,
+        client_secret=None,
+        token_endpoint_auth_method=None,
+    ):
         client_id = self._text(client_id, "OAuth client id")
         client = self.get_client(client_id)
         if client is None or client.disabled:
             raise OAuthAuthenticationError()
         expected_method = client.token_endpoint_auth_method
-        actual_method = expected_method if token_endpoint_auth_method is None else self._text(
-            token_endpoint_auth_method, "OAuth token endpoint auth method"
+        actual_method = (
+            expected_method
+            if token_endpoint_auth_method is None
+            else self._text(
+                token_endpoint_auth_method, "OAuth token endpoint auth method"
+            )
         )
         if actual_method != expected_method:
             raise OAuthAuthenticationError()
@@ -275,8 +274,12 @@ class OAuthRegistry:
                 "SELECT client_secret_hash FROM oauth_clients WHERE client_id = ?",
                 (client_id,),
             ).fetchone()
-        if row is None or not row["client_secret_hash"] or not secrets.compare_digest(
-            row["client_secret_hash"], self._hash(secret)
+        if (
+            row is None
+            or not row["client_secret_hash"]
+            or not secrets.compare_digest(
+                row["client_secret_hash"], self._hash(secret)
+            )
         ):
             raise OAuthAuthenticationError()
         return client
@@ -291,15 +294,21 @@ class OAuthRegistry:
         if not self.path.is_file():
             return []
         with self.state.connect(readonly=readonly) as connection:
-            rows = connection.execute("SELECT client_id FROM oauth_clients ORDER BY client_id").fetchall()
-        return [self.require_client(row["client_id"], readonly=readonly) for row in rows]
+            rows = connection.execute(
+                "SELECT client_id FROM oauth_clients ORDER BY client_id"
+            ).fetchall()
+        return [
+            self.require_client(row["client_id"], readonly=readonly) for row in rows
+        ]
 
     def remove_client(self, client_id):
         if not self.path.is_file():
             return False
         client_id = self._text(client_id, "OAuth client id")
         with self.state.connect() as connection:
-            cursor = connection.execute("DELETE FROM oauth_clients WHERE client_id = ?", (client_id,))
+            cursor = connection.execute(
+                "DELETE FROM oauth_clients WHERE client_id = ?", (client_id,)
+            )
         return bool(cursor.rowcount)
 
     def disable_client(self, client_id):
@@ -311,7 +320,10 @@ class OAuthRegistry:
     def _set_client_disabled(self, client_id, disabled):
         client_id = self._text(client_id, "OAuth client id")
         with self.state.connect() as connection:
-            cursor = connection.execute("UPDATE oauth_clients SET disabled = ? WHERE client_id = ?", (int(disabled), client_id))
+            cursor = connection.execute(
+                "UPDATE oauth_clients SET disabled = ? WHERE client_id = ?",
+                (int(disabled), client_id),
+            )
             if not cursor.rowcount:
                 raise LookupError(f"Unknown OAuth client: {client_id}")
         return self.require_client(client_id)
@@ -321,14 +333,19 @@ class OAuthRegistry:
         token = self.tokens.require(token_name)
         created_at = self._now().isoformat()
         with self.state.connect() as connection:
-            token_row = connection.execute("SELECT id FROM tokens WHERE name = ?", (token.name,)).fetchone()
+            token_row = connection.execute(
+                "SELECT id FROM tokens WHERE name = ?", (token.name,)
+            ).fetchone()
             try:
                 connection.execute(
-                    "INSERT INTO oauth_links (name, token_id, created_at, revoked_at) VALUES (?, ?, ?, NULL)",
+                    "INSERT INTO oauth_links (name, token_id, created_at, revoked_at) "
+                    "VALUES (?, ?, ?, NULL)",
                     (name, token_row["id"], created_at),
                 )
             except Exception:
-                if connection.execute("SELECT 1 FROM oauth_links WHERE name = ?", (name,)).fetchone():
+                if connection.execute(
+                    "SELECT 1 FROM oauth_links WHERE name = ?", (name,)
+                ).fetchone():
                     raise ValueError(f"OAuth link already exists: {name}") from None
                 raise
         return self.get_link(name)
@@ -350,13 +367,17 @@ class OAuthRegistry:
             ).fetchone()
         if row is None:
             return None
-        return OAuthLink(row["name"], row["token_name"], row["created_at"], row["revoked_at"])
+        return OAuthLink(
+            row["name"], row["token_name"], row["created_at"], row["revoked_at"]
+        )
 
     def links(self, *, readonly=False):
         if not self.path.is_file():
             return []
         with self.state.connect(readonly=readonly) as connection:
-            rows = connection.execute("SELECT name FROM oauth_links ORDER BY name").fetchall()
+            rows = connection.execute(
+                "SELECT name FROM oauth_links ORDER BY name"
+            ).fetchall()
         return [self.get_link(row["name"], readonly=readonly) for row in rows]
 
     def revoke_link(self, name):
@@ -364,7 +385,8 @@ class OAuthRegistry:
         revoked_at = self._now().isoformat()
         with self.state.connect() as connection:
             cursor = connection.execute(
-                "UPDATE oauth_links SET revoked_at = COALESCE(revoked_at, ?) WHERE name = ?",
+                "UPDATE oauth_links SET revoked_at = COALESCE(revoked_at, ?) "
+                "WHERE name = ?",
                 (revoked_at, name),
             )
             if not cursor.rowcount:
@@ -387,16 +409,6 @@ class OAuthRegistry:
             )
         )
 
-    @staticmethod
-    def _grant_union_scopes(connection, grant_id):
-        return frozenset(
-            tuple(json.loads(row["terms"]))
-            for row in connection.execute(
-                "SELECT terms FROM oauth_grant_union_scopes WHERE grant_id = ? ORDER BY terms",
-                (grant_id,),
-            )
-        )
-
     @classmethod
     def _grant_from_row(cls, connection, row):
         if row is None:
@@ -409,7 +421,6 @@ class OAuthRegistry:
             scopes=cls._grant_scopes(connection, row["id"]),
             created_at=row["created_at"],
             revoked_at=row["revoked_at"],
-            union_scopes=cls._grant_union_scopes(connection, row["id"]),
         )
 
     def get_grant(self, grant_id, *, readonly=False):
@@ -445,15 +456,7 @@ class OAuthRegistry:
             ).fetchall()
             return [self._grant_from_row(connection, row) for row in rows]
 
-    def _validate_union_delegation(self, token, union_scopes):
-        unions = self._union_terms(union_scopes)
-        unavailable = [terms for terms in unions if not self._union_is_within(terms, token.union_scopes)]
-        if unavailable:
-            rendered = ", ".join(" ".join(terms) for terms in sorted(unavailable))
-            raise ValueError("OAuth grant exceeds linked token union scopes: " + rendered)
-        return unions
-
-    def create_grant(self, link_name, client_id, *, scopes, union_scopes=(), resource=None):
+    def create_grant(self, link_name, client_id, *, scopes, resource=None):
         link_name = self._text(link_name, "OAuth link name")
         client_id = self._text(client_id, "OAuth client id")
         resource = None if resource is None else self._text(resource, "OAuth resource")
@@ -466,24 +469,31 @@ class OAuthRegistry:
         scope_names = frozenset(self._text(name, "scope name") for name in scopes)
         unknown = scope_names - token.scopes
         if unknown:
-            raise ValueError("OAuth grant exceeds linked token scopes: " + ", ".join(sorted(unknown)))
+            raise ValueError(
+                "OAuth grant exceeds linked token scopes: "
+                + ", ".join(sorted(unknown))
+            )
         for name in scope_names:
             self.scopes.require(name)
-        unions = self._validate_union_delegation(token, union_scopes)
         with self.state.connect() as connection:
-            link_row = connection.execute("SELECT id FROM oauth_links WHERE name = ?", (link_name,)).fetchone()
+            link_row = connection.execute(
+                "SELECT id FROM oauth_links WHERE name = ?", (link_name,)
+            ).fetchone()
             cursor = connection.execute(
-                "INSERT INTO oauth_grants (link_id, client_id, resource, created_at, revoked_at) VALUES (?, ?, ?, ?, NULL)",
+                "INSERT INTO oauth_grants "
+                "(link_id, client_id, resource, created_at, revoked_at) "
+                "VALUES (?, ?, ?, ?, NULL)",
                 (link_row["id"], client_id, resource, self._now().isoformat()),
             )
             grant_id = cursor.lastrowid
             for name in sorted(scope_names):
-                scope = connection.execute("SELECT id FROM scopes WHERE name = ?", (name,)).fetchone()
-                connection.execute("INSERT INTO oauth_grant_scopes (grant_id, scope_id) VALUES (?, ?)", (grant_id, scope["id"]))
-            connection.executemany(
-                "INSERT INTO oauth_grant_union_scopes (grant_id, terms) VALUES (?, ?)",
-                ((grant_id, json.dumps(list(terms), separators=(",", ":"))) for terms in sorted(unions)),
-            )
+                scope = connection.execute(
+                    "SELECT id FROM scopes WHERE name = ?", (name,)
+                ).fetchone()
+                connection.execute(
+                    "INSERT INTO oauth_grant_scopes (grant_id, scope_id) VALUES (?, ?)",
+                    (grant_id, scope["id"]),
+                )
         return self.get_grant(grant_id)
 
     def replace_grant_scopes(self, grant_id, scopes):
@@ -495,28 +505,24 @@ class OAuthRegistry:
         scope_names = frozenset(self._text(name, "scope name") for name in scopes)
         unknown = scope_names - token.scopes
         if unknown:
-            raise ValueError("OAuth grant exceeds linked token scopes: " + ", ".join(sorted(unknown)))
+            raise ValueError(
+                "OAuth grant exceeds linked token scopes: "
+                + ", ".join(sorted(unknown))
+            )
         for name in scope_names:
             self.scopes.require(name)
         with self.state.connect() as connection:
-            connection.execute("DELETE FROM oauth_grant_scopes WHERE grant_id = ?", (int(grant_id),))
-            for name in sorted(scope_names):
-                row = connection.execute("SELECT id FROM scopes WHERE name = ?", (name,)).fetchone()
-                connection.execute("INSERT INTO oauth_grant_scopes (grant_id, scope_id) VALUES (?, ?)", (int(grant_id), row["id"]))
-        return self.get_grant(grant_id)
-
-    def replace_grant_union_scopes(self, grant_id, union_scopes):
-        grant = self.get_grant(grant_id)
-        if grant is None:
-            raise LookupError(f"Unknown OAuth grant: {grant_id}")
-        token = self.tokens.require(self.get_link(grant.link_name).token_name)
-        unions = self._validate_union_delegation(token, union_scopes)
-        with self.state.connect() as connection:
-            connection.execute("DELETE FROM oauth_grant_union_scopes WHERE grant_id = ?", (int(grant_id),))
-            connection.executemany(
-                "INSERT INTO oauth_grant_union_scopes (grant_id, terms) VALUES (?, ?)",
-                ((int(grant_id), json.dumps(list(terms), separators=(",", ":"))) for terms in sorted(unions)),
+            connection.execute(
+                "DELETE FROM oauth_grant_scopes WHERE grant_id = ?", (int(grant_id),)
             )
+            for name in sorted(scope_names):
+                row = connection.execute(
+                    "SELECT id FROM scopes WHERE name = ?", (name,)
+                ).fetchone()
+                connection.execute(
+                    "INSERT INTO oauth_grant_scopes (grant_id, scope_id) VALUES (?, ?)",
+                    (int(grant_id), row["id"]),
+                )
         return self.get_grant(grant_id)
 
     def bind_grant_scope(self, grant_id, scope):
@@ -532,23 +538,6 @@ class OAuthRegistry:
         scopes = set(grant.scopes)
         scopes.discard(str(scope))
         return self.replace_grant_scopes(grant_id, scopes)
-
-    def bind_grant_union(self, grant_id, *terms):
-        grant = self.get_grant(grant_id)
-        if grant is None:
-            raise LookupError(f"Unknown OAuth grant: {grant_id}")
-        unions = set(grant.union_scopes)
-        unions.add(tuple(sorted({str(term).strip().lower() for term in terms if str(term).strip()})))
-        return self.replace_grant_union_scopes(grant_id, unions)
-
-    def unbind_grant_union(self, grant_id, *terms):
-        grant = self.get_grant(grant_id)
-        if grant is None:
-            raise LookupError(f"Unknown OAuth grant: {grant_id}")
-        target = tuple(sorted({str(term).strip().lower() for term in terms if str(term).strip()}))
-        unions = set(grant.union_scopes)
-        unions.discard(target)
-        return self.replace_grant_union_scopes(grant_id, unions)
 
     def revoke_grant(self, grant_id):
         revoked_at = self._now().isoformat()
@@ -578,11 +567,18 @@ class OAuthRegistry:
             """,
             (int(grant_id),),
         ).fetchone()
-        if row is None or row["revoked_at"] is not None or row["link_revoked_at"] is not None:
+        if (
+            row is None
+            or row["revoked_at"] is not None
+            or row["link_revoked_at"] is not None
+        ):
             raise OAuthAuthenticationError()
         if bool(row["token_disabled"]):
             raise OAuthAuthenticationError()
-        if row["token_expires_at"] is not None and datetime.fromisoformat(row["token_expires_at"]) <= self._now():
+        if (
+            row["token_expires_at"] is not None
+            and datetime.fromisoformat(row["token_expires_at"]) <= self._now()
+        ):
             raise OAuthAuthenticationError()
         return row
 
@@ -602,28 +598,9 @@ class OAuthRegistry:
                 (row["link_name"],),
             )
         )
-        current_token_unions = frozenset(
-            tuple(json.loads(item["terms"]))
-            for item in connection.execute(
-                """
-                SELECT token_union_scopes.terms
-                FROM oauth_links
-                JOIN token_union_scopes ON token_union_scopes.token_id = oauth_links.token_id
-                WHERE oauth_links.name = ?
-                """,
-                (row["link_name"],),
-            )
+        effective = self.scopes.resolve(
+            granted & current_token_scopes, readonly=True
         )
-        effective_unions = frozenset(
-            terms
-            for terms in self._grant_union_scopes(connection, grant_id)
-            if self._union_is_within(terms, current_token_unions)
-        )
-        exact = self.scopes.resolve(granted & current_token_scopes, readonly=True)
-        operations = set(exact.operations)
-        leaves = self.scopes.all(readonly=True)
-        for terms in effective_unions:
-            operations.update(resolve_semantic(leaves, terms).operations)
         grant = OAuthGrant(
             id=row["id"],
             link_name=row["link_name"],
@@ -632,13 +609,23 @@ class OAuthRegistry:
             scopes=granted,
             created_at=row["created_at"],
             revoked_at=row["revoked_at"],
-            union_scopes=self._grant_union_scopes(connection, grant_id),
         )
-        return grant, EffectiveScope(frozenset(operations), exact.environment)
+        return grant, effective
 
-    def issue_authorization_code(self, grant_id, *, redirect_uri, code_challenge, lifetime_seconds=300):
+    def issue_authorization_code(
+        self,
+        grant_id,
+        *,
+        redirect_uri,
+        code_challenge,
+        lifetime_seconds=300,
+    ):
         redirect_uri = self._text(redirect_uri, "OAuth redirect URI")
-        code_challenge = "" if code_challenge in (None, "") else self._text(code_challenge, "PKCE code challenge")
+        code_challenge = (
+            ""
+            if code_challenge in (None, "")
+            else self._text(code_challenge, "PKCE code challenge")
+        )
         code_challenge_method = "S256" if code_challenge else "none"
         _, code = self._secret("gwc")
         expires_at = self._expiry(lifetime_seconds)
@@ -651,18 +638,33 @@ class OAuthRegistry:
                     code_challenge_method, created_at, expires_at, consumed_at
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, NULL)
                 """,
-                (int(grant_id), self._hash(code), redirect_uri, code_challenge, code_challenge_method, self._now().isoformat(), expires_at),
+                (
+                    int(grant_id),
+                    self._hash(code),
+                    redirect_uri,
+                    code_challenge,
+                    code_challenge_method,
+                    self._now().isoformat(),
+                    expires_at,
+                ),
             )
-        return IssuedAuthorizationCode(self.get_grant(grant_id), code, redirect_uri, expires_at)
+        return IssuedAuthorizationCode(
+            self.get_grant(grant_id), code, redirect_uri, expires_at
+        )
 
     def authorization_code_resource(self, code):
         code_hash = self._hash(code)
         with self.state.connect(readonly=True) as connection:
             row = connection.execute(
-                "SELECT grant_id, expires_at, consumed_at FROM oauth_authorization_codes WHERE code_hash = ?",
+                "SELECT grant_id, expires_at, consumed_at "
+                "FROM oauth_authorization_codes WHERE code_hash = ?",
                 (code_hash,),
             ).fetchone()
-            if row is None or row["consumed_at"] is not None or datetime.fromisoformat(row["expires_at"]) <= self._now():
+            if (
+                row is None
+                or row["consumed_at"] is not None
+                or datetime.fromisoformat(row["expires_at"]) <= self._now()
+            ):
                 raise OAuthAuthenticationError()
             return self._active_grant(connection, row["grant_id"])["resource"]
 
@@ -670,7 +672,8 @@ class OAuthRegistry:
         public_id = self._public_id(refresh_token, "gwr")
         with self.state.connect(readonly=True) as connection:
             row = connection.execute(
-                "SELECT grant_id, token_hash, expires_at, revoked_at, rotated_at FROM oauth_refresh_tokens WHERE public_id = ?",
+                "SELECT grant_id, token_hash, expires_at, revoked_at, rotated_at "
+                "FROM oauth_refresh_tokens WHERE public_id = ?",
                 (public_id,),
             ).fetchone()
             if (
@@ -678,16 +681,34 @@ class OAuthRegistry:
                 or row["revoked_at"] is not None
                 or row["rotated_at"] is not None
                 or datetime.fromisoformat(row["expires_at"]) <= self._now()
-                or not secrets.compare_digest(row["token_hash"], self._hash(refresh_token))
+                or not secrets.compare_digest(
+                    row["token_hash"], self._hash(refresh_token)
+                )
             ):
                 raise OAuthAuthenticationError()
             return self._active_grant(connection, row["grant_id"])["resource"]
 
-    def consume_authorization_code(self, code, *, redirect_uri, code_verifier, client_id=None, resource=None):
+    def consume_authorization_code(
+        self,
+        code,
+        *,
+        redirect_uri,
+        code_verifier,
+        client_id=None,
+        resource=None,
+    ):
         redirect_uri = self._text(redirect_uri, "OAuth redirect URI")
-        code_verifier = None if code_verifier in (None, "") else self._text(code_verifier, "PKCE code verifier")
-        client_id = None if client_id is None else self._text(client_id, "OAuth client id")
-        resource = None if resource is None else self._text(resource, "OAuth resource")
+        code_verifier = (
+            None
+            if code_verifier in (None, "")
+            else self._text(code_verifier, "PKCE code verifier")
+        )
+        client_id = (
+            None if client_id is None else self._text(client_id, "OAuth client id")
+        )
+        resource = (
+            None if resource is None else self._text(resource, "OAuth resource")
+        )
         code_hash = self._hash(code)
         with self.state.connect() as connection:
             row = connection.execute(
@@ -698,12 +719,21 @@ class OAuthRegistry:
                 """,
                 (code_hash,),
             ).fetchone()
-            if row is None or row["consumed_at"] is not None or datetime.fromisoformat(row["expires_at"]) <= self._now():
+            if (
+                row is None
+                or row["consumed_at"] is not None
+                or datetime.fromisoformat(row["expires_at"]) <= self._now()
+            ):
                 raise OAuthAuthenticationError()
             if row["redirect_uri"] != redirect_uri:
                 raise OAuthAuthenticationError()
             if row["code_challenge_method"] == "S256":
-                if code_verifier is None or not secrets.compare_digest(row["code_challenge"], self._pkce(code_verifier)):
+                if (
+                    code_verifier is None
+                    or not secrets.compare_digest(
+                        row["code_challenge"], self._pkce(code_verifier)
+                    )
+                ):
                     raise OAuthAuthenticationError()
             elif row["code_challenge_method"] == "none":
                 if row["code_challenge"] or code_verifier is not None:
@@ -716,7 +746,8 @@ class OAuthRegistry:
             if resource is not None and active["resource"] != resource:
                 raise OAuthAuthenticationError()
             cursor = connection.execute(
-                "UPDATE oauth_authorization_codes SET consumed_at = ? WHERE id = ? AND consumed_at IS NULL",
+                "UPDATE oauth_authorization_codes SET consumed_at = ? "
+                "WHERE id = ? AND consumed_at IS NULL",
                 (self._now().isoformat(), row["id"]),
             )
             if cursor.rowcount != 1:
@@ -724,7 +755,13 @@ class OAuthRegistry:
             grant_id = row["grant_id"]
         return self.get_grant(grant_id)
 
-    def issue_tokens(self, grant_id, *, access_lifetime_seconds=900, refresh_lifetime_seconds=2592000):
+    def issue_tokens(
+        self,
+        grant_id,
+        *,
+        access_lifetime_seconds=900,
+        refresh_lifetime_seconds=2592000,
+    ):
         access_public, access = self._secret("gwa")
         refresh_public, refresh = self._secret("gwr")
         access_expires = self._expiry(access_lifetime_seconds)
@@ -733,20 +770,43 @@ class OAuthRegistry:
         with self.state.connect() as connection:
             self._active_grant(connection, grant_id)
             connection.execute(
-                "INSERT INTO oauth_access_tokens (grant_id, public_id, token_hash, created_at, expires_at, revoked_at) VALUES (?, ?, ?, ?, ?, NULL)",
-                (int(grant_id), access_public, self._hash(access), created_at, access_expires),
+                "INSERT INTO oauth_access_tokens "
+                "(grant_id, public_id, token_hash, created_at, expires_at, revoked_at) "
+                "VALUES (?, ?, ?, ?, ?, NULL)",
+                (
+                    int(grant_id),
+                    access_public,
+                    self._hash(access),
+                    created_at,
+                    access_expires,
+                ),
             )
             connection.execute(
-                "INSERT INTO oauth_refresh_tokens (grant_id, public_id, token_hash, created_at, expires_at, revoked_at, rotated_at) VALUES (?, ?, ?, ?, ?, NULL, NULL)",
-                (int(grant_id), refresh_public, self._hash(refresh), created_at, refresh_expires),
+                "INSERT INTO oauth_refresh_tokens "
+                "(grant_id, public_id, token_hash, created_at, expires_at, revoked_at, rotated_at) "
+                "VALUES (?, ?, ?, ?, ?, NULL, NULL)",
+                (
+                    int(grant_id),
+                    refresh_public,
+                    self._hash(refresh),
+                    created_at,
+                    refresh_expires,
+                ),
             )
-        return IssuedOAuthTokens(self.get_grant(grant_id), access, access_expires, refresh, refresh_expires)
+        return IssuedOAuthTokens(
+            self.get_grant(grant_id),
+            access,
+            access_expires,
+            refresh,
+            refresh_expires,
+        )
 
     def authenticate_access(self, bearer):
         public_id = self._public_id(bearer, "gwa")
         with self.state.connect(readonly=True) as connection:
             row = connection.execute(
-                "SELECT grant_id, token_hash, expires_at, revoked_at FROM oauth_access_tokens WHERE public_id = ?",
+                "SELECT grant_id, token_hash, expires_at, revoked_at "
+                "FROM oauth_access_tokens WHERE public_id = ?",
                 (public_id,),
             ).fetchone()
             if (
@@ -771,12 +831,17 @@ class OAuthRegistry:
         access_lifetime_seconds=900,
         refresh_lifetime_seconds=2592000,
     ):
-        client_id = None if client_id is None else self._text(client_id, "OAuth client id")
-        resource = None if resource is None else self._text(resource, "OAuth resource")
+        client_id = (
+            None if client_id is None else self._text(client_id, "OAuth client id")
+        )
+        resource = (
+            None if resource is None else self._text(resource, "OAuth resource")
+        )
         public_id = self._public_id(refresh_token, "gwr")
         with self.state.connect() as connection:
             row = connection.execute(
-                "SELECT id, grant_id, token_hash, expires_at, revoked_at, rotated_at FROM oauth_refresh_tokens WHERE public_id = ?",
+                "SELECT id, grant_id, token_hash, expires_at, revoked_at, rotated_at "
+                "FROM oauth_refresh_tokens WHERE public_id = ?",
                 (public_id,),
             ).fetchone()
             if (
@@ -784,7 +849,9 @@ class OAuthRegistry:
                 or row["revoked_at"] is not None
                 or row["rotated_at"] is not None
                 or datetime.fromisoformat(row["expires_at"]) <= self._now()
-                or not secrets.compare_digest(row["token_hash"], self._hash(refresh_token))
+                or not secrets.compare_digest(
+                    row["token_hash"], self._hash(refresh_token)
+                )
             ):
                 raise OAuthAuthenticationError()
             active = self._active_grant(connection, row["grant_id"])
@@ -794,7 +861,8 @@ class OAuthRegistry:
             if resource is not None and active["resource"] != resource:
                 raise OAuthAuthenticationError()
             cursor = connection.execute(
-                "UPDATE oauth_refresh_tokens SET rotated_at = ? WHERE id = ? AND rotated_at IS NULL AND revoked_at IS NULL",
+                "UPDATE oauth_refresh_tokens SET rotated_at = ? "
+                "WHERE id = ? AND rotated_at IS NULL AND revoked_at IS NULL",
                 (self._now().isoformat(), row["id"]),
             )
             if cursor.rowcount != 1:
@@ -827,10 +895,12 @@ class OAuthRegistry:
             return []
         with self.state.connect(readonly=readonly) as connection:
             access = connection.execute(
-                "SELECT public_id, grant_id, created_at, expires_at, revoked_at FROM oauth_access_tokens ORDER BY id"
+                "SELECT public_id, grant_id, created_at, expires_at, revoked_at "
+                "FROM oauth_access_tokens ORDER BY id"
             ).fetchall()
             refresh = connection.execute(
-                "SELECT public_id, grant_id, created_at, expires_at, revoked_at, rotated_at FROM oauth_refresh_tokens ORDER BY id"
+                "SELECT public_id, grant_id, created_at, expires_at, revoked_at, rotated_at "
+                "FROM oauth_refresh_tokens ORDER BY id"
             ).fetchall()
         return [self._credential_from_row("access", row) for row in access] + [
             self._credential_from_row("refresh", row) for row in refresh
@@ -842,13 +912,15 @@ class OAuthRegistry:
             raise LookupError(f"Unknown OAuth token: {public_id}")
         with self.state.connect(readonly=readonly) as connection:
             row = connection.execute(
-                "SELECT public_id, grant_id, created_at, expires_at, revoked_at FROM oauth_access_tokens WHERE public_id = ?",
+                "SELECT public_id, grant_id, created_at, expires_at, revoked_at "
+                "FROM oauth_access_tokens WHERE public_id = ?",
                 (public_id,),
             ).fetchone()
             if row is not None:
                 return self._credential_from_row("access", row)
             row = connection.execute(
-                "SELECT public_id, grant_id, created_at, expires_at, revoked_at, rotated_at FROM oauth_refresh_tokens WHERE public_id = ?",
+                "SELECT public_id, grant_id, created_at, expires_at, revoked_at, rotated_at "
+                "FROM oauth_refresh_tokens WHERE public_id = ?",
                 (public_id,),
             ).fetchone()
         if row is None:
@@ -861,11 +933,13 @@ class OAuthRegistry:
         revoked_at = self._now().isoformat()
         with self.state.connect() as connection:
             access = connection.execute(
-                "UPDATE oauth_access_tokens SET revoked_at = COALESCE(revoked_at, ?) WHERE revoked_at IS NULL",
+                "UPDATE oauth_access_tokens "
+                "SET revoked_at = COALESCE(revoked_at, ?) WHERE revoked_at IS NULL",
                 (revoked_at,),
             )
             refresh = connection.execute(
-                "UPDATE oauth_refresh_tokens SET revoked_at = COALESCE(revoked_at, ?) WHERE revoked_at IS NULL",
+                "UPDATE oauth_refresh_tokens "
+                "SET revoked_at = COALESCE(revoked_at, ?) WHERE revoked_at IS NULL",
                 (revoked_at,),
             )
         return int(access.rowcount) + int(refresh.rowcount)
@@ -882,7 +956,8 @@ class OAuthRegistry:
             raise OAuthAuthenticationError()
         with self.state.connect() as connection:
             cursor = connection.execute(
-                f"UPDATE {table} SET revoked_at = COALESCE(revoked_at, ?) WHERE public_id = ? AND token_hash = ?",
+                f"UPDATE {table} SET revoked_at = COALESCE(revoked_at, ?) "
+                "WHERE public_id = ? AND token_hash = ?",
                 (self._now().isoformat(), public_id, self._hash(value)),
             )
         return bool(cursor.rowcount)
