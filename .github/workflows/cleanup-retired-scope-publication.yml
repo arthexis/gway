@@ -20,6 +20,9 @@ jobs:
           ref: feature/curated-scope-authority
           fetch-depth: 0
 
+      - name: Install test dependencies
+        run: python -m pip install -e '.[dev]'
+
       - name: Remove retired publication machinery
         shell: python
         run: |
