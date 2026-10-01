@@ -47,6 +47,71 @@ def test_project_capability_metadata_is_normalized():
     )
 
 
+def test_project_scope_semantic_terms_are_normalized():
+    document = _document()
+    document["tool"]["gway"]["scopes"]["demo-read"]["semantic_terms"] = [
+        " Demo ",
+        "READ",
+        "demo",
+    ]
+
+    scopes = project_scopes(document, source="demo")
+
+    assert scopes["demo-read"]["semantic_terms"] == frozenset({"demo", "read"})
+
+
+@pytest.mark.parametrize("semantic_terms", ["demo,read", [], ["demo", " "]])
+def test_project_scope_rejects_malformed_semantic_terms(semantic_terms):
+    document = _document()
+    document["tool"]["gway"]["scopes"]["demo-read"]["semantic_terms"] = semantic_terms
+
+    with pytest.raises(ValueError, match="semantic_terms"):
+        project_scopes(document)
+
+
+def test_semantic_project_scope_is_validated_before_publication(gateway):
+    from gway.config import _publish_project_capabilities
+
+    safe = gateway.wrap("demo.read", lambda: None)
+    safe.mutates = False
+    safe.__gway_mutates__ = False
+    document = _document()
+    document["tool"]["gway"]["scopes"]["demo-read"]["operations"] = ["demo.read"]
+    document["tool"]["gway"]["scopes"]["demo-read"]["semantic_terms"] = [
+        "demo",
+        "read",
+    ]
+
+    _publish_project_capabilities(gateway, document, source="demo")
+
+    assert gateway._published_scopes["demo-read"]["semantic_terms"] == frozenset(
+        {"demo", "read"}
+    )
+
+
+def test_unsafe_semantic_project_scope_fails_before_publication_or_persistence(
+    gateway, tmp_path
+):
+    from gway.config import _publish_project_capabilities
+
+    gateway.security_path = tmp_path / "security.sqlite"
+    unsafe = gateway.wrap("demo.create", lambda: None)
+    unsafe.mutates = True
+    unsafe.__gway_mutates__ = True
+    document = _document()
+    document["tool"]["gway"]["scopes"]["demo-read"]["operations"] = ["demo.create"]
+    document["tool"]["gway"]["scopes"]["demo-read"]["semantic_terms"] = [
+        "demo",
+        "read",
+    ]
+
+    with pytest.raises(ValueError, match="mutating: demo.create"):
+        _publish_project_capabilities(gateway, document, source="demo")
+
+    assert "demo-read" not in getattr(gateway, "_published_scopes", {})
+    assert not gateway.security_path.exists()
+
+
 def test_local_project_publishes_scopes_and_survey(tmp_path, monkeypatch):
     (tmp_path / "pyproject.toml").write_text(
         """
