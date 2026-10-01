@@ -1,9 +1,8 @@
 """Architecture contracts for the sampler-owned GitHub capability."""
 
-import inspect
+import importlib.util
 
 from sampler.github import Controller
-from sampler.github._legacy import Controller as LegacyController
 from sampler.github.admin import ADMIN_OPERATIONS
 
 
@@ -30,24 +29,31 @@ def test_public_surface_is_owned_by_expected_domain_layers():
     } == expected
 
 
-def test_composite_controller_has_no_legacy_backed_public_operations():
-    legacy_public = {
-        name
-        for name in dir(Controller)
-        if not name.startswith("_")
-        and callable(getattr(Controller, name))
-        and getattr(getattr(Controller, name), "__module__", None)
-        == "sampler.github._legacy"
+def test_legacy_github_controller_module_is_removed():
+    assert importlib.util.find_spec("sampler.github._legacy") is None
+
+
+def test_admin_operations_are_owned_by_extracted_admin_domains():
+    allowed = {
+        "sampler.github.admin_rulesets",
+        "sampler.github.admin_protection",
+        "sampler.github.admin_access",
+        "sampler.github.admin_actions_policy",
     }
 
-    assert legacy_public == set()
+    assert {
+        getattr(getattr(Controller, name), "__module__", None)
+        for name in ADMIN_OPERATIONS
+    } <= allowed
 
 
-def test_extracted_admin_signatures_match_legacy_contract():
-    for name in ADMIN_OPERATIONS:
-        assert inspect.signature(getattr(Controller, name)) == inspect.signature(
-            getattr(LegacyController, name)
-        )
+def test_composite_controller_has_no_legacy_backed_public_operations():
+    assert all(
+        getattr(getattr(Controller, name), "__module__", None)
+        != "sampler.github._legacy"
+        for name in dir(Controller)
+        if not name.startswith("_") and callable(getattr(Controller, name))
+    )
 
 
 def test_non_admin_mutations_are_owned_by_domain_modules():
