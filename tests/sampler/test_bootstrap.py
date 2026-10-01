@@ -62,10 +62,7 @@ def test_watchtower_bootstrap_recipe_owns_installer_site_dns_and_tls(recipe_comm
     assert any(command.startswith("dns create [domain]") for command in commands)
     assert any(command.startswith("dns ready [domain]") for command in commands)
     assert any(command.startswith("certbot certonly") for command in commands)
-    assert any(
-        command.startswith("render nginx-https-[site].conf")
-        for command in commands
-    )
+    assert any(command.startswith("render nginx-https-[site].conf") for command in commands)
     assert "--rollback gway-bootstrap" in rendered
     assert commands.count("nginx -t") == 2
     assert commands.count("nginx -s reload") == 2
@@ -76,16 +73,8 @@ def test_installer_catalog_is_single_source_for_public_choices(sampler_path):
     namespace = runpy.run_path(str(sampler_path("bootstrap/watchtower.py")))
     catalog = namespace["catalog"]()["installers"]
 
-    assert [item["installer"] for item in catalog] == [
-        "gway",
-        "satellite",
-        "control",
-    ]
-    assert [item["title"] for item in catalog] == [
-        "GWAY",
-        "Satellite",
-        "Control",
-    ]
+    assert [item["installer"] for item in catalog] == ["gway", "satellite", "control"]
+    assert [item["title"] for item in catalog] == ["GWAY", "Satellite", "Control"]
     assert all(item["description"] for item in catalog)
     assert all("url" not in item and "command" not in item for item in catalog)
 
@@ -136,16 +125,20 @@ def test_arthexis_roles_share_one_installer_template(sampler_path):
     assert 'mkdir -p "$ARTHEXIS_DATA_DIR"' in script
     assert 'ARTHEXIS_DATA_DIR="$ARTHEXIS_DATA_DIR" "$GWAY" arthexis migrate --no-interactive' in script
     assert 'ARTHEXIS_DATA_DIR="$ARTHEXIS_DATA_DIR" "$GWAY" arthexis seed' in script
+    assert 'ARTHEXIS_SERVE="$ARTHEXIS_HOME/.venv/bin/serve"' in script
+    assert 'ARTHEXIS_CELERY="$ARTHEXIS_HOME/.venv/bin/celery"' in script
+    assert '-- "$ARTHEXIS_SERVE" --host 127.0.0.1 --port "$ARTHEXIS_WEB_PORT" --data-dir "$ARTHEXIS_DATA_DIR"' in script
+    assert '-- "$ARTHEXIS_CELERY" -A arthexis.celery:app worker --loglevel INFO' in script
+    assert '-- "$ARTHEXIS_CELERY" -A arthexis.celery:app beat --loglevel INFO' in script
+    assert 'ARTHEXIS_BOOTSTRAP_SERVICE_SETTLE_SECONDS' in script
+    assert 'systemctl --user is-active --quiet "$unit"' in script
+    assert 'journalctl --user -u "$unit" -n 80 --no-pager' in script
+    assert 'service verification failed; installation is incomplete.' in script
     assert 'ARTHEXIS_BOOTSTRAP_VERIFY_ONLY' in script
+    assert 'ARTHEXIS_BOOTSTRAP_WEB_PORT:-0' in script
     assert 'Arthexis bootstrap verification complete.' in script
-    assert '"$GWAY" service install --name web --environment "ARTHEXIS_DATA_DIR=$ARTHEXIS_DATA_DIR" -- arthexis web' in script
-    assert '"$GWAY" service install --name worker --environment "ARTHEXIS_DATA_DIR=$ARTHEXIS_DATA_DIR" -- arthexis worker' in script
-    assert '"$GWAY" service install --name beat --environment "ARTHEXIS_DATA_DIR=$ARTHEXIS_DATA_DIR" -- arthexis beat' in script
-    assert '"$GWAY" service restart --name web -- arthexis web' in script
-    assert '"$GWAY" service restart --name worker -- arthexis worker' in script
-    assert '"$GWAY" service restart --name beat -- arthexis beat' in script
-    assert script.index('ARTHEXIS_DATA_DIR="$ARTHEXIS_DATA_DIR" "$GWAY" arthexis seed') < script.index('"$GWAY" service install --name web --environment "ARTHEXIS_DATA_DIR=$ARTHEXIS_DATA_DIR" -- arthexis web')
-    assert script.index('"$GWAY" service install --name beat --environment "ARTHEXIS_DATA_DIR=$ARTHEXIS_DATA_DIR" -- arthexis beat') < script.index('"$GWAY" service restart --name web -- arthexis web')
+    assert script.index('ARTHEXIS_DATA_DIR="$ARTHEXIS_DATA_DIR" "$GWAY" arthexis seed') < script.index('ARTHEXIS_SERVE="$ARTHEXIS_HOME/.venv/bin/serve"')
+    assert script.index('systemctl --user is-active --quiet "$unit"') < script.index('"[installer_title] installation complete."')
     assert "[installer_title]" in script
     assert "[installer_description]" not in script
     assert 'Arthexis project: %s' in script
@@ -171,6 +164,8 @@ def test_arthexis_bootstrap_guards_existing_database_upgrades(sampler_path):
     assert 'RUNTIME_HOLD="$(mktemp -d ' in script
     assert 'mv "$ARTHEXIS_DATA_DIR" "$RUNTIME_HOLD/var"' in script
     assert 'mv "$RUNTIME_HOLD/var" "$ARTHEXIS_DATA_DIR"' in script
+    assert 'systemctl --user stop "arthexis-$service.service"' in script
+    assert script.index('systemctl --user stop "arthexis-$service.service"') < script.index('"$GWAY" install "$ARTHEXIS_SOURCE" --ref "$ARTHEXIS_SHA"')
     assert script.index('mv "$ARTHEXIS_DATA_DIR" "$RUNTIME_HOLD/var"') < script.index('"$GWAY" install "$ARTHEXIS_SOURCE" --ref "$ARTHEXIS_SHA"')
     assert script.index('mv "$RUNTIME_HOLD/var" "$ARTHEXIS_DATA_DIR"') < script.index('ARTHEXIS_DATA_DIR="$ARTHEXIS_DATA_DIR" "$GWAY" arthexis migrate --no-interactive')
     assert "--force" not in script
@@ -178,9 +173,7 @@ def test_arthexis_bootstrap_guards_existing_database_upgrades(sampler_path):
 
 
 def test_bootstrap_https_site_serves_ui_and_exact_installer_paths(sampler_path):
-    nginx = sampler_path("bootstrap/nginx-https-[site].conf").read_text(
-        encoding="utf-8"
-    )
+    nginx = sampler_path("bootstrap/nginx-https-[site].conf").read_text(encoding="utf-8")
 
     assert "location = / {" in nginx
     root_location = nginx.split("location = / {", 1)[1].split("}", 1)[0]
@@ -223,25 +216,35 @@ def test_arthexis_bootstrap_persists_data_dir_in_installed_services(sampler_path
     script = sampler_path("bootstrap/arthexis.sh").read_text(encoding="utf-8")
 
     for service in ("web", "worker", "beat"):
-        command = (
-            '"$GWAY" service install --name '
-            + service
-            + ' --environment "ARTHEXIS_DATA_DIR=$ARTHEXIS_DATA_DIR" -- arthexis '
-            + service
-        )
-        assert command in script
-
-
-def test_arthexis_bootstrap_uses_distinct_service_identities(sampler_path):
-    script = sampler_path("bootstrap/arthexis.sh").read_text(encoding="utf-8")
-
-    for service in ("web", "worker", "beat"):
         assert (
             f'"$GWAY" service install --name {service} '
-            f'--environment "ARTHEXIS_DATA_DIR=$ARTHEXIS_DATA_DIR" -- arthexis {service}'
+            '--environment "ARTHEXIS_DATA_DIR=$ARTHEXIS_DATA_DIR"'
             in script
         )
-        assert (
-            f'"$GWAY" service restart --name {service} -- arthexis {service}'
-            in script
-        )
+
+
+def test_arthexis_bootstrap_uses_current_runtime_entrypoints(sampler_path):
+    script = sampler_path("bootstrap/arthexis.sh").read_text(encoding="utf-8")
+
+    assert '-- arthexis web' not in script
+    assert '-- arthexis worker' not in script
+    assert '-- arthexis beat' not in script
+    assert '"$ARTHEXIS_SERVE" --host 127.0.0.1' in script
+    assert '"$ARTHEXIS_CELERY" -A arthexis.celery:app worker' in script
+    assert '"$ARTHEXIS_CELERY" -A arthexis.celery:app beat' in script
+
+
+def test_arthexis_bootstrap_certifies_settled_service_health(sampler_path):
+    script = sampler_path("bootstrap/arthexis.sh").read_text(encoding="utf-8")
+
+    restart = script.index('"$GWAY" service restart --name web')
+    settle = script.index('sleep "$SERVICE_SETTLE_SECONDS"')
+    health = script.index('systemctl --user is-active --quiet "$unit"')
+    complete = script.index('"[installer_title] installation complete."')
+
+    assert restart < settle < health < complete
+    assert 'systemctl --user status "$unit" --no-pager --full' in script
+    assert 'journalctl --user -u "$unit" -n 80 --no-pager' in script
+    assert 'service_health_failed=1' in script
+    assert 'exit 1' in script[health:complete]
+    assert script.index('Arthexis bootstrap verification complete.') > health

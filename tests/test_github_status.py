@@ -11,7 +11,12 @@ class StatusEvidenceController(GitHubEvidenceController):
             "state": "open",
             "watchtower": {"available": True},
         }
-        self.pr_result = {"state": "ready", "on_hold": False}
+        self.pr_result = {
+            "state": "ready",
+            "on_hold": False,
+            "head": {"sha": "head"},
+            "auto_merge": {"enabled": False},
+        }
         self.reviews_result = {
             "state": "clear",
             "diagnostic_target": {"kind": "github-reviews", "pr": 10},
@@ -67,6 +72,41 @@ def test_automatic_states_expose_an_action_contract():
 
     assert result["disposition"] == "auto"
     assert result["action"]["kind"] == "update-branch"
+
+
+def test_on_hold_with_auto_merge_enabled_disarms_authorization():
+    controller = StatusEvidenceController()
+    controller.pr_result.update(
+        on_hold=True,
+        auto_merge={"enabled": True, "method": "SQUASH"},
+    )
+
+    result = controller.status(REPOSITORY, 10)
+
+    assert result == {
+        "repository": REPOSITORY,
+        "pr": 10,
+        "status": "on-hold",
+        "disposition": "auto",
+        "action": {
+            "kind": "ensure-auto-merge-disabled",
+            "expected_head_sha": "head",
+        },
+    }
+
+
+def test_draft_without_auto_merge_remains_waiting():
+    controller = StatusEvidenceController()
+    controller.pr_result.update(
+        state="draft",
+        auto_merge={"enabled": False},
+    )
+
+    result = controller.status(REPOSITORY, 10)
+
+    assert result["status"] == "draft"
+    assert result["disposition"] == "wait"
+    assert "action" not in result
 
 
 def test_failed_ci_escalates_with_observable_target():
