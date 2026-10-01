@@ -99,12 +99,25 @@ def test_check_freshness_identifies_conflict():
     assert result["updatable"] is False
 
 
-def test_check_merge_requires_direct_merge_once_already_mergeable():
-    controller = CheckController(_pr(mergeable=True, auto_merge=None))
+def test_check_merge_requires_direct_merge_once_immediately_mergeable():
+    controller = CheckController(_pr(mergeable=True, mergeable_state="clean", auto_merge=None))
     result = controller.check_merge("arthexis/gway", 10)
     assert result["state"] == "ready"
     assert result["authorization"]["state"] == "direct-merge-required"
     assert result["action"] == {"kind": "merge-pull", "expected_head_sha": "head"}
+
+
+def test_check_merge_uses_auto_merge_while_policy_still_blocks_merge():
+    controller = CheckController(
+        _pr(mergeable=True, mergeable_state="blocked", auto_merge=None)
+    )
+    result = controller.check_merge("arthexis/gway", 10)
+    assert result["state"] == "blocked"
+    assert result["authorization"]["state"] == "not-authorized"
+    assert result["action"] == {
+        "kind": "enable-auto-merge",
+        "expected_head_sha": "head",
+    }
 
 
 def test_check_merge_preserves_native_auto_merge_authorization():
