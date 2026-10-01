@@ -14,6 +14,7 @@ class Scope:
     operations: frozenset[str] = frozenset()
     environment: frozenset[str] = frozenset()
     owner: str | None = None
+    semantic_terms: frozenset[str] = frozenset()
 
 
 @dataclass(frozen=True)
@@ -52,6 +53,15 @@ class ScopeRegistry:
         return result
 
     @staticmethod
+    def _semantic_terms(values):
+        if values is None:
+            return frozenset()
+        result = frozenset(str(value).strip().lower() for value in values)
+        if "" in result:
+            raise ValueError("semantic terms must be non-empty strings")
+        return result
+
+    @staticmethod
     def _row_scope(connection, row):
         if row is None:
             return None
@@ -78,7 +88,24 @@ class ScopeRegistry:
                 (scope_id,),
             )
         )
-        return Scope(row["name"], operations, environment, row["owner"])
+        semantic_terms = frozenset(
+            item["term"]
+            for item in connection.execute(
+                """
+                SELECT term FROM scope_semantic_terms
+                WHERE scope_id = ?
+                ORDER BY term
+                """,
+                (scope_id,),
+            )
+        )
+        return Scope(
+            row["name"],
+            operations,
+            environment,
+            row["owner"],
+            semantic_terms,
+        )
 
     def get(self, name, *, readonly=False):
         """Return one scope, or None without creating state."""
@@ -130,6 +157,7 @@ class ScopeRegistry:
         owner,
         operations=(),
         environment=(),
+        semantic_terms=(),
         allow_claim_unowned=False,
     ):
         """Create or replace a scope only when its durable owner matches."""
@@ -139,6 +167,7 @@ class ScopeRegistry:
             raise ValueError("scope owner must be a non-empty string")
         operations = self._grants(operations, label="operation")
         environment = self._grants(environment, label="environment")
+        semantic_terms = self._semantic_terms(semantic_terms)
 
         with self.state.connect() as connection:
             row = connection.execute(
@@ -175,6 +204,9 @@ class ScopeRegistry:
             connection.execute(
                 "DELETE FROM scope_environment WHERE scope_id = ?", (scope_id,)
             )
+            connection.execute(
+                "DELETE FROM scope_semantic_terms WHERE scope_id = ?", (scope_id,)
+            )
             connection.executemany(
                 "INSERT INTO scope_operations (scope_id, operation) VALUES (?, ?)",
                 ((scope_id, operation) for operation in sorted(operations)),
@@ -182,6 +214,10 @@ class ScopeRegistry:
             connection.executemany(
                 "INSERT INTO scope_environment (scope_id, variable_name) VALUES (?, ?)",
                 ((scope_id, variable) for variable in sorted(environment)),
+            )
+            connection.executemany(
+                "INSERT INTO scope_semantic_terms (scope_id, term) VALUES (?, ?)",
+                ((scope_id, term) for term in sorted(semantic_terms)),
             )
         return self.require(name)
 
@@ -205,11 +241,12 @@ class ScopeRegistry:
                 removed.append(name)
         return removed
 
-    def replace(self, name, *, operations=(), environment=()):
+    def replace(self, name, *, operations=(), environment=(), semantic_terms=()):
         """Atomically create or replace one complete scope definition."""
         name = self._name(name)
         operations = self._grants(operations, label="operation")
         environment = self._grants(environment, label="environment")
+        semantic_terms = self._semantic_terms(semantic_terms)
 
         with self.state.connect() as connection:
             connection.execute(
@@ -226,6 +263,9 @@ class ScopeRegistry:
             connection.execute(
                 "DELETE FROM scope_environment WHERE scope_id = ?", (scope_id,)
             )
+            connection.execute(
+                "DELETE FROM scope_semantic_terms WHERE scope_id = ?", (scope_id,)
+            )
             connection.executemany(
                 """
                 INSERT INTO scope_operations (scope_id, operation)
@@ -240,8 +280,14 @@ class ScopeRegistry:
                 """,
                 ((scope_id, name) for name in sorted(environment)),
             )
+            connection.executemany(
+                """
+                INSERT INTO scope_semantic_terms (scope_id, term)
+                VALUES (?, ?)
+                """,
+                ((scope_id, term) for term in sorted(semantic_terms)),
+            )
         return self.require(name)
-
 
     def update_grants(
         self,
@@ -286,14 +332,13 @@ class ScopeRegistry:
 
         return self.require(name)
 
-
     def add_many(self, definitions):
         """Atomically add grants from multiple named scope definitions."""
         normalized = {}
         for name, definition in dict(definitions).items():
             name = self._name(name)
             definition = dict(definition)
-            unknown = set(definition) - {"operations", "environment"}
+            unknown = set(definition) - {"operations", "environment", "semantic_terms"}
             if unknown:
                 raise ValueError(
                     f"Unknown scope fields for {name}: {', '.join(sorted(unknown))}"
@@ -301,11 +346,12 @@ class ScopeRegistry:
             normalized[name] = (
                 self._grants(definition.get("operations", ()), label="operation"),
                 self._grants(definition.get("environment", ()), label="environment"),
+                self._semantic_terms(definition.get("semantic_terms", ())),
             )
 
         with self.state.connect() as connection:
             for name in sorted(normalized):
-                operations, environment = normalized[name]
+                operations, environment, semantic_terms = normalized[name]
                 connection.execute(
                     "INSERT INTO scopes (name) VALUES (?) "
                     "ON CONFLICT(name) DO NOTHING",
@@ -326,6 +372,11 @@ class ScopeRegistry:
                     "(scope_id, variable_name) VALUES (?, ?)",
                     ((scope_id, variable) for variable in sorted(environment)),
                 )
+                connection.executemany(
+                    "INSERT OR IGNORE INTO scope_semantic_terms "
+                    "(scope_id, term) VALUES (?, ?)",
+                    ((scope_id, term) for term in sorted(semantic_terms)),
+                )
 
         return [self.require(name) for name in sorted(normalized)]
 
@@ -335,7 +386,7 @@ class ScopeRegistry:
         for name, definition in dict(definitions).items():
             name = self._name(name)
             definition = dict(definition)
-            unknown = set(definition) - {"operations", "environment"}
+            unknown = set(definition) - {"operations", "environment", "semantic_terms"}
             if unknown:
                 raise ValueError(
                     f"Unknown scope fields for {name}: {', '.join(sorted(unknown))}"
@@ -346,11 +397,12 @@ class ScopeRegistry:
                     definition.get("environment", ()),
                     label="environment",
                 ),
+                self._semantic_terms(definition.get("semantic_terms", ())),
             )
 
         with self.state.connect() as connection:
             for name in sorted(normalized):
-                operations, environment = normalized[name]
+                operations, environment, semantic_terms = normalized[name]
                 connection.execute(
                     "INSERT INTO scopes (name) VALUES (?) "
                     "ON CONFLICT(name) DO NOTHING",
@@ -367,6 +419,10 @@ class ScopeRegistry:
                 )
                 connection.execute(
                     "DELETE FROM scope_environment WHERE scope_id = ?",
+                    (scope_id,),
+                )
+                connection.execute(
+                    "DELETE FROM scope_semantic_terms WHERE scope_id = ?",
                     (scope_id,),
                 )
                 connection.executemany(
@@ -388,6 +444,13 @@ class ScopeRegistry:
                         (scope_id, variable_name)
                         for variable_name in sorted(environment)
                     ),
+                )
+                connection.executemany(
+                    """
+                    INSERT INTO scope_semantic_terms (scope_id, term)
+                    VALUES (?, ?)
+                    """,
+                    ((scope_id, term) for term in sorted(semantic_terms)),
                 )
         return [self.require(name) for name in sorted(normalized)]
 
@@ -427,4 +490,3 @@ class ScopeRegistry:
             operations.update(scope.operations)
             environment.update(scope.environment)
         return EffectiveScope(frozenset(operations), frozenset(environment))
-

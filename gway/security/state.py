@@ -4,7 +4,7 @@ from pathlib import Path
 import sqlite3
 
 
-_SCHEMA_VERSION = 7
+_SCHEMA_VERSION = 9
 
 
 class SecurityState:
@@ -61,20 +61,26 @@ class SecurityState:
                 name TEXT NOT NULL UNIQUE,
                 owner TEXT
             );
-
             CREATE TABLE IF NOT EXISTS scope_operations (
                 scope_id INTEGER NOT NULL,
                 operation TEXT NOT NULL,
                 UNIQUE(scope_id, operation),
                 FOREIGN KEY(scope_id) REFERENCES scopes(id) ON DELETE CASCADE
             );
-
             CREATE TABLE IF NOT EXISTS scope_environment (
                 scope_id INTEGER NOT NULL,
                 variable_name TEXT NOT NULL,
                 UNIQUE(scope_id, variable_name),
                 FOREIGN KEY(scope_id) REFERENCES scopes(id) ON DELETE CASCADE
             );
+            CREATE TABLE IF NOT EXISTS scope_semantic_terms (
+                scope_id INTEGER NOT NULL,
+                term TEXT NOT NULL,
+                UNIQUE(scope_id, term),
+                FOREIGN KEY(scope_id) REFERENCES scopes(id) ON DELETE CASCADE
+            );
+            CREATE INDEX IF NOT EXISTS idx_scope_semantic_terms_term
+            ON scope_semantic_terms(term);
 
             CREATE TABLE IF NOT EXISTS tokens (
                 id INTEGER PRIMARY KEY,
@@ -85,13 +91,18 @@ class SecurityState:
                 expires_at TEXT,
                 disabled INTEGER NOT NULL DEFAULT 0
             );
-
             CREATE TABLE IF NOT EXISTS token_scopes (
                 token_id INTEGER NOT NULL,
                 scope_id INTEGER NOT NULL,
                 UNIQUE(token_id, scope_id),
                 FOREIGN KEY(token_id) REFERENCES tokens(id) ON DELETE CASCADE,
                 FOREIGN KEY(scope_id) REFERENCES scopes(id) ON DELETE CASCADE
+            );
+            CREATE TABLE IF NOT EXISTS token_union_scopes (
+                token_id INTEGER NOT NULL,
+                terms TEXT NOT NULL,
+                UNIQUE(token_id, terms),
+                FOREIGN KEY(token_id) REFERENCES tokens(id) ON DELETE CASCADE
             );
 
             CREATE TABLE IF NOT EXISTS oauth_clients (
@@ -104,7 +115,6 @@ class SecurityState:
                 created_at TEXT NOT NULL,
                 disabled INTEGER NOT NULL DEFAULT 0
             );
-
             CREATE TABLE IF NOT EXISTS oauth_links (
                 id INTEGER PRIMARY KEY,
                 name TEXT NOT NULL UNIQUE,
@@ -113,7 +123,6 @@ class SecurityState:
                 revoked_at TEXT,
                 FOREIGN KEY(token_id) REFERENCES tokens(id) ON DELETE CASCADE
             );
-
             CREATE TABLE IF NOT EXISTS oauth_grants (
                 id INTEGER PRIMARY KEY,
                 link_id INTEGER NOT NULL,
@@ -123,7 +132,6 @@ class SecurityState:
                 revoked_at TEXT,
                 FOREIGN KEY(link_id) REFERENCES oauth_links(id) ON DELETE CASCADE
             );
-
             CREATE TABLE IF NOT EXISTS oauth_grant_scopes (
                 grant_id INTEGER NOT NULL,
                 scope_id INTEGER NOT NULL,
@@ -131,7 +139,12 @@ class SecurityState:
                 FOREIGN KEY(grant_id) REFERENCES oauth_grants(id) ON DELETE CASCADE,
                 FOREIGN KEY(scope_id) REFERENCES scopes(id) ON DELETE CASCADE
             );
-
+            CREATE TABLE IF NOT EXISTS oauth_grant_union_scopes (
+                grant_id INTEGER NOT NULL,
+                terms TEXT NOT NULL,
+                UNIQUE(grant_id, terms),
+                FOREIGN KEY(grant_id) REFERENCES oauth_grants(id) ON DELETE CASCADE
+            );
             CREATE TABLE IF NOT EXISTS oauth_authorization_codes (
                 id INTEGER PRIMARY KEY,
                 grant_id INTEGER NOT NULL,
@@ -144,7 +157,6 @@ class SecurityState:
                 consumed_at TEXT,
                 FOREIGN KEY(grant_id) REFERENCES oauth_grants(id) ON DELETE CASCADE
             );
-
             CREATE TABLE IF NOT EXISTS oauth_access_tokens (
                 id INTEGER PRIMARY KEY,
                 grant_id INTEGER NOT NULL,
@@ -155,7 +167,6 @@ class SecurityState:
                 revoked_at TEXT,
                 FOREIGN KEY(grant_id) REFERENCES oauth_grants(id) ON DELETE CASCADE
             );
-
             CREATE TABLE IF NOT EXISTS oauth_refresh_tokens (
                 id INTEGER PRIMARY KEY,
                 grant_id INTEGER NOT NULL,
@@ -170,38 +181,24 @@ class SecurityState:
             """
         )
         if version < 3:
-            columns = {
-                row[1]
-                for row in connection.execute("PRAGMA table_info(tokens)")
-            }
+            columns = {row[1] for row in connection.execute("PRAGMA table_info(tokens)")}
             if "expires_at" not in columns:
                 connection.execute("ALTER TABLE tokens ADD COLUMN expires_at TEXT")
         if version < 5:
-            columns = {
-                row[1]
-                for row in connection.execute("PRAGMA table_info(oauth_grants)")
-            }
+            columns = {row[1] for row in connection.execute("PRAGMA table_info(oauth_grants)")}
             if "resource" not in columns:
                 connection.execute("ALTER TABLE oauth_grants ADD COLUMN resource TEXT")
         if version < 6:
-            columns = {
-                row[1]
-                for row in connection.execute("PRAGMA table_info(oauth_clients)")
-            }
+            columns = {row[1] for row in connection.execute("PRAGMA table_info(oauth_clients)")}
             if "client_secret_hash" not in columns:
-                connection.execute(
-                    "ALTER TABLE oauth_clients ADD COLUMN client_secret_hash TEXT"
-                )
+                connection.execute("ALTER TABLE oauth_clients ADD COLUMN client_secret_hash TEXT")
             if "token_endpoint_auth_method" not in columns:
                 connection.execute(
                     "ALTER TABLE oauth_clients ADD COLUMN "
                     "token_endpoint_auth_method TEXT NOT NULL DEFAULT 'none'"
                 )
         if version < 7:
-            columns = {
-                row[1]
-                for row in connection.execute("PRAGMA table_info(scopes)")
-            }
+            columns = {row[1] for row in connection.execute("PRAGMA table_info(scopes)")}
             if "owner" not in columns:
                 connection.execute("ALTER TABLE scopes ADD COLUMN owner TEXT")
         if version < _SCHEMA_VERSION:

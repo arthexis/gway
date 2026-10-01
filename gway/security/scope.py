@@ -7,7 +7,9 @@ try:
 except ModuleNotFoundError:
     import tomli as _toml
 
-from .scopes import ScopeRegistry
+from . import semantics as scope_semantics
+from .scopes import Scope, ScopeRegistry
+from .validation import require_valid_scope, validate_definitions, validate_scope
 
 
 __all__ = ()
@@ -82,17 +84,45 @@ class Controller:
             return tuple(item.strip() for item in environment.split(",") if item.strip())
         return tuple(environment)
 
-    def set(self, name, *operations, environment=None):
-        """Replace one scope using operation grants and optional environment names."""
+    @staticmethod
+    def _semantic_values(semantic=None, semantic_terms=None):
+        values = semantic_terms if semantic_terms is not None else semantic
+        if values is None:
+            return ()
+        if isinstance(values, str):
+            return tuple(item.strip() for item in values.split(",") if item.strip())
+        return tuple(values)
+
+    def set(self, name, *operations, environment=None, semantic=None, semantic_terms=None):
+        """Replace one scope using operation grants and optional metadata."""
         environment_values = self._environment_values(environment)
+        semantic_values = self._semantic_values(semantic, semantic_terms)
+        candidate = Scope(
+            str(name),
+            frozenset(operations),
+            frozenset(environment_values),
+            None,
+            frozenset(str(value).strip().lower() for value in semantic_values),
+        )
+        require_valid_scope(self.gateway, candidate)
         return self.registry.replace(
             name,
             operations=operations,
             environment=environment_values,
+            semantic_terms=semantic_values,
         )
 
     def add(self, name, *operations, environment=None):
         """Add operation and environment grants to an existing scope."""
+        existing = self.registry.require(name)
+        candidate = Scope(
+            existing.name,
+            existing.operations | frozenset(operations),
+            existing.environment | frozenset(self._environment_values(environment)),
+            existing.owner,
+            existing.semantic_terms,
+        )
+        require_valid_scope(self.gateway, candidate)
         return self.registry.update_grants(
             name,
             add_operations=operations,
@@ -107,9 +137,44 @@ class Controller:
             remove_environment=self._environment_values(environment),
         )
 
-    def resolve(self, *names, mutate=True):
-        """Return the union of named security scopes."""
-        return self._registry(converge=mutate).resolve(names, readonly=not mutate)
+    def contains(self, name, *terms, mutate=True):
+        """Return whether a semantic scope contains all requested terms."""
+        registry = self._registry(converge=mutate)
+        scope = registry.require(name, readonly=not mutate)
+        return scope_semantics.contains(scope, terms)
+
+    def match(self, *terms, mutate=True):
+        """Return semantic leaf scopes matching all requested terms."""
+        registry = self._registry(converge=mutate)
+        return scope_semantics.match(
+            registry.all(readonly=not mutate),
+            terms,
+        )
+
+    def union(self, *names, mutate=True):
+        """Return the least broad semantic authority containing named scopes."""
+        registry = self._registry(converge=mutate)
+        scopes = tuple(
+            registry.require(name, readonly=not mutate)
+            for name in names
+        )
+        return scope_semantics.union(scopes)
+
+    def resolve(self, *values, semantic=False, mutate=True):
+        """Resolve exact named scopes, or semantic terms when explicitly requested."""
+        registry = self._registry(converge=mutate)
+        if semantic:
+            return scope_semantics.resolve(
+                registry.all(readonly=not mutate),
+                values,
+            )
+        return registry.resolve(values, readonly=not mutate)
+
+    def validate(self, name, *, mutate=True):
+        """Validate semantic safety of one existing scope."""
+        registry = self._registry(converge=mutate)
+        scope = registry.require(name, readonly=not mutate)
+        return validate_scope(self.gateway, scope)
 
     @staticmethod
     def _definitions(path):
@@ -124,13 +189,16 @@ class Controller:
     def apply(self, path, *, absolute=False):
         """Apply scope definitions, adding grants unless absolute is requested."""
         scopes = self._definitions(path)
+        validate_definitions(self.gateway, scopes)
         if absolute:
             return self.registry.replace_many(scopes)
         return self.registry.add_many(scopes)
 
     def replace_from(self, path):
         """Replace complete definitions for scopes declared in a TOML file."""
-        return self.registry.replace_many(self._definitions(path))
+        definitions = self._definitions(path)
+        validate_definitions(self.gateway, definitions)
+        return self.registry.replace_many(definitions)
 
     @staticmethod
     def _toml_string(value):
@@ -148,8 +216,13 @@ class Controller:
             environment = ", ".join(
                 self._toml_string(value) for value in sorted(scope.environment)
             )
+            semantic_terms = ", ".join(
+                self._toml_string(value) for value in sorted(scope.semantic_terms)
+            )
             lines.append(f"operations = [{operations}]")
             lines.append(f"environment = [{environment}]")
+            if scope.semantic_terms:
+                lines.append(f"semantic_terms = [{semantic_terms}]")
             lines.append("")
         rendered = "\n".join(lines)
         if to is None:
