@@ -7,17 +7,31 @@ from .publication import PublishedScope, normalize_publications
 
 
 def _django_mounts(gateway):
-    """Return named Django project mounts known to the ingestion registry."""
+    """Return named Django project mounts known to the gateway."""
     try:
         from ..ingestion.django import DjangoProject
     except ModuleNotFoundError:
         return ()
 
     mounts = []
+    seen = set()
+
+    # ingest_project() stores authoritative mounted projects here. Scope
+    # publication must follow the same registry rather than depending on a
+    # mount object also having been inserted into the generic ingestion tree.
+    for value in getattr(gateway, "_django_projects", {}).values():
+        if isinstance(value, DjangoProject) and value.name and id(value) not in seen:
+            seen.add(id(value))
+            mounts.append(value)
+
+    # Preserve compatibility with callers/tests that expose a DjangoProject
+    # through the generic ingestion registry without using ingest_project().
     for record in getattr(gateway, "_ingested", {}).values():
         value = getattr(record, "value", None)
-        if isinstance(value, DjangoProject) and value.name:
+        if isinstance(value, DjangoProject) and value.name and id(value) not in seen:
+            seen.add(id(value))
             mounts.append(value)
+
     return tuple(mounts)
 
 
