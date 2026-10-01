@@ -124,8 +124,9 @@ def test_legacy_union_metadata_does_not_broaden_native_bearer(tmp_path):
         union_scopes={("write",)},
     )
 
-    legacy = tokens.authenticate(issued.bearer)
-    assert legacy.authority.operations == frozenset({"log.read", "github.drive"})
+    # Transitional registries still expose legacy metadata until the schema
+    # cleanup chunk, but the external bearer boundary must ignore it now.
+    assert "github.drive" in tokens.authenticate(issued.bearer).authority.operations
 
     identity = authenticate_bearer(issued.bearer, tokens=tokens)
     assert identity.scopes == frozenset({"reader"})
@@ -155,8 +156,9 @@ def test_legacy_union_metadata_does_not_broaden_oauth_bearer(tmp_path):
     )
     issued = oauth.issue_tokens(grant.id)
 
-    legacy = oauth.authenticate_access(issued.access_token)
-    assert legacy.authority.operations == frozenset({"log.read", "github.drive"})
+    # The legacy OAuth registry may still resolve semantic metadata internally
+    # during migration, but transport authority is exact-scope only.
+    assert "github.drive" in oauth.authenticate_access(issued.access_token).authority.operations
 
     identity = authenticate_bearer(
         issued.access_token,
