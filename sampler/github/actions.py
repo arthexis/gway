@@ -56,6 +56,13 @@ class ActionsOperations:
             "GET", f"{self._repo(repository)}/check-runs/{int(check)}"
         ).data
 
+    def check_annotations(self, repository, check):
+        """List annotations emitted by one GitHub check run."""
+        return self._all(
+            f"{self._repo(repository)}/check-runs/{int(check)}/annotations",
+            params={"per_page": 100},
+        )
+
     def job_logs(self, repository, job):
         """Return the downloadable log response for one Actions job."""
         response = self._github().download_redirect(
