@@ -11,66 +11,90 @@ on:
         type: number
 
 permissions:
+  actions: read
+  checks: read
+  contents: write
   pull-requests: write
-  issues: read
 
 concurrency:
   group: native-auto-merge-guard-${{ github.event.pull_request.number || inputs.pr_number || github.run_id }}
   cancel-in-progress: false
 
 jobs:
-  guard:
-    name: Guard native auto-merge
+  reconcile:
+    name: Reconcile merge authorization with Drive
     runs-on: ubuntu-latest
+    env:
+      GWAY_GITHUB_TOKEN: ${{ secrets.BRANCH_UPDATE_TOKEN }}
+      REPOSITORY: ${{ github.repository }}
+      EVENT_NAME: ${{ github.event_name }}
+      EVENT_PR_NUMBER: ${{ github.event.pull_request.number }}
+      INPUT_PR_NUMBER: ${{ inputs.pr_number }}
     steps:
-      - name: Resolve pull request
-        id: pr
-        env:
-          EVENT_NAME: ${{ github.event_name }}
-          INPUT_PR: ${{ inputs.pr_number }}
+      - name: Check out trusted reconciler
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.10'
+          cache: pip
+
+      - name: Install Gway
+        run: python -m pip install -e .
+
+      - name: Reconcile pull request
         shell: bash
         run: |
-          set -euo pipefail
+          set -Eeuo pipefail
+
+          if [[ -z "${GWAY_GITHUB_TOKEN:-}" ]]; then
+            echo "::error::BRANCH_UPDATE_TOKEN is not configured; Drive requires the normal reconciliation token."
+            exit 1
+          fi
+
           if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
-            pr_number="$INPUT_PR"
+            pr_number="$INPUT_PR_NUMBER"
           else
-            pr_number="$(jq -r '.pull_request.number // empty' "$GITHUB_EVENT_PATH")"
+            pr_number="$EVENT_PR_NUMBER"
           fi
-          if [[ -z "$pr_number" ]]; then
-            echo "skip=true" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          echo "number=$pr_number" >> "$GITHUB_OUTPUT"
-          echo "skip=false" >> "$GITHUB_OUTPUT"
 
-      - name: Disable auto-merge for draft or on-hold PRs
-        if: steps.pr.outputs.skip != 'true'
-        env:
-          GH_TOKEN: ${{ github.token }}
-          REPOSITORY: ${{ github.repository }}
-          PR_NUMBER: ${{ steps.pr.outputs.number }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          pr_json="$(gh api "repos/$REPOSITORY/pulls/$PR_NUMBER")"
-          state="$(jq -r '.state' <<< "$pr_json")"
-          draft="$(jq -r '.draft' <<< "$pr_json")"
-          on_hold="$(jq -r '[.labels[].name | ascii_downcase] | any(. == "on-hold" or . == "on hold")' <<< "$pr_json")"
-          auto_merge="$(jq -r '.auto_merge != null' <<< "$pr_json")"
-
-          if [[ "$state" != "open" ]]; then
-            echo "PR #$PR_NUMBER is not open; nothing to guard."
+          if [[ -z "${pr_number:-}" ]]; then
+            echo "No pull request target was resolved; nothing to reconcile."
             exit 0
           fi
 
-          if [[ "$draft" == "true" || "$on_hold" == "true" ]]; then
-            if [[ "$auto_merge" == "true" ]]; then
-              gh pr merge "$PR_NUMBER" --repo "$REPOSITORY" --disable-auto
-              echo "Disabled native auto-merge for PR #$PR_NUMBER (draft=$draft, on_hold=$on_hold)."
-            else
-              echo "PR #$PR_NUMBER is guarded already (draft=$draft, on_hold=$on_hold)."
-            fi
-            exit 0
-          fi
+          result="$RUNNER_TEMP/drive-result.json"
+          python -m gway github drive "$REPOSITORY" "$pr_number" -o "$result"
 
-          echo "PR #$PR_NUMBER is open, ready, and not on-hold. Native auto-merge authorization is unchanged."
+          python - "$result" "$GITHUB_STEP_SUMMARY" <<'PY'
+          import json
+          import sys
+
+          result_path, summary_path = sys.argv[1:]
+          with open(result_path, encoding="utf-8") as handle:
+              result = json.load(handle)
+
+          actions = result.get("actions") or []
+          applied = [item.get("kind") for item in actions if item.get("result") == "changed"]
+          with open(summary_path, "a", encoding="utf-8") as summary:
+              summary.write(
+                  f"- PR #{result['pr']}: **{result['outcome']}** → "
+                  f"`{result['final_status']}` / `{result['disposition']}`"
+              )
+              if applied:
+                  summary.write(f"; applied: {', '.join(applied)}")
+              if result.get("reason"):
+                  summary.write(f"; reason: `{result['reason']}`")
+              summary.write("\n")
+          PY
+
+      - name: Publish Drive result
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: github-drive-guard-${{ github.run_id }}
+          path: ${{ runner.temp }}/drive-result.json
+          if-no-files-found: ignore
