@@ -1,9 +1,10 @@
-"""Architecture checks for the sampler-owned GitHub domain split."""
+"""Architecture contracts for the sampler-owned GitHub capability."""
 
-from sampler.github.checks import Controller
+from sampler.github import Controller
+from sampler.github.admin import ADMIN_OPERATIONS
 
 
-def test_github_controller_methods_are_owned_by_domain_modules():
+def test_public_surface_is_owned_by_expected_domain_layers():
     expected = {
         "repository": "sampler.github.repository",
         "pull": "sampler.github.pulls",
@@ -12,26 +13,38 @@ def test_github_controller_methods_are_owned_by_domain_modules():
         "runs": "sampler.github.actions",
         "release": "sampler.github.releases",
         "check_ci": "sampler.github.checks",
+        "observe_ci": "sampler.github.observe",
+        "check_rollout": "sampler.github.rollout",
+        "status": "sampler.github.status",
     }
 
-    for name, module in expected.items():
-        assert getattr(Controller, name).__module__ == module
+    assert {
+        name: getattr(Controller, name).__module__ for name in expected
+    } == expected
 
 
-def test_github_composite_keeps_admin_as_the_only_legacy_slice():
-    assert Controller.rulesets.__module__ == "sampler.github._legacy"
-    assert Controller.branch_protection.__module__ == "sampler.github._legacy"
-
-    non_admin = {
-        "repository",
-        "pull",
-        "issue",
-        "review_threads",
-        "runs",
-        "release",
-        "set_secret",
+def test_legacy_implementation_is_reachable_only_through_admin_operations():
+    legacy_public = {
+        name
+        for name in dir(Controller)
+        if not name.startswith("_")
+        and callable(getattr(Controller, name))
+        and getattr(getattr(Controller, name), "__module__", None)
+        == "sampler.github._legacy"
     }
-    assert all(
-        getattr(Controller, name).__module__ != "sampler.github._legacy"
-        for name in non_admin
-    )
+
+    assert legacy_public == set(ADMIN_OPERATIONS)
+
+
+def test_non_admin_mutations_are_owned_by_domain_modules():
+    expected = {
+        "set_secret": "sampler.github.actions",
+        "create_pull": "sampler.github.pulls",
+        "comment_issue": "sampler.github.issues",
+        "create_release": "sampler.github.releases",
+        "create_branch": "sampler.github.repository",
+    }
+
+    assert {
+        name: getattr(Controller, name).__module__ for name in expected
+    } == expected
