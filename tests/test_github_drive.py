@@ -17,7 +17,7 @@ class ScriptedDriveController(DriveController):
             return self.statuses.pop(0)
         return dict(self.statuses[0])
 
-    def _execute_drive_action(self, repository, pull, action):
+    def _execute_drive_action(self, repository, pull, action, mutate=True):
         self.action_calls.append(dict(action))
         if not self.executions:
             return None
@@ -67,10 +67,10 @@ def test_escalation_preserves_diagnostic_target():
     assert result["diagnostic_target"] == diagnostic
 
 
-def test_chunk_one_stops_at_unimplemented_action_boundary():
-    action = {"kind": "update-branch", "expected_head_sha": "head"}
+def test_unknown_action_stops_at_unimplemented_action_boundary():
+    action = {"kind": "future-action", "expected_head_sha": "head"}
     controller = ScriptedDriveController([
-        _status("branch-behind", "auto", action=action)
+        _status("action-required", "auto", action=action)
     ])
 
     result = controller.drive(REPOSITORY, 10)
