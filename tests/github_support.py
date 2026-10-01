@@ -50,6 +50,10 @@ class GitHubEvidenceController(Controller):
         )
         self.issue_targets = evidence.pop("issue_targets", [10, 11])
         self.issue_state_calls = []
+        self.ci_result = evidence.pop(
+            "ci",
+            {"repository": REPOSITORY, "pr": PULL, "state": "passed"},
+        )
         self.check_items = evidence.pop(
             "checks",
             [
@@ -117,6 +121,12 @@ class GitHubEvidenceController(Controller):
             return {"status": "ahead" if self.accepted else "diverged"}
         return dict(self.compare_result)
 
+    def _check_ci_pull(self, repository, pull):
+        value = dict(self.ci_result)
+        value["repository"] = str(repository)
+        value["pr"] = int(pull)
+        return value
+
     def file(self, repository, path, ref=None):
         manifest = {
             "accepted_at": "2026-09-30T21:24:49+00:00",
@@ -151,7 +161,10 @@ class GitHubEvidenceController(Controller):
         for item in self.job_items:
             if int(item["id"]) == int(job):
                 value = dict(item)
-                value.setdefault("steps", [{"name": "pytest", "conclusion": value.get("conclusion")}])
+                value.setdefault(
+                    "steps",
+                    [{"name": "pytest", "conclusion": value.get("conclusion")}],
+                )
                 return value
         raise KeyError(job)
 
