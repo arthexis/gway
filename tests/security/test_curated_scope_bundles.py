@@ -79,8 +79,6 @@ def test_token_rename_rejects_invalid_changes_atomically(tmp_path):
 
 def test_security_token_rename_command_uses_registry_identity(gateway, tmp_path):
     gateway.security_path = tmp_path / "security.sqlite"
-    scopes = ScopeRegistry(gateway.security_path)
-    scopes.create("operator-read")
     bearer = gateway("security token create old-name operator-read")
     before = gateway("security token show old-name")
 
