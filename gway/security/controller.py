@@ -22,6 +22,7 @@ class Controller:
             _publish_project_capabilities,
             discover_managed_projects,
         )
+        from .django_publication import collect_django_publications
 
         discover_managed_projects(self.gateway)
 
@@ -41,6 +42,7 @@ class Controller:
             )
             _publish_project_capabilities(self.gateway, data, source=source)
 
+        collect_django_publications(self.gateway)
         return self.gateway.converge_security_scopes()
 
     def _install(
