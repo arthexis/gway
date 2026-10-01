@@ -1,3 +1,4 @@
+from gway.tokens import tokenize
 from sampler.github.observe import Controller
 
 
@@ -25,7 +26,13 @@ class ObserveController(Controller):
         return [{"number": 10}, {"number": 11}]
 
     def reviews(self, repository, number):
-        return [{"id": 1, "state": "APPROVED", "user": {"login": "reviewer"}}]
+        return [
+            {
+                "id": 1,
+                "state": "APPROVED",
+                "user": {"login": "reviewer"},
+            }
+        ]
 
     def review_decision(self, repository, number):
         return "APPROVED"
@@ -44,27 +51,68 @@ class ObserveController(Controller):
         return [{"id": 2, "body": "Please adjust this"}]
 
     def compare(self, repository, base, head):
-        return {"status": "behind", "ahead_by": 2, "behind_by": 3, "files": [{"filename": "gway.py"}]}
+        return {
+            "status": "behind",
+            "ahead_by": 2,
+            "behind_by": 3,
+            "files": [{"filename": "gway.py"}],
+        }
 
     def checks(self, repository, ref):
-        return [{"id": 5, "name": "python / Python compatibility", "conclusion": "success"}]
+        return [
+            {
+                "id": 5,
+                "name": "python / Python compatibility",
+                "conclusion": "success",
+            }
+        ]
 
     def run(self, repository, run):
-        return {"id": int(run), "name": "Python compatibility", "status": "completed", "conclusion": "failure"}
+        return {
+            "id": int(run),
+            "name": "Python compatibility",
+            "status": "completed",
+            "conclusion": "failure",
+        }
 
     def jobs(self, repository, run):
         return [
-            {"id": 20, "run_id": int(run), "name": "tests", "conclusion": "failure"},
-            {"id": 21, "run_id": int(run), "name": "compat", "conclusion": "success"},
+            {
+                "id": 20,
+                "run_id": int(run),
+                "name": "tests",
+                "conclusion": "failure",
+            },
+            {
+                "id": 21,
+                "run_id": int(run),
+                "name": "compat",
+                "conclusion": "success",
+            },
         ]
 
     def job(self, repository, job):
         if int(job) == 20:
-            return {"id": 20, "run_id": 30, "name": "tests", "conclusion": "failure", "steps": [{"name": "pytest", "conclusion": "failure"}]}
-        return {"id": 21, "run_id": 30, "name": "compat", "conclusion": "success"}
+            return {
+                "id": 20,
+                "run_id": 30,
+                "name": "tests",
+                "conclusion": "failure",
+                "steps": [{"name": "pytest", "conclusion": "failure"}],
+            }
+        return {
+            "id": 21,
+            "run_id": 30,
+            "name": "compat",
+            "conclusion": "success",
+        }
 
     def job_logs(self, repository, job):
-        return {"status": 200, "content_type": "text/plain", "content": b"failure details\n"}
+        return {
+            "status": 200,
+            "content_type": "text/plain",
+            "content": b"failure details\n",
+        }
 
     def artifacts(self, repository, run, name=None):
         return [{"id": 40, "name": "gway-ci-result"}]
@@ -136,3 +184,24 @@ def test_observations_share_issue_targeting_shape():
         assert result["issue"] == 1346
         assert result["targets"] == [10, 11]
         assert [item["pr"] for item in result["pulls"]] == [10, 11]
+
+
+def test_observe_operations_are_read_only_semantic_operations(gateway):
+    assert gateway.operation_routes.expand(
+        gateway,
+        tokenize("github observe ci"),
+    ) is True
+
+    for name in (
+        "github.observe_pr",
+        "github.observe_reviews",
+        "github.observe_freshness",
+        "github.observe_merge",
+        "github.observe_ci",
+    ):
+        operation = gateway.ops.resolve(name)
+        assert operation is not None
+        assert operation.mutates is False
+        assert {"github", "source", "read"} <= set(
+            operation.__gway_metadata__["topics"]
+        )
