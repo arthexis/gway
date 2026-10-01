@@ -25,15 +25,6 @@ class AuthenticatedBearer:
     authority: EffectiveScope
 
 
-def _exact_authority(registry, scopes):
-    """Resolve authority from curated exact scope bundles only.
-
-    Legacy semantic/union bindings remain readable during the schema migration,
-    but they are deliberately inert at the external bearer boundary.
-    """
-    return registry.scopes.resolve(scopes, readonly=True)
-
-
 def authenticate_bearer(
     bearer,
     *,
@@ -45,9 +36,9 @@ def authenticate_bearer(
     """Authenticate one supported bearer against the shared security registry.
 
     Native G-Way tokens are accepted directly. OAuth access tokens additionally
-    require an exact protected-resource match. Transport authority is derived
-    only from the credential's curated named scope bundles; legacy semantic or
-    union-scope metadata never broadens the bearer surface.
+    require an exact protected-resource match. Transport authority is taken from
+    the credential registry's current exact-scope calculation so OAuth authority
+    immediately reflects any narrowing of its linked parent bearer.
     """
     value = str(bearer or "").strip()
     if not value:
@@ -63,7 +54,7 @@ def authenticate_bearer(
                 principal=identity.token.name,
                 client_id=f"gway:{identity.token.name}",
                 scopes=identity.token.scopes,
-                authority=_exact_authority(tokens, identity.token.scopes),
+                authority=identity.authority,
             )
 
         if value.startswith("gwa_"):
@@ -77,7 +68,7 @@ def authenticate_bearer(
                 principal=identity.grant.link_name,
                 client_id=identity.grant.client_id,
                 scopes=identity.grant.scopes,
-                authority=_exact_authority(oauth, identity.grant.scopes),
+                authority=identity.authority,
             )
     except (AuthenticationError, OAuthAuthenticationError):
         raise BearerAuthenticationError() from None
