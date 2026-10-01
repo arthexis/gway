@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from ._legacy import Controller as _LegacyController
+from .admin_protection import BranchProtectionAdminOperations
 from .admin_rulesets import RulesetAdminOperations
 
 
@@ -26,13 +27,9 @@ ADMIN_OPERATIONS = frozenset({
 })
 
 
-class AdminOperations(RulesetAdminOperations):
+class AdminOperations(RulesetAdminOperations, BranchProtectionAdminOperations):
     """Repository-administration surface composed from explicit domains."""
 
-    branch_protection = _LegacyController.branch_protection
-    _branch_protection_policy = staticmethod(_LegacyController._branch_protection_policy)
-    update_branch_protection = _LegacyController.update_branch_protection
-    delete_branch_protection = _LegacyController.delete_branch_protection
     collaborators = _LegacyController.collaborators
     collaborator_permission = _LegacyController.collaborator_permission
     webhooks = _LegacyController.webhooks
