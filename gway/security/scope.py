@@ -72,7 +72,7 @@ class Controller:
         }
 
     def converge(self, *, retire_missing=True):
-        """Atomically converge the bundled Gway scopes."""
+        """Atomically converge bundled Gway scopes without product publication."""
         from .defaults import converge_scope_registry
 
         return converge_scope_registry(
