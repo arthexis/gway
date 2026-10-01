@@ -19,6 +19,8 @@ def test_scope_name_does_not_imply_read_only_authority(gateway, tmp_path):
     assert scope.operations == frozenset({"demo.create"})
     assert result.valid is True
     assert result.mutating == ("demo.create",)
+    assert result.registered == ("demo.create",)
+    assert result.missing == ()
     assert result.unknown == ()
     assert result.mutation_capable is True
 
@@ -35,6 +37,8 @@ def test_scope_is_read_only_only_when_every_member_is_proven_non_mutating(
     result = gateway("security scope validate observer")
 
     assert result.valid is True
+    assert result.registered == ("demo.list", "demo.read")
+    assert result.missing == ()
     assert result.mutating == ()
     assert result.unknown == ()
     assert result.mutation_capable is False
@@ -48,25 +52,53 @@ def test_unknown_member_is_conservatively_mutation_capable(gateway, tmp_path):
 
     assert scope.operations == frozenset({"demo.future"})
     assert result.valid is True
+    assert result.registered == ()
+    assert result.missing == ("demo.future",)
     assert result.mutating == ()
     assert result.unknown == ("demo.future",)
     assert result.mutation_capable is True
 
 
-def test_mixed_bundle_reports_only_mutating_and_unknown_members(gateway, tmp_path):
+def test_mixed_bundle_reports_live_and_missing_members_separately(gateway, tmp_path):
     gateway.security_path = tmp_path / "security.sqlite"
     _operation(gateway, "demo.read", mutates=False)
     _operation(gateway, "demo.write", mutates=True)
 
-    gateway(
-        "security scope set operator demo.read demo.write demo.future"
-    )
+    gateway("security scope set operator demo.read demo.write demo.future")
     result = gateway("security scope validate operator")
 
     assert result.valid is True
+    assert result.registered == ("demo.read", "demo.write")
+    assert result.missing == ("demo.future",)
     assert result.mutating == ("demo.write",)
     assert result.unknown == ("demo.future",)
     assert result.mutation_capable is True
+
+
+def test_scope_inspect_reports_exact_grants_owner_and_stale_bindings(gateway, tmp_path):
+    gateway.security_path = tmp_path / "security.sqlite"
+    _operation(gateway, "demo.read", mutates=False)
+    registry = ScopeRegistry(gateway.security_path)
+    registry.replace_owned(
+        "observer",
+        owner="demo-extension",
+        operations={"demo.read", "demo.retired"},
+        environment={"DEMO_ENV"},
+    )
+
+    result = gateway("security scope inspect observer")
+
+    assert result == {
+        "name": "observer",
+        "owner": "demo-extension",
+        "operations": ["demo.read", "demo.retired"],
+        "environment": ["DEMO_ENV"],
+        "registered": ["demo.read"],
+        "missing": ["demo.retired"],
+        "mutating": [],
+        "unknown": ["demo.retired"],
+        "mutation_capable": True,
+    }
 
 
 def test_registry_definitions_reject_retired_semantic_metadata(tmp_path):
