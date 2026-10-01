@@ -26,7 +26,11 @@ class AuthenticatedBearer:
 
 
 def _exact_authority(registry, scopes):
-    """Resolve authority from curated exact scope bundles only."""
+    """Resolve authority from curated exact scope bundles only.
+
+    Legacy semantic/union bindings remain readable during the schema migration,
+    but they are deliberately inert at the external bearer boundary.
+    """
     return registry.scopes.resolve(scopes, readonly=True)
 
 
