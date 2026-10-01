@@ -53,4 +53,5 @@ def installer(name, yes=False):
         "installer_title": _title(name),
         "installer_description": description,
         "installer_yes": "1" if yes else "0",
+        "installer_autostart": "1" if name == "satellite" else "0",
     }
