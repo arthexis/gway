@@ -126,9 +126,13 @@ def execute_recipe(
                 )
     finally:
         if frame is not None and frame.companion_worker is not None:
-            from .companion import unregister_worker_operations
+            from .managed_companion import unregister_worker_operations
 
-            unregister_worker_operations(runtime, frame.companion_worker)
+            unregister_worker_operations(
+                runtime,
+                frame.companion_worker,
+                root=_recipe_label(frame.path),
+            )
             frame.companion_worker.close()
         if frame is not None:
             for name, previous in reversed(tuple(frame.environment_restore.items())):
