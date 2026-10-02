@@ -23,7 +23,8 @@ _NO_PIPELINE = object()
 
 def ingest_companion(runtime, recipe_filename):
     """Ingest a recipe's sibling Python companion once per Gateway."""
-    companion = companion_path(recipe_filename)
+    recipe = Path(recipe_filename).expanduser().resolve()
+    companion = companion_path(recipe)
     if companion is None:
         return []
 
@@ -35,7 +36,7 @@ def ingest_companion(runtime, recipe_filename):
     if companion in ingested:
         return []
 
-    wrapped = runtime.ingest_path(companion)
+    wrapped = runtime.ingest_path(companion, root=(_recipe_label(recipe),))
     ingested.add(companion)
     return wrapped
 
