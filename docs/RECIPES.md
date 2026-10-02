@@ -268,6 +268,17 @@ recipes/
 
 If deploy.py exists, it is ingested before any recipe statement is resolved. Its public callable surface is exposed through normal path-ingestion semantics under the deploy root.
 
+Directory-entry recipes keep the directory name as that public root even though their physical entry files are named `__main__`:
+
+~~~text
+recipes/
+    demo/
+        __main__.rx
+        __main__.py
+~~~
+
+A public callable such as `report()` in `demo/__main__.py` is therefore exposed as `demo report` / `demo.report`, never as `__main__.report`. The same namespace rule applies when a recipe declares `require` and its companion runs in the managed Python environment; managed registration and cleanup both use the recipe's public directory root.
+
 This split is intentional: the recipe remains the human-reviewable orchestration surface, while Python contains implementation detail.
 
 A missing companion is fine. A companion import failure aborts recipe execution before the first statement. A companion path is ingested at most once per Gateway instance.
@@ -322,7 +333,7 @@ check --is ready
 check --is 200
 ~~~
 
-Unquoted expected values are lightly coerced before comparison: `true` and `false` become booleans, `none` / `null` become `None`, and ordinary Python literal forms such as numbers are parsed as literals. Single quotes force string comparison, so `check --is '200'` compares against the string `"200"`.
+Unquoted expected values are lightly coerced before comparison: `true` and `false` become booleans, `none` / `null` become `None`, and ordinary Python literal forms such as numbers are parsed as literals. Single quotes force string comparison, so `check --is '200'` compares against the string "200".
 
 ### Mapping checks
 
@@ -537,7 +548,6 @@ check/repeat ... --rollback deploy
 ~~~
 
 requests recovery if the control requirement ultimately fails.
-
 Intermediate non-terminal repeat attempts do not trigger rollback. For `repeat`, the named rollback also runs if replay or gate evaluation raises; exhaustion is only one terminal failure mode. A successful check/repeat does not commit or rollback anything; the journal remains open for explicit commit.
 
 When a check assertion or repeat execution fails, its original error remains primary. If rollback also fails, recovery failure is attached as secondary context. If a later outer-boundary retry also fails, GWAY preserves both recovery failures rather than replacing the earlier one. Invalid control syntax that fails while options are being parsed is not itself a transactional failure and does not trigger rollback.
