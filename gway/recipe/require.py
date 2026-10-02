@@ -37,6 +37,11 @@ def collect_recipe_requirements(statement_list):
     return collected if collected["python"] else {}
 
 
+def _recipe_label(path):
+    """Return the public recipe label for direct and directory entry recipes."""
+    return path.parent.name if path.stem == "__main__" else path.stem
+
+
 def prepare_required_companion(runtime, frame):
     """Converge requirements and start a managed companion before execution."""
     requirements = frame.preflight_requirements.get("python", ())
@@ -57,7 +62,11 @@ def prepare_required_companion(runtime, frame):
     if companion is None:
         return
 
-    from .companion import CompanionWorker, unregister_worker_operations
+    from .companion import CompanionWorker
+    from .managed_companion import (
+        register_worker_operations,
+        unregister_worker_operations,
+    )
 
     worker = CompanionWorker.start(
         frame.path,
@@ -65,4 +74,7 @@ def prepare_required_companion(runtime, frame):
         environment_python(frame.environment),
     )
     frame.companion_worker = worker
-    unregister_worker_operations(runtime, worker)
+    root = _recipe_label(frame.path)
+    unregister_worker_operations(runtime, worker, root=root)
+    register_worker_operations(runtime, worker, root=root)
+    frame.companion_registered = True
