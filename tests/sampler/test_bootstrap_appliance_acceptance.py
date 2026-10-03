@@ -1,17 +1,11 @@
 import os
 import subprocess
 
-from tests.bootstrap_support import (
-    install_fake_arthexis_runtime,
-    render_arthexis_bootstrap,
-    run_checked,
-    write_executable,
-)
+from tests.bootstrap_support import render_arthexis_bootstrap, run_checked, write_executable
 
 
 def _write_fake_gway(path):
-    _write_executable = write_executable
-    _write_executable(
+    write_executable(
         path,
         """#!/usr/bin/env python3
 import os
@@ -19,8 +13,6 @@ from pathlib import Path
 import shutil
 import sqlite3
 import sys
-
-from tests.bootstrap_support import install_fake_arthexis_runtime
 
 args = sys.argv[1:]
 home = Path(os.environ["ARTHEXIS_BOOTSTRAP_HOME"])
@@ -34,7 +26,12 @@ if args and args[0] == "install":
     if home.exists():
         shutil.rmtree(home)
     shutil.copytree(source, home)
-    install_fake_arthexis_runtime(home)
+    runtime_bin = home / ".venv" / "bin"
+    runtime_bin.mkdir(parents=True, exist_ok=True)
+    for executable in ("python", "celery"):
+        entrypoint = runtime_bin / executable
+        entrypoint.write_text("#!/bin/sh\\nexit 0\\n", encoding="utf-8")
+        entrypoint.chmod(0o755)
     raise SystemExit(0)
 
 if args[:2] == ["arthexis", "migrate"]:
