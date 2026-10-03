@@ -833,14 +833,14 @@ def _proxy(runtime, recipe, name, signature):
     return invoke
 
 
-def register_worker_operations(runtime, worker):
+def register_worker_operations(runtime, worker, *, root=None):
     """Register managed companion callables without importing the module in host Python."""
-    root = (worker.companion.stem,)
+    namespace = (str(root) if root is not None else worker.companion.stem,)
     registered = []
     for description in worker.operations:
         name = description["name"]
         operation = IngestedOperation(
-            (*root, name),
+            (*namespace, name),
             _proxy(runtime, worker.recipe, name, _signature(description)),
             source=worker.companion,
             kind="recipe-companion-worker",
@@ -857,12 +857,12 @@ def register_worker_operations(runtime, worker):
     return registered
 
 
-def unregister_worker_operations(runtime, worker):
+def unregister_worker_operations(runtime, worker, *, root=None):
     """Hide operations previously registered for one managed companion."""
-    root = worker.companion.stem
+    namespace = str(root) if root is not None else worker.companion.stem
     removed = []
     for description in worker.operations:
-        name = f"{root}.{description['name']}"
+        name = f"{namespace}.{description['name']}"
         operation = runtime.ops.resolve(name)
         if operation is None:
             continue
