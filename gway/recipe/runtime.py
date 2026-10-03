@@ -126,7 +126,7 @@ def execute_recipe(
                 )
     finally:
         if frame is not None and frame.companion_worker is not None:
-            from .managed_companion import unregister_worker_operations
+            from .companion import unregister_worker_operations
 
             unregister_worker_operations(
                 runtime,
