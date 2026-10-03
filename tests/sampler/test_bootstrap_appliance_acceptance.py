@@ -1,7 +1,7 @@
 import os
 import subprocess
 
-from tests.bootstrap_support import render_arthexis_bootstrap, run_checked, write_executable
+from tests.bootstrap import render_arthexis_bootstrap, run_checked, write_executable
 
 
 def _write_fake_gway(path):
