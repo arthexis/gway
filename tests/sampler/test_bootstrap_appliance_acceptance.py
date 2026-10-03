@@ -41,10 +41,12 @@ if args and args[0] == "install":
     shutil.copytree(source, home)
     runtime_bin = home / ".venv" / "bin"
     runtime_bin.mkdir(parents=True, exist_ok=True)
-    for executable in ("serve", "celery"):
-        entrypoint = runtime_bin / executable
-        entrypoint.write_text("#!/bin/sh\\nexit 0\\n", encoding="utf-8")
-        entrypoint.chmod(0o755)
+    python = runtime_bin / "python"
+    python.write_text("#!/bin/sh\\nexit 0\\n", encoding="utf-8")
+    python.chmod(0o755)
+    celery = runtime_bin / "celery"
+    celery.write_text("#!/bin/sh\\nexit 0\\n", encoding="utf-8")
+    celery.chmod(0o755)
     raise SystemExit(0)
 
 if args[:2] == ["arthexis", "migrate"]:
@@ -244,6 +246,8 @@ def test_appliance_bootstrap_replaces_split_gway_install_with_one_certified_runt
 
     assert "Gway appliance runtime:" in result.stdout
     assert "Satellite installation complete." in result.stdout
+    assert not (home / ".venv" / "bin" / "serve").exists()
+    assert (home / ".venv" / "bin" / "python").exists()
     assert not (tool_bin / "gway").exists()
     assert not (system_venv / "stale-marker").exists()
     assert not list(system_venv.parent.glob("venv.previous.*"))
