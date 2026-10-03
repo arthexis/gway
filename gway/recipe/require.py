@@ -4,6 +4,17 @@ from ..tokens import chunk, is_literal, token_value
 from .path import companion_path
 
 
+class _PublicCompanionPath:
+    """Expose a recipe's public stem while preserving its real companion path."""
+
+    def __init__(self, path, stem):
+        self._path = path
+        self.stem = stem
+
+    def __str__(self):
+        return str(self._path)
+
+
 def collect_recipe_requirements(statement_list):
     """Collect declarative requirements without changing recipe execution order."""
     collected = {"python": []}
@@ -62,19 +73,16 @@ def prepare_required_companion(runtime, frame):
     if companion is None:
         return
 
-    from .companion import (
-        CompanionWorker,
-        register_worker_operations,
-        unregister_worker_operations,
-    )
+    from .companion import CompanionWorker, unregister_worker_operations
 
     worker = CompanionWorker.start(
         frame.path,
         companion,
         environment_python(frame.environment),
     )
+    # Managed companions remain hidden until the recipe's require stage executes.
+    # The worker still carries the real companion path for provenance, while its
+    # public stem follows directory-entry recipe semantics (demo/__main__.rx -> demo).
+    worker.companion = _PublicCompanionPath(companion, _recipe_label(frame.path))
     frame.companion_worker = worker
-    root = _recipe_label(frame.path)
-    unregister_worker_operations(runtime, worker, root=root)
-    register_worker_operations(runtime, worker, root=root)
-    frame.companion_registered = True
+    unregister_worker_operations(runtime, worker)
