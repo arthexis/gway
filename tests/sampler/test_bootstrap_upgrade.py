@@ -1,20 +1,12 @@
 import os
 import sqlite3
-import subprocess
 
-
-def _render_bootstrap(sampler_path, target):
-    script = sampler_path("bootstrap/arthexis.sh").read_text(encoding="utf-8")
-    script = script.replace("[installer_yes|0]", "0")
-    script = script.replace("[installer_title]", "Satellite")
-    script = script.replace("[domain]", "install.example.test")
-    script = script.replace("[[", "[").replace("]]", "]")
-    target.write_text(script, encoding="utf-8")
-    target.chmod(0o755)
+from tests.bootstrap import render_arthexis_bootstrap, run_checked, write_executable
 
 
 def _write_fake_gway(path):
-    path.write_text(
+    write_executable(
+        path,
         """#!/usr/bin/env python3
 import os
 from pathlib import Path
@@ -59,32 +51,18 @@ if args and args[0] == "service":
 
 raise SystemExit(f"unexpected fake gway invocation: {args!r}")
 """,
-        encoding="utf-8",
     )
-    path.chmod(0o755)
 
 
 def _write_fake_systemctl(path):
-    path.write_text(
+    write_executable(
+        path,
         """#!/bin/sh
 case "$*" in
     *" --user is-active --quiet "*|"--user is-active --quiet "*) exit 0 ;;
     *) exit 0 ;;
 esac
 """,
-        encoding="utf-8",
-    )
-    path.chmod(0o755)
-
-
-def _run_bootstrap(script, env, *arguments):
-    return subprocess.run(
-        ["sh", str(script), *arguments],
-        env=env,
-        check=True,
-        text=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
     )
 
 
@@ -99,7 +77,7 @@ def test_repeat_bootstrap_preserves_and_backs_up_existing_database(
     home = tmp_path / "home" / ".local" / "opt" / "arthexis"
     candidate.mkdir()
     (candidate / "revision.txt").write_text("revision-one\n", encoding="utf-8")
-    _render_bootstrap(sampler_path, bootstrap)
+    render_arthexis_bootstrap(sampler_path, bootstrap, yes=False)
     _write_fake_gway(fake_gway)
     _write_fake_systemctl(fake_systemctl)
 
@@ -116,7 +94,7 @@ def test_repeat_bootstrap_preserves_and_backs_up_existing_database(
         }
     )
 
-    first = _run_bootstrap(bootstrap, env)
+    first = run_checked(["sh", str(bootstrap)], env=env)
     database_path = home / "var" / "db.sqlite3"
     assert database_path.is_file()
     assert (home / "revision.txt").read_text(encoding="utf-8") == "revision-one\n"
@@ -130,7 +108,7 @@ def test_repeat_bootstrap_preserves_and_backs_up_existing_database(
 
     (candidate / "revision.txt").write_text("revision-two\n", encoding="utf-8")
     env["ARTHEXIS_BOOTSTRAP_SHA"] = "2" * 40
-    second = _run_bootstrap(bootstrap, env, "--yes")
+    second = run_checked(["sh", str(bootstrap), "--yes"], env=env)
 
     assert (home / "revision.txt").read_text(encoding="utf-8") == "revision-two\n"
     assert database_path.is_file()
