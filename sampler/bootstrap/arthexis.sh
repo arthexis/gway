@@ -149,7 +149,7 @@ if test "${#ARTHEXIS_SHA}" -ne 40; then
     exit 1
 fi
 case "$ARTHEXIS_SHA" in
-    *[[!0-9a-f]]*)
+    *[!0-9a-f]*)
         echo "Arthexis bootstrap: arthexis_sha is invalid" >&2
         exit 1
         ;;
@@ -165,7 +165,7 @@ if test "$GWAY_BOOTSTRAPPED" = 1; then
         exit 1
     fi
     case "$GWAY_SHA" in
-        *[[!0-9a-f]]*)
+        *[!0-9a-f]*)
             echo "Arthexis bootstrap: gway_sha is invalid" >&2
             exit 1
             ;;
@@ -260,7 +260,7 @@ if test "$DATABASE_EXISTS" = 1 && test "${ARTHEXIS_BOOTSTRAP_VERIFY_ONLY:-0}" !=
         printf '\nExisting Arthexis database: %s\n' "$ARTHEXIS_DATABASE_PATH" >&3
         printf '%s\n' "The certified source update may require database migrations." >&3
         printf '%s\n' "A SQLite-consistent backup will be created before the update." >&3
-        printf '%s' "Continue with the database update? [[y/N]] " >&3
+        printf '%s' "Continue with the database update? [y/N] " >&3
         answer=""
         IFS= read -r answer <&3 || true
         exec 3>&-
@@ -330,16 +330,21 @@ mkdir -p "$ARTHEXIS_DATA_DIR"
 ARTHEXIS_DATA_DIR="$ARTHEXIS_DATA_DIR" "$GWAY" arthexis migrate --no-interactive
 ARTHEXIS_DATA_DIR="$ARTHEXIS_DATA_DIR" "$GWAY" arthexis seed
 
-ARTHEXIS_SERVE="$ARTHEXIS_HOME/.venv/bin/serve"
+ARTHEXIS_PYTHON="$ARTHEXIS_HOME/.venv/bin/python"
 ARTHEXIS_CELERY="$ARTHEXIS_HOME/.venv/bin/celery"
-test -x "$ARTHEXIS_SERVE" || {
-    echo "Arthexis bootstrap: missing runtime entrypoint: $ARTHEXIS_SERVE" >&2
+test -x "$ARTHEXIS_PYTHON" || {
+    echo "Arthexis bootstrap: missing Python runtime: $ARTHEXIS_PYTHON" >&2
+    exit 1
+}
+"$ARTHEXIS_PYTHON" -c 'from arthexis.server import main' || {
+    echo "Arthexis bootstrap: server runtime is not importable through $ARTHEXIS_PYTHON" >&2
     exit 1
 }
 test -x "$ARTHEXIS_CELERY" || {
     echo "Arthexis bootstrap: missing runtime entrypoint: $ARTHEXIS_CELERY" >&2
     exit 1
 }
+ARTHEXIS_WEB_RUN='from arthexis.server import main; import sys; main(host="127.0.0.1", port=int(sys.argv[1]), data_dir=sys.argv[2])'
 
 if test "${ARTHEXIS_BOOTSTRAP_VERIFY_ONLY:-0}" = "1"; then
     ARTHEXIS_WEB_PORT="${ARTHEXIS_BOOTSTRAP_WEB_PORT:-0}"
@@ -349,11 +354,11 @@ fi
 
 (
     cd "$ARTHEXIS_HOME"
-    "$GWAY" service install --name web --environment "ARTHEXIS_DATA_DIR=$ARTHEXIS_DATA_DIR" -- "$ARTHEXIS_SERVE" --host 127.0.0.1 --port "$ARTHEXIS_WEB_PORT" --data-dir "$ARTHEXIS_DATA_DIR"
+    "$GWAY" service install --name web --environment "ARTHEXIS_DATA_DIR=$ARTHEXIS_DATA_DIR" -- "$ARTHEXIS_PYTHON" -c "$ARTHEXIS_WEB_RUN" "$ARTHEXIS_WEB_PORT" "$ARTHEXIS_DATA_DIR"
     "$GWAY" service install --name worker --environment "ARTHEXIS_DATA_DIR=$ARTHEXIS_DATA_DIR" -- "$ARTHEXIS_CELERY" -A arthexis.celery:app worker --loglevel INFO
     "$GWAY" service install --name beat --environment "ARTHEXIS_DATA_DIR=$ARTHEXIS_DATA_DIR" -- "$ARTHEXIS_CELERY" -A arthexis.celery:app beat --loglevel INFO
 
-    "$GWAY" service restart --name web -- "$ARTHEXIS_SERVE" --host 127.0.0.1 --port "$ARTHEXIS_WEB_PORT" --data-dir "$ARTHEXIS_DATA_DIR"
+    "$GWAY" service restart --name web -- "$ARTHEXIS_PYTHON" -c "$ARTHEXIS_WEB_RUN" "$ARTHEXIS_WEB_PORT" "$ARTHEXIS_DATA_DIR"
     "$GWAY" service restart --name worker -- "$ARTHEXIS_CELERY" -A arthexis.celery:app worker --loglevel INFO
     "$GWAY" service restart --name beat -- "$ARTHEXIS_CELERY" -A arthexis.celery:app beat --loglevel INFO
 )
