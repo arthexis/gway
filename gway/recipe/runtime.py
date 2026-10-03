@@ -23,7 +23,8 @@ _NO_PIPELINE = object()
 
 def ingest_companion(runtime, recipe_filename):
     """Ingest a recipe's sibling Python companion once per Gateway."""
-    companion = companion_path(recipe_filename)
+    recipe = Path(recipe_filename).expanduser().resolve()
+    companion = companion_path(recipe)
     if companion is None:
         return []
 
@@ -35,7 +36,7 @@ def ingest_companion(runtime, recipe_filename):
     if companion in ingested:
         return []
 
-    wrapped = runtime.ingest_path(companion)
+    wrapped = runtime.ingest_path(companion, root=(_recipe_label(recipe),))
     ingested.add(companion)
     return wrapped
 
@@ -127,7 +128,11 @@ def execute_recipe(
         if frame is not None and frame.companion_worker is not None:
             from .companion import unregister_worker_operations
 
-            unregister_worker_operations(runtime, frame.companion_worker)
+            unregister_worker_operations(
+                runtime,
+                frame.companion_worker,
+                root=_recipe_label(frame.path),
+            )
             frame.companion_worker.close()
         if frame is not None:
             for name, previous in reversed(tuple(frame.environment_restore.items())):
