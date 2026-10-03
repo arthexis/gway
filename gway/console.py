@@ -5,8 +5,8 @@ from contextlib import nullcontext
 from collections.abc import Iterator, Mapping, Sequence, Set
 from dataclasses import fields, is_dataclass
 import json
-import os
 import sys
+from .environment import process_environment
 from .gateway import Gateway
 from .mutation import MUTATE_UNSET
 from .normalization import MissingArgumentError
@@ -263,7 +263,7 @@ def cli_main():
     args.command_help = command_help
 
     if args.resume and args.output is None:
-        args.output = os.environ.get(_RELOAD_OUTPUT_ENV)
+        args.output = process_environment.get(_RELOAD_OUTPUT_ENV)
 
     runtime = Gateway(
         debug=args.debug,
@@ -287,9 +287,9 @@ def cli_main():
     if args.log_level is not None:
         log_kwargs["level"] = args.log_level
 
-    previous_reload_output = os.environ.get(_RELOAD_OUTPUT_ENV)
+    previous_reload_output = process_environment.get(_RELOAD_OUTPUT_ENV)
     if args.output is not None:
-        os.environ[_RELOAD_OUTPUT_ENV] = args.output
+        process_environment.set(_RELOAD_OUTPUT_ENV, args.output)
     try:
         with gway_log.output_scope(**log_kwargs):
             try:
@@ -300,10 +300,7 @@ def cli_main():
                 print(f"gway: {exception}", file=sys.stderr)
                 return 2
     finally:
-        if previous_reload_output is None:
-            os.environ.pop(_RELOAD_OUTPUT_ENV, None)
-        else:
-            os.environ[_RELOAD_OUTPUT_ENV] = previous_reload_output
+        process_environment.restore(_RELOAD_OUTPUT_ENV, previous_reload_output)
 
 
 def _run_cli(parser, args, unknown, *, runtime=None):
