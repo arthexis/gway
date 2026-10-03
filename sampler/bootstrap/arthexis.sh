@@ -149,7 +149,7 @@ if test "${#ARTHEXIS_SHA}" -ne 40; then
     exit 1
 fi
 case "$ARTHEXIS_SHA" in
-    *[!0-9a-f]*)
+    *[[!0-9a-f]]*)
         echo "Arthexis bootstrap: arthexis_sha is invalid" >&2
         exit 1
         ;;
@@ -165,7 +165,7 @@ if test "$GWAY_BOOTSTRAPPED" = 1; then
         exit 1
     fi
     case "$GWAY_SHA" in
-        *[!0-9a-f]*)
+        *[[!0-9a-f]]*)
             echo "Arthexis bootstrap: gway_sha is invalid" >&2
             exit 1
             ;;
@@ -260,7 +260,7 @@ if test "$DATABASE_EXISTS" = 1 && test "${ARTHEXIS_BOOTSTRAP_VERIFY_ONLY:-0}" !=
         printf '\nExisting Arthexis database: %s\n' "$ARTHEXIS_DATABASE_PATH" >&3
         printf '%s\n' "The certified source update may require database migrations." >&3
         printf '%s\n' "A SQLite-consistent backup will be created before the update." >&3
-        printf '%s' "Continue with the database update? [y/N] " >&3
+        printf '%s' "Continue with the database update? [[y/N]] " >&3
         answer=""
         IFS= read -r answer <&3 || true
         exec 3>&-
