@@ -16,13 +16,6 @@ def write_executable(path, content):
     path.chmod(0o755)
 
 
-def install_fake_arthexis_runtime(home):
-    runtime_bin = home / ".venv" / "bin"
-    runtime_bin.mkdir(parents=True, exist_ok=True)
-    for executable in ("python", "celery"):
-        write_executable(runtime_bin / executable, "#!/bin/sh\nexit 0\n")
-
-
 def run_checked(command, *, env):
     return subprocess.run(
         command,
