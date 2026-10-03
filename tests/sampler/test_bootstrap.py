@@ -125,9 +125,11 @@ def test_arthexis_roles_share_one_installer_template(sampler_path):
     assert 'mkdir -p "$ARTHEXIS_DATA_DIR"' in script
     assert 'ARTHEXIS_DATA_DIR="$ARTHEXIS_DATA_DIR" "$GWAY" arthexis migrate --no-interactive' in script
     assert 'ARTHEXIS_DATA_DIR="$ARTHEXIS_DATA_DIR" "$GWAY" arthexis seed' in script
-    assert 'ARTHEXIS_SERVE="$ARTHEXIS_HOME/.venv/bin/serve"' in script
+    assert 'ARTHEXIS_PYTHON="$ARTHEXIS_HOME/.venv/bin/python"' in script
+    assert 'ARTHEXIS_SERVE=' not in script
+    assert '"$ARTHEXIS_PYTHON" -c \'from arthexis.server import main\'' in script
     assert 'ARTHEXIS_CELERY="$ARTHEXIS_HOME/.venv/bin/celery"' in script
-    assert '-- "$ARTHEXIS_SERVE" --host 127.0.0.1 --port "$ARTHEXIS_WEB_PORT" --data-dir "$ARTHEXIS_DATA_DIR"' in script
+    assert '-- "$ARTHEXIS_PYTHON" -c "$ARTHEXIS_WEB_RUN" "$ARTHEXIS_WEB_PORT" "$ARTHEXIS_DATA_DIR"' in script
     assert '-- "$ARTHEXIS_CELERY" -A arthexis.celery:app worker --loglevel INFO' in script
     assert '-- "$ARTHEXIS_CELERY" -A arthexis.celery:app beat --loglevel INFO' in script
     assert 'ARTHEXIS_BOOTSTRAP_SERVICE_SETTLE_SECONDS' in script
@@ -137,7 +139,7 @@ def test_arthexis_roles_share_one_installer_template(sampler_path):
     assert 'ARTHEXIS_BOOTSTRAP_VERIFY_ONLY' in script
     assert 'ARTHEXIS_BOOTSTRAP_WEB_PORT:-0' in script
     assert 'Arthexis bootstrap verification complete.' in script
-    assert script.index('ARTHEXIS_DATA_DIR="$ARTHEXIS_DATA_DIR" "$GWAY" arthexis seed') < script.index('ARTHEXIS_SERVE="$ARTHEXIS_HOME/.venv/bin/serve"')
+    assert script.index('ARTHEXIS_DATA_DIR="$ARTHEXIS_DATA_DIR" "$GWAY" arthexis seed') < script.index('ARTHEXIS_PYTHON="$ARTHEXIS_HOME/.venv/bin/python"')
     assert script.index('systemctl --user is-active --quiet "$unit"') < script.index('"[installer_title] installation complete."')
     assert "[installer_title]" in script
     assert "[installer_description]" not in script
@@ -232,7 +234,10 @@ def test_arthexis_bootstrap_uses_current_runtime_entrypoints(sampler_path):
     assert '-- arthexis web' not in script
     assert '-- arthexis worker' not in script
     assert '-- arthexis beat' not in script
-    assert '"$ARTHEXIS_SERVE" --host 127.0.0.1' in script
+    assert '.venv/bin/serve' not in script
+    assert 'ARTHEXIS_PYTHON="$ARTHEXIS_HOME/.venv/bin/python"' in script
+    assert 'from arthexis.server import main' in script
+    assert '"$ARTHEXIS_PYTHON" -c "$ARTHEXIS_WEB_RUN"' in script
     assert '"$ARTHEXIS_CELERY" -A arthexis.celery:app worker' in script
     assert '"$ARTHEXIS_CELERY" -A arthexis.celery:app beat' in script
 
