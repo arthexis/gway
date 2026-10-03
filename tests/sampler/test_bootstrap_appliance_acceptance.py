@@ -1,23 +1,16 @@
 import os
 import subprocess
 
-
-def _render_bootstrap(sampler_path, target):
-    script = sampler_path("bootstrap/arthexis.sh").read_text(encoding="utf-8")
-    script = script.replace("[installer_yes|0]", "1")
-    script = script.replace("[installer_title]", "Satellite")
-    script = script.replace("[domain]", "install.example.test")
-    script = script.replace("[[", "[").replace("]]", "]")
-    target.write_text(script, encoding="utf-8")
-    target.chmod(0o755)
-
-
-def _write_executable(path, content):
-    path.write_text(content, encoding="utf-8")
-    path.chmod(0o755)
+from tests.bootstrap_support import (
+    install_fake_arthexis_runtime,
+    render_arthexis_bootstrap,
+    run_checked,
+    write_executable,
+)
 
 
 def _write_fake_gway(path):
+    _write_executable = write_executable
     _write_executable(
         path,
         """#!/usr/bin/env python3
@@ -26,6 +19,8 @@ from pathlib import Path
 import shutil
 import sqlite3
 import sys
+
+from tests.bootstrap_support import install_fake_arthexis_runtime
 
 args = sys.argv[1:]
 home = Path(os.environ["ARTHEXIS_BOOTSTRAP_HOME"])
@@ -39,14 +34,7 @@ if args and args[0] == "install":
     if home.exists():
         shutil.rmtree(home)
     shutil.copytree(source, home)
-    runtime_bin = home / ".venv" / "bin"
-    runtime_bin.mkdir(parents=True, exist_ok=True)
-    python = runtime_bin / "python"
-    python.write_text("#!/bin/sh\\nexit 0\\n", encoding="utf-8")
-    python.chmod(0o755)
-    celery = runtime_bin / "celery"
-    celery.write_text("#!/bin/sh\\nexit 0\\n", encoding="utf-8")
-    celery.chmod(0o755)
+    install_fake_arthexis_runtime(home)
     raise SystemExit(0)
 
 if args[:2] == ["arthexis", "migrate"]:
@@ -78,7 +66,7 @@ raise SystemExit(f"unexpected fake gway invocation: {args!r}")
 
 
 def _write_fake_uv(path):
-    _write_executable(
+    write_executable(
         path,
         """#!/usr/bin/env python3
 import os
@@ -116,7 +104,7 @@ raise SystemExit(f"unexpected fake uv invocation: {args!r}")
 
 
 def _write_fake_curl(path):
-    _write_executable(
+    write_executable(
         path,
         """#!/usr/bin/env python3
 import json
@@ -140,13 +128,13 @@ print('chmod 755 "$FAKE_TOOL_BIN/gway"')
 
 
 def _write_fake_privilege_tools(directory):
-    _write_executable(
+    write_executable(
         directory / "sudo",
         """#!/bin/sh
 FAKE_ROOT=1 exec "$@"
 """,
     )
-    _write_executable(
+    write_executable(
         directory / "id",
         """#!/bin/sh
 if test "${1:-}" = "-u"; then
@@ -163,22 +151,12 @@ exec /usr/bin/id "$@"
 
 
 def _write_fake_systemctl(path):
-    _write_executable(path, "#!/bin/sh\nexit 0\n")
-
-
-def _run(command, *, env):
-    return subprocess.run(
-        command,
-        env=env,
-        check=True,
-        capture_output=True,
-        text=True,
-    )
+    write_executable(path, "#!/bin/sh\nexit 0\n")
 
 
 def test_arthexis_bootstrap_is_posix_shell_syntax_valid(sampler_path, tmp_path):
     script = tmp_path / "bootstrap.sh"
-    _render_bootstrap(sampler_path, script)
+    render_arthexis_bootstrap(sampler_path, script, yes=True)
 
     result = subprocess.run(
         ["sh", "-n", str(script)],
@@ -207,7 +185,7 @@ def test_appliance_bootstrap_replaces_split_gway_install_with_one_certified_runt
     home = tmp_path / "home" / ".local" / "opt" / "arthexis"
     source = tmp_path / "candidate-source"
 
-    _render_bootstrap(sampler_path, bootstrap)
+    render_arthexis_bootstrap(sampler_path, bootstrap, yes=True)
     _write_fake_gway(fake_gway)
     _write_fake_uv(fake_uv)
     _write_fake_curl(fake_curl)
@@ -219,10 +197,7 @@ def test_appliance_bootstrap_replaces_split_gway_install_with_one_certified_runt
 
     # Model the stale PyPI-managed system copy that exposed the original bug.
     (system_venv / "bin").mkdir(parents=True)
-    _write_executable(
-        system_venv / "bin" / "gway",
-        "#!/bin/sh\necho 1.0.1\n",
-    )
+    write_executable(system_venv / "bin" / "gway", "#!/bin/sh\necho 1.0.1\n")
     (system_venv / "stale-marker").write_text("old runtime\n", encoding="utf-8")
 
     env = os.environ.copy()
@@ -242,7 +217,7 @@ def test_appliance_bootstrap_replaces_split_gway_install_with_one_certified_runt
         }
     )
 
-    result = _run(["sh", str(bootstrap)], env=env)
+    result = run_checked(["sh", str(bootstrap)], env=env)
 
     assert "Gway appliance runtime:" in result.stdout
     assert "Satellite installation complete." in result.stdout
@@ -253,12 +228,12 @@ def test_appliance_bootstrap_replaces_split_gway_install_with_one_certified_runt
     assert not list(system_venv.parent.glob("venv.previous.*"))
     assert not list(system_venv.parent.glob("venv.candidate.*"))
 
-    assert _run([str(system_command), "version"], env=env).stdout.strip() == "1.1.6"
-    assert _run(
+    assert run_checked([str(system_command), "version"], env=env).stdout.strip() == "1.1.6"
+    assert run_checked(
         [str(tmp_path / "sudo"), str(system_command), "version"], env=env
     ).stdout.strip() == "1.1.6"
 
-    statuses = _run(
+    statuses = run_checked(
         [str(system_command), "service", "statuses", "--project", "arthexis"],
         env=env,
     ).stdout
