@@ -344,7 +344,7 @@ test -x "$ARTHEXIS_CELERY" || {
     echo "Arthexis bootstrap: missing runtime entrypoint: $ARTHEXIS_CELERY" >&2
     exit 1
 }
-ARTHEXIS_WEB_RUN='from arthexis.server import main; import sys; main(host="127.0.0.1", port=int(sys.argv[1]), data_dir=sys.argv[2])'
+ARTHEXIS_WEB_RUN='from arthexis.server import main; import sys; _, port, data_dir = sys.argv; main(host="127.0.0.1", port=int(port), data_dir=data_dir)'
 
 if test "${ARTHEXIS_BOOTSTRAP_VERIFY_ONLY:-0}" = "1"; then
     ARTHEXIS_WEB_PORT="${ARTHEXIS_BOOTSTRAP_WEB_PORT:-0}"
