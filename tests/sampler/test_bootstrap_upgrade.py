@@ -32,7 +32,7 @@ if args and args[0] == "install":
     shutil.copytree(source, home)
     runtime_bin = home / ".venv" / "bin"
     runtime_bin.mkdir(parents=True, exist_ok=True)
-    for executable in ("serve", "celery"):
+    for executable in ("python", "celery"):
         entrypoint = runtime_bin / executable
         entrypoint.write_text("#!/bin/sh\\nexit 0\\n", encoding="utf-8")
         entrypoint.chmod(0o755)
