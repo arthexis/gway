@@ -62,8 +62,8 @@ def prepare_required_companion(runtime, frame):
     if companion is None:
         return
 
-    from .companion import CompanionWorker
-    from .managed_companion import (
+    from .companion import (
+        CompanionWorker,
         register_worker_operations,
         unregister_worker_operations,
     )
