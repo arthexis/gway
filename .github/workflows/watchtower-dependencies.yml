@@ -4,7 +4,7 @@ on:
   push:
     branches: [main]
   pull_request_target:
-    types: [labeled, unlabeled, edited, reopened, synchronize, ready_for_review]
+    types: [labeled, unlabeled, edited, reopened, synchronize]
   repository_dispatch:
     types: [watchtower-accepted]
   workflow_dispatch:
